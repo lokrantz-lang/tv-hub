@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TV Hub</title>
+<style>
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --panel-2: #f8f9fb; --text: #15181d; --muted: #646b76;
+  --line: #e2e5ea; --accent: #1f6feb; --accent-ink: #ffffff;
+  --ok: #17824a; --ok-bg: #e6f4ec; --warn: #9a6400; --warn-bg: #fdf3dc; --bad: #c62828; --bad-bg: #fde8e8;
+  --radius: 12px; --shadow: 0 1px 2px rgba(16,24,40,.05);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1013; --panel: #171a1f; --panel-2: #1d2127; --text: #e7e9ec; --muted: #9aa1ab;
+    --line: #2a2f37; --accent: #5b9bff; --accent-ink: #0b1020;
+    --ok: #4ccb84; --ok-bg: #15281e; --warn: #f0b952; --warn-bg: #2b2414; --bad: #ff7a7a; --bad-bg: #321a1a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+button, input, select { font: inherit; color: inherit; }
+header.top {
+  position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.top-inner { max-width: 1120px; margin: 0 auto; padding: 12px 16px 0; }
+.brand { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
+.brand .meta { color: var(--muted); font-size: 13px; }
+nav.tabs { display: flex; gap: 2px; overflow-x: auto; margin-top: 8px; scrollbar-width: none; }
+nav.tabs button {
+  background: none; border: 0; padding: 10px 12px; border-bottom: 2px solid transparent;
+  color: var(--muted); cursor: pointer; white-space: nowrap;
+}
+nav.tabs button[aria-selected="true"] { color: var(--text); border-color: var(--accent); font-weight: 600; }
+main { max-width: 1120px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+main > *, .grid2 > *, .panel, .bd { min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.panel > .hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 16px 0; flex-wrap: wrap; }
+.panel > .hd h2 { font-size: 15px; margin: 0; }
+.panel > .bd { padding: 12px 16px 16px; }
+.grid2 { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.mono { font-family: var(--mono); font-size: 13px; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.spacer { flex: 1; }
+.btn {
+  border: 1px solid var(--line); background: var(--panel); padding: 7px 12px; border-radius: 8px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px;
+}
+.btn:hover { background: var(--panel-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.danger { color: var(--bad); }
+.btn.ghost { border-color: transparent; background: none; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.icon { padding: 6px 9px; }
+input, select {
+  border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 8px 10px; min-height: 38px; width: 100%;
+}
+input:focus, select:focus, .btn:focus-visible, nav.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+label.f { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.form { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); align-items: end; }
+.verdict { display: flex; gap: 14px; align-items: flex-start; padding: 18px 16px; border-radius: var(--radius); }
+.verdict.ok { background: var(--ok-bg); } .verdict.warn { background: var(--warn-bg); } .verdict.bad { background: var(--bad-bg); }
+.verdict .big { font-size: 18px; font-weight: 650; }
+.lvl { width: 12px; height: 12px; border-radius: 50%; flex: none; margin-top: 6px; background: var(--muted); }
+.lvl.ok { background: var(--ok); } .lvl.warn { background: var(--warn); } .lvl.bad { background: var(--bad); }
+.findings { list-style: none; margin: 0; padding: 0; }
+.findings li { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.findings li:first-child { border-top: 0; }
+.findings .t { font-weight: 600; }
+details.ev summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+details.ev ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.stat { background: var(--panel-2); border-radius: 10px; padding: 10px 12px; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 12px; font-weight: 600; color: var(--muted); }
+tbody tr:last-child td { border-bottom: 0; }
+.scroll { overflow-x: auto; }
+.pill { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.pill.ok { color: var(--ok); border-color: currentColor; } .pill.bad { color: var(--bad); border-color: currentColor; }
+.pill.warn { color: var(--warn); border-color: currentColor; } .pill.accent { color: var(--accent); border-color: currentColor; }
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.list li:first-child { border-top: 0; }
+.thumb { width: 40px; height: 40px; border-radius: 6px; background: var(--panel-2); object-fit: cover; flex: none; }
+.thumb.poster { width: 34px; height: 50px; }
+.grow { flex: 1; min-width: 0; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.star { background: none; border: 0; cursor: pointer; font-size: 20px; line-height: 1; color: var(--muted); padding: 4px; }
+.star.on { color: #e3a008; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button { border: 0; background: var(--panel); padding: 7px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.code { font-family: var(--mono); font-size: 40px; letter-spacing: .15em; font-weight: 700; }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg);
+  padding: 10px 16px; border-radius: 10px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; z-index: 20; }
+.toast.show { opacity: 1; }
+.empty { color: var(--muted); padding: 12px 0; }
+.spark { display: block; width: 100%; height: 48px; }
+.hidden { display: none !important; }
+.tabpanel[hidden] { display: none; }
+@media (max-width: 640px) {
+  .hide-sm { display: none; }
+  main { padding: 12px; }
+  .code { font-size: 32px; }
+  td .row { flex-wrap: wrap !important; justify-content: flex-start !important; }
+  td .btn { min-height: 32px; padding: 4px 8px; }
+  .list li { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <h1>TV Hub</h1>
+      <div class="row"><span class="meta" id="updated"></span><button class="btn ghost icon" id="reload" title="Uppdatera" aria-label="Uppdatera">↻</button></div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="overview" aria-selected="true">Översikt</button>
+      <button role="tab" data-tab="library">Bibliotek</button>
+      <button role="tab" data-tab="collections">Favoriter och grupper</button>
+      <button role="tab" data-tab="portals">Portaler</button>
+      <button role="tab" data-tab="devices">Boxar</button>
+      <button role="tab" data-tab="diagnostics">Diagnostik</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ÖVERSIKT -->
+  <section class="tabpanel" id="tab-overview">
+    <div class="panel"><div id="verdict" class="verdict"><span class="lvl"></span><div><div class="big">Hämtar status…</div></div></div></div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="panel">
+        <div class="hd"><h2>Läget just nu</h2></div>
+        <div class="bd"><ul class="findings" id="findings"></ul></div>
+      </div>
+      <div style="display:grid; gap:16px; align-content:start">
+        <div class="panel">
+          <div class="hd"><h2>Tittar nu</h2></div>
+          <div class="bd" id="playing"></div>
+        </div>
+        <div class="panel">
+          <div class="hd"><h2>Bibliotek</h2><button class="btn" id="sync-btn">Uppdatera listor</button></div>
+          <div class="bd">
+            <div class="stats" id="counts"></div>
+            <p class="small muted" id="sync-info" style="margin:10px 0 0"></p>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="hd"><h2>Konto</h2></div>
+          <div class="bd" id="account"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BIBLIOTEK -->
+  <section class="tabpanel" id="tab-library" hidden>
+    <div class="panel">
+      <div class="bd" style="display:grid; gap:12px">
+        <div class="row">
+          <div class="seg" id="lib-type">
+            <button data-type="live" aria-pressed="true">Kanaler</button>
+            <button data-type="vod" aria-pressed="false">Filmer</button>
+            <button data-type="series" aria-pressed="false">Serier</button>
+          </div>
+        </div>
+        <div class="form" style="grid-template-columns: 2fr 1fr">
+          <label class="f">Sök<input id="lib-q" type="search" placeholder="t.ex. svt, dune, fotboll" autocomplete="off"></label>
+          <label class="f">Kategori<select id="lib-cat"></select></label>
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2 id="lib-title">Resultat</h2><span class="small muted" id="lib-count"></span></div>
+      <div class="bd"><ul class="list" id="lib-list"></ul></div>
+    </div>
+    <div class="panel hidden" id="series-panel" style="margin-top:16px">
+      <div class="hd"><h2 id="series-title"></h2><button class="btn ghost" id="series-close">Stäng</button></div>
+      <div class="bd" id="series-body"></div>
+    </div>
+  </section>
+
+  <!-- FAVORITER OCH GRUPPER -->
+  <section class="tabpanel" id="tab-collections" hidden>
+    <div class="grid2">
+      <div class="panel">
+        <div class="hd"><h2>Favoriter</h2><span class="small muted">Visas överst i boxarna</span></div>
+        <div class="bd"><ul class="list" id="fav-list"></ul></div>
+      </div>
+      <div class="panel">
+        <div class="hd"><h2>Egna grupper</h2></div>
+        <div class="bd">
+          <form class="row" id="group-form">
+            <input id="group-name" placeholder="Ny grupp, t.ex. Barnen" maxlength="60" style="flex:1; min-width:160px">
+            <button class="btn primary" type="submit">Skapa</button>
+          </form>
+          <p class="small muted">Lägg till kanaler, filmer och serier från Bibliotek. Grupperna syns som egna rader i boxarna.</p>
+          <div id="groups"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PORTALER -->
+  <section class="tabpanel" id="tab-portals" hidden>
+    <div class="panel">
+      <div class="hd"><h2>Portaler</h2><span class="small muted">Boxarna använder automatiskt den bästa som fungerar</span></div>
+      <div class="bd scroll">
+        <table>
+          <thead><tr><th></th><th>Namn</th><th class="hide-sm">Adress</th><th class="hide-sm">Prio</th><th>Svar</th><th class="hide-sm">Fel 1 h</th><th></th></tr></thead>
+          <tbody id="portal-rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel hidden" id="portal-history-panel" style="margin-top:16px">
+      <div class="hd"><h2 id="portal-history-title"></h2><button class="btn ghost" id="portal-history-close">Stäng</button></div>
+      <div class="bd">
+        <svg class="spark" id="portal-spark" viewBox="0 0 600 48" preserveAspectRatio="none" role="img" aria-label="Svarstider senaste dygnet"></svg>
+        <p class="small muted" id="portal-spark-cap"></p>
+        <div class="scroll"><table><thead><tr><th>Tid</th><th>Inloggning</th><th>Svar</th><th>Fel</th></tr></thead><tbody id="portal-history"></tbody></table></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2 id="portal-form-title">Lägg till portal</h2></div>
+      <div class="bd">
+        <form class="form" id="portal-form" autocomplete="off">
+          <input type="hidden" id="p-id">
+          <label class="f">Namn<input id="p-name" required maxlength="60" placeholder="Toucan"></label>
+          <label class="f">Portal-URL<input id="p-url" required placeholder="http://IP:PORT"></label>
+          <label class="f">Användarnamn<input id="p-user" required autocomplete="off"></label>
+          <label class="f">Lösenord<input id="p-pass" type="password" autocomplete="new-password" placeholder=""></label>
+          <label class="f">Prioritet (lägst först)<input id="p-prio" type="number" min="1" max="999" value="100"></label>
+          <label class="f">Aktiv<select id="p-enabled"><option value="1">Ja</option><option value="0">Nej</option></select></label>
+          <div class="row"><button class="btn primary" type="submit" id="p-save">Spara och testa</button><button class="btn" type="button" id="p-cancel">Avbryt</button></div>
+        </form>
+        <p class="small muted" style="margin-bottom:0">Samma uppgifter som i MyTVOnline. Har Toucan gett dig flera adresser, lägg in varje som en egen portal så byter boxarna automatiskt om en slutar fungera. Lösenordet sparas bara i Home Assistant och visas aldrig här.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- BOXAR -->
+  <section class="tabpanel" id="tab-devices" hidden>
+    <div class="panel">
+      <div class="hd"><h2>Boxar</h2><button class="btn primary" id="pair-btn">Para ny box</button></div>
+      <div class="bd">
+        <div id="pair-box" class="hidden" style="padding:8px 0 16px">
+          <div class="small muted">Ange koden i TV Hub-appen på boxen. Giltig i 10 minuter.</div>
+          <div class="code" id="pair-code"></div>
+          <div class="small muted">Serveradress i appen: <span class="mono">http://&lt;Home Assistants IP&gt;:<span id="dev-port">8099</span></span></div>
+        </div>
+        <ul class="list" id="device-list"></ul>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Home Assistant-sensorer</h2><button class="btn" id="ha-token-btn">Skapa nyckel</button></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">En nyckel för REST-sensorerna i <span class="mono">tv_hub_package.yaml</span>. Den visas bara en gång.</p>
+        <div id="ha-token" class="mono hidden" style="word-break:break-all; padding:10px; background:var(--panel-2); border-radius:8px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DIAGNOSTIK -->
+  <section class="tabpanel" id="tab-diagnostics" hidden>
+    <div class="panel">
+      <div class="hd"><h2>Kapacitetstest från hemmet</h2></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Hämtar en ström från Toucan till Home Assistant i några sekunder och mäter hastigheten. Det skiljer källans eller internetleverantörens problem från problem i hemnätet. Testet är en egen ström och körs bara när ingen box tittar.</p>
+        <div class="row">
+          <div class="seg" id="cap-type"><button data-type="vod" aria-pressed="true">Film (maxhastighet)</button><button data-type="live" aria-pressed="false">Live (jämnhet)</button></div>
+          <button class="btn primary" id="cap-run">Kör test</button>
+        </div>
+        <div id="cap-result" style="margin-top:12px"></div>
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="panel">
+        <div class="hd"><h2>Internet från Home Assistant</h2></div>
+        <div class="bd">
+          <svg class="spark" id="net-spark" viewBox="0 0 600 48" preserveAspectRatio="none" role="img" aria-label="Internetkontroller"></svg>
+          <p class="small muted" id="net-cap"></p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="hd"><h2>Senaste listuppdateringar</h2></div>
+        <div class="bd"><ul class="list" id="sync-list"></ul></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Händelser</h2></div>
+      <div class="bd scroll"><table><thead><tr><th>Tid</th><th>Box</th><th>Händelse</th><th>Detaljer</th></tr></thead><tbody id="events"></tbody></table></div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtTime = (iso) => iso ? new Date(iso).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }) : "–";
+const fmtAgo = (iso) => {
+  if (!iso) return "aldrig";
+  const s = Math.round((Date.now() - new Date(iso)) / 1000);
+  if (s < 60) return "nyss";
+  if (s < 3600) return `${Math.round(s / 60)} min sedan`;
+  if (s < 86400) return `${Math.round(s / 3600)} h sedan`;
+  return `${Math.round(s / 86400)} d sedan`;
+};
+const TYPE_LABEL = { live: "Kanal", vod: "Film", series: "Serie" };
+const AREA_LABEL = { internet: "Internet", source: "Källan", lan: "Hemnätet", account: "Kontot", catalog: "Listor", playback: "Uppspelning", path: "Källa/ISP" };
+
+async function api(path, opts = {}) {
+  const res = await fetch("api/" + path, { headers: { "Content-Type": "application/json" }, ...opts,
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+function toast(msg) {
+  const el = $("toast"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("show"), 3000);
+}
+async function guarded(fn, btn) {
+  if (btn) btn.disabled = true;
+  try { return await fn(); } catch (e) { toast(e.message); } finally { if (btn) btn.disabled = false; }
+}
+
+/* ---------- flikar ---------- */
+const loaders = {};
+let current = "overview";
+function showTab(name) {
+  current = name;
+  document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name));
+  document.querySelectorAll(".tabpanel").forEach((p) => p.hidden = p.id !== "tab-" + name);
+  try { localStorage.setItem("tvhub-tab", name); } catch (_) {}
+  loaders[name] && loaders[name]();
+}
+document.querySelector("nav.tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-tab]"); if (b) showTab(b.dataset.tab);
+});
+$("reload").addEventListener("click", () => loaders[current] && loaders[current]());
+
+/* ---------- översikt ---------- */
+let overview = null;
+loaders.overview = async () => {
+  try { overview = await api("overview"); } catch (e) { $("verdict").innerHTML = `<span class="lvl bad"></span><div><div class="big">Kunde inte hämta status</div><div>${esc(e.message)}</div></div>`; return; }
+  const d = overview.diagnosis; const top = d.findings[0];
+  $("verdict").className = "verdict " + d.level;
+  $("verdict").innerHTML = `<span class="lvl ${d.level}"></span><div><div class="big">${esc(top ? (d.level === "ok" ? "Allt fungerar" : top.title) : "Inga data ännu")}</div><div>${esc(top && d.level !== "ok" ? top.detail : "Toucan, internet och listorna ser bra ut.")}</div></div>`;
+  $("findings").innerHTML = d.findings.map(findingHtml).join("") || '<li class="empty">Inga kontroller ännu.</li>';
+  const s = overview.sessions;
+  $("playing").innerHTML = s.length ? `<ul class="list">${s.map((x) => `<li><span class="lvl ok" style="margin:0"></span><div class="grow"><div class="ellipsis"><strong>${esc(x.device_name)}</strong>: ${esc(x.item_name)}</div><div class="small muted">sedan ${fmtTime(x.started)}${x.metrics && x.metrics.bandwidth_bps ? ` · ${(x.metrics.bandwidth_bps / 1e6).toFixed(1)} Mbit/s` : ""}${x.metrics && x.metrics.stalls ? ` · ${x.metrics.stalls} hack` : ""}</div></div></li>`).join("")}</ul>` : '<div class="empty">Ingen box tittar.</div>';
+  const c = overview.catalog;
+  $("counts").innerHTML = [["Kanaler", c.live.items], ["Filmer", c.vod.items], ["Serier", c.series.items]].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v.toLocaleString("sv-SE")}</div></div>`).join("");
+  const ls = overview.last_sync;
+  $("sync-info").textContent = overview.sync.running ? `Uppdaterar ${overview.sync.step || ""}…` : ls ? `Senast ${fmtAgo(ls.finished || ls.started)} (${{ ok: "lyckades", partial: "delvis", failed: "misslyckades", running: "pågår" }[ls.status] || ls.status})` : "Listorna har inte hämtats ännu.";
+  $("sync-btn").disabled = overview.sync.running;
+  const p = overview.portals.find((x) => x.active) || overview.portals.find((x) => x.last_check && x.last_check.api_ok);
+  const lc = p && p.last_check;
+  $("account").innerHTML = lc && lc.api_ok ? `<div class="stats">
+      <div class="stat"><div class="k">Status</div><div class="v" style="font-size:16px">${esc(lc.account_status || "–")}</div></div>
+      <div class="stat"><div class="k">Går ut</div><div class="v" style="font-size:16px">${lc.exp_date ? new Date(lc.exp_date * 1000).toLocaleDateString("sv-SE") : "–"}</div></div>
+      <div class="stat"><div class="k">Anslutningar</div><div class="v" style="font-size:16px">${lc.active_cons ?? "–"} / ${lc.max_connections ?? "–"}</div></div></div>
+      <p class="small muted" style="margin:8px 0 0">Enligt Toucan, kontrollerat ${fmtAgo(lc.ts)}.</p>` : '<div class="empty">Ingen lyckad inloggning ännu.</div>';
+  $("updated").textContent = "v" + overview.version;
+  $("dev-port").textContent = overview.device_port;
+};
+const ISO_RE = /\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\+00:00|Z)/g;
+const localize = (s) => esc(String(s ?? "").replace(ISO_RE, (m) => fmtTime(m)));
+function findingHtml(f) {
+  return `<li><span class="lvl ${f.level}"></span><div class="grow"><div class="t">${esc(f.title)} <span class="pill">${esc(AREA_LABEL[f.area] || f.area)}</span></div>
+    ${f.detail ? `<div class="small">${localize(f.detail)}</div>` : ""}
+    ${f.evidence && f.evidence.length ? `<details class="ev"><summary>Underlag (${f.evidence.length})</summary><ul>${f.evidence.map((e) => `<li>${localize(e)}</li>`).join("")}</ul></details>` : ""}</div></li>`;
+}
+$("sync-btn").addEventListener("click", (e) => guarded(async () => {
+  const r = await api("catalog/sync", { method: "POST" });
+  toast(r.started ? "Uppdaterar listorna i bakgrunden…" : r.message);
+  setTimeout(loaders.overview, 1500);
+}, e.currentTarget));
+
+/* ---------- bibliotek ---------- */
+let libType = "live", groupsCache = [];
+async function loadGroupsCache() { groupsCache = await api("groups").catch(() => []); }
+loaders.library = async () => {
+  await loadGroupsCache();
+  await loadCategories();
+  runLibrary();
+};
+async function loadCategories() {
+  const cats = await api(`library/categories?type=${libType}`).catch(() => []);
+  $("lib-cat").innerHTML = `<option value="">Välj kategori…</option>` + cats.map((c) => `<option value="${esc(c.category_id)}">${esc(c.name)} (${c.count})</option>`).join("");
+}
+$("lib-type").addEventListener("click", async (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  libType = b.dataset.type;
+  $("lib-type").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  await loadCategories(); runLibrary();
+});
+let qTimer;
+$("lib-q").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(runLibrary, 250); });
+$("lib-cat").addEventListener("change", () => { $("lib-q").value = ""; runLibrary(); });
+async function runLibrary() {
+  const q = $("lib-q").value.trim(); const cat = $("lib-cat").value;
+  let items = [];
+  if (q) { items = await api(`library/search?type=${libType}&q=${encodeURIComponent(q)}&limit=200`).catch((e) => (toast(e.message), [])); $("lib-title").textContent = `Sökning: ${q}`; }
+  else if (cat) { items = await api(`library/items?type=${libType}&category_id=${encodeURIComponent(cat)}&limit=1000`).catch(() => []); $("lib-title").textContent = $("lib-cat").selectedOptions[0].textContent; }
+  else { $("lib-title").textContent = "Resultat"; $("lib-count").textContent = ""; $("lib-list").innerHTML = '<li class="empty">Sök eller välj en kategori.</li>'; return; }
+  $("lib-count").textContent = `${items.length} st`;
+  $("lib-list").innerHTML = items.map(itemRow).join("") || '<li class="empty">Inga träffar.</li>';
+}
+function itemRow(it) {
+  const img = it.icon ? `<img class="thumb ${it.type !== "live" ? "poster" : ""}" src="${esc(it.icon)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<span class="thumb ${it.type !== "live" ? "poster" : ""}"></span>`;
+  const groupOpts = groupsCache.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join("");
+  return `<li data-type="${it.type}" data-id="${esc(it.id)}" data-name="${esc(it.name)}">${img}
+    <div class="grow"><div class="ellipsis">${esc(it.name)}</div><div class="small muted ellipsis">${TYPE_LABEL[it.type]}${it.category_name ? " · " + esc(it.category_name) : ""}${it.rating ? " · ★ " + esc(it.rating) : ""}</div></div>
+    ${it.type === "series" ? `<button class="btn ghost small" data-act="series">Avsnitt</button>` : ""}
+    ${groupsCache.length ? `<select data-act="group" aria-label="Lägg i grupp" style="width:auto; min-height:34px"><option value="">+ Grupp</option>${groupOpts}</select>` : ""}
+    <button class="star ${it.favorite ? "on" : ""}" data-act="fav" aria-label="Favorit" aria-pressed="${!!it.favorite}">${it.favorite ? "★" : "☆"}</button></li>`;
+}
+$("lib-list").addEventListener("click", (e) => {
+  const li = e.target.closest("li[data-id]"); if (!li) return;
+  const act = e.target.closest("[data-act]"); if (!act) return;
+  if (act.dataset.act === "fav") toggleFav(li.dataset.type, li.dataset.id, act);
+  if (act.dataset.act === "series") openSeries(li.dataset.id, li.dataset.name);
+});
+$("lib-list").addEventListener("change", (e) => {
+  const sel = e.target.closest("select[data-act=group]"); if (!sel || !sel.value) return;
+  const li = sel.closest("li");
+  const g = groupsCache.find((x) => String(x.id) === sel.value);
+  guarded(async () => { await api(`groups/${sel.value}/items`, { method: "POST", body: { type: li.dataset.type, id: li.dataset.id } }); toast(`Lagd i ${g ? g.name : "gruppen"}`); });
+  sel.value = "";
+});
+async function toggleFav(type, id, btn) {
+  const on = !btn.classList.contains("on");
+  await guarded(async () => {
+    await api("favorites", { method: "POST", body: { type, id, on } });
+    btn.classList.toggle("on", on); btn.textContent = on ? "★" : "☆"; btn.setAttribute("aria-pressed", on);
+  });
+}
+async function openSeries(id, name) {
+  $("series-panel").classList.remove("hidden"); $("series-title").textContent = name; $("series-body").innerHTML = '<div class="empty">Hämtar…</div>';
+  try {
+    const s = await api(`library/series/${encodeURIComponent(id)}`);
+    $("series-body").innerHTML = (s.plot ? `<p class="small">${esc(s.plot)}</p>` : "") + s.seasons.map((se) => `<h3 style="font-size:14px; margin:12px 0 4px">Säsong ${esc(se.season)}</h3><ul class="list">${se.episodes.map((ep) => `<li><div class="grow"><div class="ellipsis">${esc(ep.num)}. ${esc(ep.title)}</div>${ep.plot ? `<div class="small muted ellipsis">${esc(ep.plot)}</div>` : ""}</div><span class="small muted">${esc(ep.duration || "")}</span></li>`).join("")}</ul>`).join("");
+    $("series-panel").scrollIntoView({ behavior: "smooth" });
+  } catch (e) { $("series-body").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+$("series-close").addEventListener("click", () => $("series-panel").classList.add("hidden"));
+
+/* ---------- favoriter och grupper ---------- */
+loaders.collections = async () => {
+  const [favs, groups] = await Promise.all([api("favorites").catch(() => []), api("groups").catch(() => [])]);
+  groupsCache = groups;
+  $("fav-list").innerHTML = favs.map((f) => `<li data-type="${f.type}" data-id="${esc(f.id)}"><div class="grow"><div class="ellipsis">${f.missing ? '<span class="muted">Finns inte längre i källan</span>' : esc(f.name)}</div><div class="small muted">${TYPE_LABEL[f.type]}</div></div><button class="btn ghost small danger" data-act="unfav">Ta bort</button></li>`).join("") || '<li class="empty">Inga favoriter. Markera med ☆ i Bibliotek.</li>';
+  $("groups").innerHTML = groups.map((g) => `<div class="panel" style="margin-top:12px; box-shadow:none" data-gid="${g.id}">
+      <div class="hd"><h2>${esc(g.name)} <span class="small muted">(${g.count})</span></h2><div class="row">
+        <button class="btn ghost small" data-act="rename">Byt namn</button><button class="btn ghost small danger" data-act="delete">Ta bort</button></div></div>
+      <div class="bd"><ul class="list">${g.items.map((it, i) => `<li data-type="${it.type}" data-id="${esc(it.id)}">
+        <div class="grow"><div class="ellipsis">${it.missing ? '<span class="muted">Finns inte längre</span>' : esc(it.name)}</div><div class="small muted">${TYPE_LABEL[it.type]}</div></div>
+        <button class="btn icon ghost" data-act="up" ${i === 0 ? "disabled" : ""} aria-label="Flytta upp">↑</button>
+        <button class="btn icon ghost" data-act="down" ${i === g.items.length - 1 ? "disabled" : ""} aria-label="Flytta ner">↓</button>
+        <button class="btn icon ghost danger" data-act="remove" aria-label="Ta bort ur gruppen">✕</button></li>`).join("") || '<li class="empty">Tom grupp.</li>'}</ul></div></div>`).join("");
+};
+$("fav-list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act=unfav]"); if (!b) return;
+  const li = b.closest("li");
+  guarded(async () => { await api("favorites", { method: "POST", body: { type: li.dataset.type, id: li.dataset.id, on: false } }); loaders.collections(); });
+});
+$("group-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = $("group-name").value.trim(); if (!name) return;
+  guarded(async () => { await api("groups", { method: "POST", body: { name } }); $("group-name").value = ""; loaders.collections(); });
+});
+$("groups").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const box = b.closest("[data-gid]"); const gid = box.dataset.gid;
+  const g = groupsCache.find((x) => String(x.id) === gid);
+  const act = b.dataset.act;
+  if (act === "rename") {
+    const name = prompt("Nytt namn", g.name); if (!name) return;
+    return guarded(async () => { await api(`groups/${gid}`, { method: "PUT", body: { name } }); loaders.collections(); });
+  }
+  if (act === "delete") {
+    if (!confirm(`Ta bort gruppen "${g.name}"?`)) return;
+    return guarded(async () => { await api(`groups/${gid}`, { method: "DELETE" }); loaders.collections(); });
+  }
+  const li = b.closest("li"); const type = li.dataset.type, id = li.dataset.id;
+  if (act === "remove") return guarded(async () => { await api(`groups/${gid}/items/${type}/${encodeURIComponent(id)}`, { method: "DELETE" }); loaders.collections(); });
+  if (act === "up" || act === "down") {
+    const order = g.items.map((x) => ({ type: x.type, id: x.id }));
+    const i = order.findIndex((x) => x.type === type && String(x.id) === id);
+    const j = act === "up" ? i - 1 : i + 1;
+    [order[i], order[j]] = [order[j], order[i]];
+    return guarded(async () => { await api(`groups/${gid}`, { method: "PUT", body: { order } }); loaders.collections(); });
+  }
+});
+
+/* ---------- portaler ---------- */
+let portalCache = [];
+loaders.portals = async () => {
+  portalCache = await api("portals").catch((e) => (toast(e.message), []));
+  $("portal-rows").innerHTML = portalCache.map((p) => {
+    const lc = p.last_check;
+    const state = p.ok === null ? '<span class="pill">väntar</span>' : p.ok ? '<span class="pill ok">OK</span>' : '<span class="pill bad">fel</span>';
+    return `<tr data-id="${p.id}"><td>${state}</td>
+      <td><strong>${esc(p.name)}</strong> ${p.active ? '<span class="pill accent">används</span>' : ""} ${p.enabled ? "" : '<span class="pill">av</span>'}
+        ${lc && lc.error ? `<div class="small" style="color:var(--bad)" title="${esc(lc.error)}">${esc(lc.error_text || lc.error)}</div>` : ""}</td>
+      <td class="hide-sm mono">${esc(p.url)}</td><td class="hide-sm">${p.priority}</td>
+      <td>${lc && lc.api_ms != null ? lc.api_ms + " ms" : "–"}</td>
+      <td class="hide-sm">${p.failed_last_hour}/${p.checks_last_hour}</td>
+      <td><div class="row" style="justify-content:flex-end; flex-wrap:nowrap">
+        <button class="btn ghost small" data-act="test">Testa</button><button class="btn ghost small" data-act="history">Historik</button>
+        <button class="btn ghost small" data-act="edit">Ändra</button><button class="btn ghost small danger" data-act="delete">Ta bort</button></div></td></tr>`;
+  }).join("") || '<tr><td colspan="7" class="empty">Ingen portal ännu. Lägg till din Toucan-portal nedan.</td></tr>';
+};
+function resetPortalForm() {
+  $("portal-form").reset(); $("p-id").value = ""; $("p-prio").value = 100;
+  $("p-pass").placeholder = ""; $("p-pass").required = true;
+  $("portal-form-title").textContent = "Lägg till portal"; $("p-save").textContent = "Spara och testa";
+}
+resetPortalForm();
+$("p-cancel").addEventListener("click", resetPortalForm);
+$("portal-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const id = $("p-id").value;
+  const body = { name: $("p-name").value.trim(), url: $("p-url").value.trim(), username: $("p-user").value.trim(),
+    priority: Number($("p-prio").value), enabled: $("p-enabled").value === "1" };
+  if ($("p-pass").value) body.password = $("p-pass").value;
+  guarded(async () => {
+    const r = id ? await api(`portals/${id}`, { method: "PUT", body }) : await api("portals", { method: "POST", body });
+    toast(r.ok ? `${r.name}: inloggningen fungerar` : r.ok === false ? `${r.name} sparad, men testet misslyckades: ${r.last_check.error_text || r.last_check.error}` : `${r.name} sparad`);
+    resetPortalForm(); loaders.portals();
+  }, $("p-save"));
+});
+$("portal-rows").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const id = Number(b.closest("tr").dataset.id); const p = portalCache.find((x) => x.id === id);
+  const act = b.dataset.act;
+  if (act === "test") return guarded(async () => { const r = await api(`portals/${id}/check`, { method: "POST" }); toast(r.check.api_ok ? `OK på ${r.check.api_ms} ms` : `Fel: ${r.check.error_text || r.check.error}`); loaders.portals(); }, b);
+  if (act === "edit") {
+    $("p-id").value = p.id; $("p-name").value = p.name; $("p-url").value = p.url; $("p-user").value = p.username;
+    $("p-pass").value = ""; $("p-pass").required = false; $("p-pass").placeholder = "Lämna tomt för att behålla";
+    $("p-prio").value = p.priority; $("p-enabled").value = p.enabled ? "1" : "0";
+    $("portal-form-title").textContent = `Ändra ${p.name}`; $("p-save").textContent = "Spara och testa";
+    $("portal-form").scrollIntoView({ behavior: "smooth" });
+  }
+  if (act === "delete") {
+    if (!confirm(`Ta bort ${p.name} och dess historik?`)) return;
+    guarded(async () => { await api(`portals/${id}`, { method: "DELETE" }); loaders.portals(); });
+  }
+  if (act === "history") showPortalHistory(p);
+});
+async function showPortalHistory(p) {
+  const rows = await api(`portals/${p.id}/history?hours=24`).catch(() => []);
+  $("portal-history-panel").classList.remove("hidden");
+  $("portal-history-title").textContent = `${p.name}, senaste dygnet`;
+  sparkline($("portal-spark"), rows.slice().reverse().map((r) => ({ v: r.api_ms, ok: !!r.api_ok })));
+  const okRows = rows.filter((r) => r.api_ok);
+  const fails = rows.length - okRows.length;
+  $("portal-spark-cap").textContent = rows.length ? `${rows.length} kontroller, ${fails} fel. Röda streck är misslyckade inloggningar.` : "Inga kontroller ännu.";
+  $("portal-history").innerHTML = rows.slice(0, 60).map((r) => `<tr><td>${fmtTime(r.ts)}</td><td>${r.api_ok ? '<span class="pill ok">OK</span>' : '<span class="pill bad">fel</span>'}</td><td>${r.api_ms != null ? r.api_ms + " ms" : "–"}</td><td class="small">${esc(r.error_text || r.error || "")}</td></tr>`).join("");
+  $("portal-history-panel").scrollIntoView({ behavior: "smooth" });
+}
+$("portal-history-close").addEventListener("click", () => $("portal-history-panel").classList.add("hidden"));
+function sparkline(svg, points) {
+  if (!points.length) { svg.innerHTML = ""; return; }
+  const vals = points.filter((p) => p.ok && p.v != null).map((p) => p.v);
+  const max = Math.max(1, ...vals);
+  const w = 600 / points.length;
+  svg.innerHTML = points.map((p, i) => {
+    if (!p.ok) return `<rect x="${i * w}" y="0" width="${Math.max(w - 1, 1)}" height="48" fill="var(--bad)" opacity=".7"></rect>`;
+    const h = Math.max(2, (p.v / max) * 46);
+    return `<rect x="${i * w}" y="${48 - h}" width="${Math.max(w - 1, 1)}" height="${h}" fill="var(--accent)" opacity=".75"></rect>`;
+  }).join("");
+}
+
+/* ---------- boxar ---------- */
+let pairTimer;
+loaders.devices = async () => {
+  const list = await api("devices").catch((e) => (toast(e.message), []));
+  $("device-list").innerHTML = list.map((d) => `<li data-id="${d.id}"><div class="grow"><div><strong>${esc(d.name)}</strong> ${d.playing ? `<span class="pill ok">tittar: ${esc(d.playing.item_name)}</span>` : ""}</div>
+    <div class="small muted">${esc(d.model || "")}${d.app_version ? " · app " + esc(d.app_version) : ""} · senast ${fmtAgo(d.last_seen)}${d.last_ip ? " · " + esc(d.last_ip) : ""}</div></div>
+    <button class="btn ghost small" data-act="rename">Byt namn</button><button class="btn ghost small danger" data-act="delete">Ta bort</button></li>`).join("") || '<li class="empty">Ingen box parad ännu.</li>';
+};
+$("pair-btn").addEventListener("click", (e) => guarded(async () => {
+  const r = await api("devices/pair-code", { method: "POST" });
+  $("pair-box").classList.remove("hidden"); $("pair-code").textContent = r.code.replace(/(\d{3})(\d{3})/, "$1 $2");
+  clearInterval(pairTimer);
+  pairTimer = setInterval(() => { if (new Date(r.expires) < new Date()) { $("pair-code").textContent = "Utgången"; clearInterval(pairTimer); } loaders.devices(); }, 4000);
+}, e.currentTarget));
+$("device-list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const id = b.closest("li").dataset.id;
+  if (b.dataset.act === "rename") { const n = prompt("Namn på boxen"); if (n) guarded(async () => { await api(`devices/${id}`, { method: "PUT", body: { name: n } }); loaders.devices(); }); }
+  if (b.dataset.act === "delete" && confirm("Ta bort boxen? Den måste paras om för att fungera igen.")) guarded(async () => { await api(`devices/${id}`, { method: "DELETE" }); loaders.devices(); });
+});
+$("ha-token-btn").addEventListener("click", (e) => guarded(async () => {
+  const r = await api("devices/token", { method: "POST", body: { name: "Home Assistant" } });
+  $("ha-token").classList.remove("hidden"); $("ha-token").textContent = r.token;
+  loaders.devices();
+}, e.currentTarget));
+
+/* ---------- diagnostik ---------- */
+let capType = "vod";
+loaders.diagnostics = async () => {
+  const [d, syncs] = await Promise.all([api("diagnostics").catch((e) => (toast(e.message), null)), api("catalog/syncs").catch(() => null)]);
+  if (d) {
+    sparkline($("net-spark"), d.net.slice().reverse().map((r) => ({ v: r.ms, ok: !!r.ok })));
+    const fails = d.net.filter((r) => !r.ok).length;
+    $("net-cap").textContent = d.net.length ? `${d.net.length} senaste kontroller, ${fails} utan svar. Röda streck betyder att internet var nere.` : "Inga kontroller ännu.";
+    $("events").innerHTML = d.events.map((ev) => `<tr><td class="small">${fmtTime(ev.ts)}</td><td class="small">${esc(ev.device || "–")}</td><td>${esc(EVENT_LABEL[ev.kind] || ev.kind)}</td><td class="small muted">${esc(describeEvent(ev))}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">Inga händelser.</td></tr>';
+  }
+  if (syncs) {
+    $("sync-list").innerHTML = syncs.runs.slice(0, 8).map((r) => {
+      const bad = (r.detail && r.detail.steps || []).filter((s) => !s.ok || s.kept_old);
+      return `<li><div class="grow"><div>${fmtTime(r.started)} <span class="pill ${r.status === "ok" ? "ok" : r.status === "running" ? "" : "warn"}">${{ ok: "OK", partial: "delvis", failed: "misslyckades", running: "pågår" }[r.status] || r.status}</span></div>
+        ${bad.map((s) => `<div class="small muted">${esc(s.type)}/${esc(s.part)}: ${esc(s.error || s.error_kind)}</div>`).join("")}</div></li>`;
+    }).join("") || '<li class="empty">Ingen uppdatering ännu.</li>';
+  }
+};
+const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden hackade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar" };
+function describeEvent(ev) {
+  const d = ev.detail || {};
+  switch (ev.kind) {
+    case "play": return `${d.name || d.id} via ${d.portal || "?"}`;
+    case "stop": return d.reason || "";
+    case "stall": return [d.ms && `${(d.ms / 1000).toFixed(1)} s`, d.bandwidth_bps && `${(d.bandwidth_bps / 1e6).toFixed(1)} Mbit/s`, d.buffered_ms != null && `buffert ${d.buffered_ms} ms`].filter(Boolean).join(", ");
+    case "speedtest": return `${d.mbps} Mbit/s i hemnätet`;
+    case "failover": return `${d.from_portal || ""} → ${d.to || ""} (${d.reason || ""})`;
+    case "server_test": return d.ok ? `${d.mbps} Mbit/s` : (d.error || "");
+    case "sync": return d.status + (d.failed_steps && d.failed_steps.length ? ": " + d.failed_steps.join(", ") : "");
+    case "takeover_requested": return `${d.by} tar över från ${d.from}`;
+    case "error": return d.message || d.code || "";
+    case "paired": return d.model || "";
+    default: return Object.entries(d).slice(0, 4).map(([k, v]) => `${k}: ${v}`).join(", ");
+  }
+}
+$("cap-type").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return; capType = b.dataset.type;
+  $("cap-type").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+});
+$("cap-run").addEventListener("click", (e) => guarded(async () => {
+  $("cap-result").innerHTML = '<div class="muted">Mäter i 8 sekunder…</div>';
+  const r = await api("diagnostics/capacity-test", { method: "POST", body: { type: capType } });
+  $("cap-result").innerHTML = r.ok
+    ? `<div class="stats"><div class="stat"><div class="k">Hastighet</div><div class="v">${r.mbps} Mbit/s</div></div><div class="stat"><div class="k">Första byte</div><div class="v">${r.ttfb_ms} ms</div></div><div class="stat"><div class="k">Längsta paus</div><div class="v">${r.max_gap_ms} ms</div></div></div><p>${esc(r.verdict)}</p><p class="small muted">${esc(r.item)} via ${esc(r.portal)}</p>`
+    : `<p style="color:var(--bad)">${esc(r.verdict || r.error)}</p>`;
+}, e.currentTarget));
+
+/* ---------- start ---------- */
+let startTab = "overview";
+try { startTab = localStorage.getItem("tvhub-tab") || "overview"; } catch (_) {}
+showTab(document.getElementById("tab-" + startTab) ? startTab : "overview");
+setInterval(() => { if (!document.hidden && (current === "overview" || current === "devices")) loaders[current](); }, 15000);
+</script>
+</body>
+</html>

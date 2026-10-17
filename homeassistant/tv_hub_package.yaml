@@ -1,0 +1,87 @@
+# TV Hub: sensorer och larm i Home Assistant.
+#
+# 1. Skapa en nyckel i TV Hub > Boxar > "Home Assistant-sensorer".
+# 2. Lägg i secrets.yaml:   tv_hub_auth: "Bearer DIN_NYCKEL"
+# 3. Spara den här filen som /config/packages/tv_hub.yaml och se till att
+#    configuration.yaml har:
+#      homeassistant:
+#        packages: !include_dir_named packages
+# 4. Starta om Home Assistant.
+#
+# Home Assistant OS kör kärnan i värdens nätverk, så add-on:ens port nås på 127.0.0.1.
+
+rest:
+  - resource: http://127.0.0.1:8099/device/summary
+    headers:
+      Authorization: !secret tv_hub_auth
+    scan_interval: 60
+    timeout: 20
+    sensor:
+      - name: TV Hub status
+        unique_id: tv_hub_status
+        icon: mdi:television-classic
+        value_template: >-
+          {{ {'ok': 'OK', 'warn': 'Varning', 'bad': 'Fel'}.get(value_json.level, value_json.level) }}
+        json_attributes:
+          - headline
+          - detail
+          - active_portal
+          - portals_ok
+          - portals_total
+          - playing
+          - active_cons
+          - max_connections
+      - name: TV Hub läge
+        unique_id: tv_hub_headline
+        icon: mdi:stethoscope
+        value_template: "{{ value_json.headline[:250] }}"
+      - name: TV Hub svarstid källa
+        unique_id: tv_hub_api_ms
+        icon: mdi:timer-outline
+        unit_of_measurement: ms
+        state_class: measurement
+        value_template: "{{ value_json.api_ms if value_json.api_ms is not none else 'unavailable' }}"
+      - name: TV Hub tittar
+        unique_id: tv_hub_playing
+        icon: mdi:play-box-outline
+        value_template: >-
+          {% set p = value_json.playing %}
+          {{ p | map(attribute='device') | join(', ') if p else 'Ingen' }}
+      - name: TV Hub abonnemang går ut
+        unique_id: tv_hub_expires
+        device_class: timestamp
+        value_template: >-
+          {{ value_json.expires | int | as_datetime if value_json.expires else 'unavailable' }}
+    binary_sensor:
+      - name: TV Hub problem
+        unique_id: tv_hub_problem
+        device_class: problem
+        value_template: "{{ value_json.level != 'ok' }}"
+
+automation:
+  - id: tv_hub_problem_notify
+    alias: TV Hub meddelar problem
+    description: Notis när TV Hub har haft ett problem i fem minuter.
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.tv_hub_problem
+        to: "on"
+        for: "00:05:00"
+    actions:
+      # Byt notify.notify mot din telefon, t.ex. notify.mobile_app_henriks_telefon
+      - action: notify.notify
+        data:
+          title: "TV Hub: {{ state_attr('sensor.tv_hub_status', 'headline') }}"
+          message: "{{ state_attr('sensor.tv_hub_status', 'detail') }}"
+  - id: tv_hub_expiry_notify
+    alias: TV Hub påminner om abonnemanget
+    triggers:
+      - trigger: template
+        value_template: >-
+          {{ states('sensor.tv_hub_abonnemang_gar_ut') not in ['unknown', 'unavailable']
+             and (as_datetime(states('sensor.tv_hub_abonnemang_gar_ut')) - now()).days < 5 }}
+    actions:
+      - action: notify.notify
+        data:
+          title: TV Hub
+          message: "Toucan-abonnemanget går ut {{ as_datetime(states('sensor.tv_hub_abonnemang_gar_ut')).strftime('%Y-%m-%d') }}."

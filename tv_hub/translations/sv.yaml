@@ -1,0 +1,25 @@
+configuration:
+  check_interval:
+    name: Kontrollintervall (sekunder)
+    description: Hur ofta inloggningen mot varje portal kontrolleras. Startar aldrig en ström.
+  sync_interval_hours:
+    name: Uppdatera listor (timmar)
+    description: Hur ofta kanal-, film- och serielistorna hämtas från källan.
+  output_format:
+    name: Strömformat för live
+    description: auto väljer det format källan erbjuder (helst ts).
+  user_agent:
+    name: User-Agent
+    description: Hur TV Hub presenterar sig mot källan. Ändra bara om källan nekar anropen.
+  reference_hosts:
+    name: Referensservrar för internet
+    description: Används för att skilja internetavbrott från fel hos källan. Format värd:port, kommaseparerat.
+  timeout:
+    name: Timeout för kontroller (sekunder)
+  sync_timeout:
+    name: Timeout för listuppdatering (sekunder)
+    description: Stora filmlistor kan ta tid. Höj om filmlistan ofta misslyckas med "svarade inte i tid".
+  retention_days:
+    name: Spara historik (dagar)
+network:
+  8099/tcp: Port för TV-boxarna

@@ -1,0 +1,21 @@
+configuration:
+  check_interval:
+    name: Check interval (seconds)
+    description: How often login to each portal is checked. Never starts a stream.
+  sync_interval_hours:
+    name: Refresh lists (hours)
+  output_format:
+    name: Live stream format
+  user_agent:
+    name: User-Agent
+  reference_hosts:
+    name: Internet reference hosts
+    description: Used to tell internet outages apart from provider faults. host:port, comma separated.
+  timeout:
+    name: Check timeout (seconds)
+  sync_timeout:
+    name: List refresh timeout (seconds)
+  retention_days:
+    name: Keep history (days)
+network:
+  8099/tcp: Port for TV boxes

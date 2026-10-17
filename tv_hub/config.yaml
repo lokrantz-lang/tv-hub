@@ -1,0 +1,38 @@
+name: TV Hub
+version: "1.0.0"
+slug: tv_hub
+description: Egen IPTV-tjänst för Formuler-boxar med portalbyte, favoriter, grupper och felsökning
+url: https://github.com/OWNER/tv-hub
+arch:
+  - amd64
+  - aarch64
+  - armv7
+init: false
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8080
+panel_icon: mdi:television-classic
+panel_title: TV Hub
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: TV-boxarna ansluter hit (kräver parning)
+options:
+  check_interval: 120
+  sync_interval_hours: 12
+  output_format: auto
+  user_agent: IPTVSmartersPlayer
+  reference_hosts: "1.1.1.1:443,8.8.8.8:443"
+  timeout: 15
+  sync_timeout: 90
+  retention_days: 30
+schema:
+  check_interval: int(30,3600)
+  sync_interval_hours: int(1,168)
+  output_format: list(auto|ts|m3u8)
+  user_agent: str
+  reference_hosts: str
+  timeout: int(3,60)
+  sync_timeout: int(10,600)
+  retention_days: int(1,365)

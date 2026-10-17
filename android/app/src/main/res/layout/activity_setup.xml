@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="640dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:padding="32dp">
+
+        <TextView
+            style="@style/PaneTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="0dp"
+            android:text="Anslut till TV Hub"
+            android:textSize="30sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:text="Öppna TV Hub i Home Assistant, gå till Boxar och välj Para ny box. Skriv in adressen och koden som visas där."
+            android:textColor="@color/muted"
+            android:textSize="18sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Serveradress"
+            android:textColor="@color/muted"
+            android:textSize="15sp" />
+
+        <EditText
+            android:id="@+id/server"
+            style="@style/TvInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="18dp"
+            android:hint="http://192.168.1.10:8099"
+            android:imeOptions="actionNext"
+            android:inputType="textUri" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Kod (6 siffror)"
+            android:textColor="@color/muted"
+            android:textSize="15sp" />
+
+        <EditText
+            android:id="@+id/code"
+            style="@style/TvInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:imeOptions="actionDone"
+            android:inputType="number"
+            android:maxLength="7" />
+
+        <Button
+            android:id="@+id/pair"
+            style="@style/TvButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Anslut" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:textColor="@color/bad"
+            android:textSize="17sp" />
+    </LinearLayout>
+</ScrollView>
