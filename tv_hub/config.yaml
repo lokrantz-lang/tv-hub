@@ -2,7 +2,7 @@ name: TV Hub
 version: "1.0.0"
 slug: tv_hub
 description: Egen IPTV-tjänst för Formuler-boxar med portalbyte, favoriter, grupper och felsökning
-url: https://github.com/OWNER/tv-hub
+url: https://github.com/lokrantz-lang/tv-hub
 arch:
   - amd64
   - aarch64
