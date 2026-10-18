@@ -2,9 +2,17 @@ package se.tvhub.box
 
 import android.content.Context
 
-/** Sparade inställningar: serveradress och boxens nyckel. */
+/** Sparade inställningar: serveradress, boxens nyckel, dolt läge och val av ljud/undertexter. */
 class Prefs(context: Context) {
     private val sp = context.applicationContext.getSharedPreferences("tvhub", Context.MODE_PRIVATE)
+
+    companion object {
+        /** Vuxenläget stängs av efter så här lång tid utan knapptryck. */
+        const val ADULT_IDLE_MS = 15 * 60 * 1000L
+
+        /** … och senast så här länge efter att det slogs på. */
+        const val ADULT_MAX_MS = 3 * 60 * 60 * 1000L
+    }
 
     var server: String
         get() = sp.getString("server", "") ?: ""
@@ -24,10 +32,93 @@ class Prefs(context: Context) {
             sp.edit().putString("device_name", value).apply()
         }
 
+    /**
+     * Dolt läge: visar bara vuxeninnehåll. Växlas med tre tryck vänster på Inställningar.
+     * Stängs av automatiskt efter 15 minuter utan aktivitet, efter högst 3 timmar
+     * och när appen startas om (se MainActivity).
+     */
+    var adultMode: Boolean
+        get() {
+            if (!sp.getBoolean("adult_mode", false)) return false
+            val now = System.currentTimeMillis()
+            val idle = now - sp.getLong("adult_last_active", 0L)
+            val age = now - sp.getLong("adult_since", 0L)
+            if (idle > ADULT_IDLE_MS || age > ADULT_MAX_MS) {
+                sp.edit().putBoolean("adult_mode", false).apply()
+                return false
+            }
+            return true
+        }
+        set(value) {
+            val now = System.currentTimeMillis()
+            sp.edit()
+                .putBoolean("adult_mode", value)
+                .putLong("adult_since", now)
+                .putLong("adult_last_active", now)
+                .apply()
+        }
+
+    /** Anropas vid knapptryck och under uppspelning så att vuxenläget inte stängs av mitt i. */
+    fun touch() {
+        if (sp.getBoolean("adult_mode", false)) {
+            sp.edit().putLong("adult_last_active", System.currentTimeMillis()).apply()
+        }
+    }
+
+    var audioLanguage: String
+        get() = sp.getString("audio_lang", "") ?: ""
+        set(value) {
+            sp.edit().putString("audio_lang", value).apply()
+        }
+
+    /** "" = automatiskt, "off" = av, annars språkkod. */
+    var subtitleLanguage: String
+        get() = sp.getString("sub_lang", "") ?: ""
+        set(value) {
+            sp.edit().putString("sub_lang", value).apply()
+        }
+
+    /** Var inspelningar sparas: sökvägen till en lagringsenhet. Tom = första USB-minnet. */
+    var recordDir: String
+        get() = sp.getString("record_dir", "") ?: ""
+        set(value) {
+            sp.edit().putString("record_dir", value).apply()
+        }
+
+    /** Inspelningar som har ett alarm hos Android, så att borttagna kan avregistreras. */
+    var scheduledRecordings: Set<Int>
+        get() = (sp.getStringSet("rec_alarms", emptySet()) ?: emptySet()).mapNotNull { it.toIntOrNull() }.toSet()
+        set(value) {
+            sp.edit().putStringSet("rec_alarms", value.map { it.toString() }.toSet()).apply()
+        }
+
+    /** Var man slutade titta på en inspelning. */
+    fun recordingPosition(path: String): Long = sp.getLong("pos:$path", 0L)
+
+    fun setRecordingPosition(path: String, positionMs: Long) {
+        sp.edit().putLong("pos:$path", positionMs).apply()
+    }
+
     val paired: Boolean
         get() = server.isNotEmpty() && token.isNotEmpty()
 
     fun clearPairing() {
         sp.edit().remove("token").apply()
     }
+}
+
+/** Tillstånd som bara gäller medan appen körs. */
+object Session {
+    /** Sätts första gången MainActivity startar i en ny process (då slås vuxenläget av). */
+    var started = false
+
+    /** Föregående kanal för knappen "tillbaka till förra kanalen". */
+    var previousChannel: Pair<String, String>? = null
+    var currentChannel: Pair<String, String>? = null
+
+    /** Uppdateringskontroll görs en gång per start. */
+    var updateChecked = false
+
+    /** Inspelningsschemat hämtas när appen startar. */
+    var recordingsSynced = false
 }

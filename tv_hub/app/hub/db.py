@@ -141,6 +141,117 @@ SCHEMA = [
         value TEXT
     );
     """,
+    # version 2: markering av vuxeninnehåll
+    """
+    ALTER TABLE categories ADD COLUMN adult INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE items ADD COLUMN adult INTEGER NOT NULL DEFAULT 0;
+    CREATE INDEX idx_items_adult ON items(type, adult);
+    """,
+    # version 3: metadata, dolda kategorier, profiler, fortsätt titta, sparade filter, bevakningar
+    """
+    ALTER TABLE items ADD COLUMN year INTEGER;
+    ALTER TABLE items ADD COLUMN rating_num REAL;
+    ALTER TABLE items ADD COLUMN archive_days INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE item_info (
+        type TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        state INTEGER NOT NULL DEFAULT 0,
+        fetched TEXT,
+        duration_min INTEGER,
+        genre TEXT,
+        plot TEXT,
+        actors TEXT,
+        director TEXT,
+        release TEXT,
+        poster TEXT,
+        backdrop TEXT,
+        trailer TEXT,
+        country TEXT,
+        year INTEGER,
+        rating REAL,
+        PRIMARY KEY (type, item_id)
+    );
+    CREATE TABLE category_prefs (
+        type TEXT NOT NULL,
+        category_id TEXT NOT NULL,
+        hidden INTEGER NOT NULL DEFAULT 0,
+        position INTEGER,
+        PRIMARY KEY (type, category_id)
+    );
+    CREATE TABLE saved_filters (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        adult INTEGER NOT NULL DEFAULT 0,
+        params TEXT NOT NULL,
+        created TEXT NOT NULL
+    );
+    CREATE TABLE progress (
+        adult INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        series_id TEXT,
+        name TEXT,
+        icon TEXT,
+        ext TEXT,
+        position_ms INTEGER NOT NULL DEFAULT 0,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        updated TEXT NOT NULL,
+        PRIMARY KEY (adult, type, item_id)
+    );
+    CREATE TABLE watched (
+        adult INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        series_id TEXT,
+        at TEXT NOT NULL,
+        PRIMARY KEY (adult, type, item_id)
+    );
+    CREATE TABLE watches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query TEXT NOT NULL,
+        type TEXT,
+        created TEXT NOT NULL,
+        seen TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE TABLE watch_hits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        watch_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        name TEXT,
+        at TEXT NOT NULL
+    );
+    ALTER TABLE devices ADD COLUMN allow_adult INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE devices ADD COLUMN only_group_id INTEGER;
+    ALTER TABLE sessions ADD COLUMN adult INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE sessions ADD COLUMN series_id TEXT;
+    ALTER TABLE sessions ADD COLUMN ext TEXT;
+    ALTER TABLE sessions ADD COLUMN icon TEXT;
+    CREATE INDEX idx_sessions_device ON sessions(device_id, type, started)
+    """,
+    # version 4: inspelningar (filerna ligger på boxens USB-minne)
+    """
+    CREATE TABLE recordings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id INTEGER NOT NULL,
+        stream_id TEXT NOT NULL,
+        channel TEXT,
+        title TEXT,
+        start INTEGER NOT NULL,
+        end INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        adult INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'scheduled',
+        session_id TEXT,
+        size_bytes INTEGER,
+        file TEXT,
+        error TEXT,
+        created TEXT NOT NULL,
+        updated TEXT NOT NULL
+    );
+    CREATE INDEX idx_recordings_device ON recordings(device_id, status)
+    """,
 ]
 
 

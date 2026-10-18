@@ -22,6 +22,7 @@ Egen IPTV-lösning för Formuler Z10 Pro och Z Alpha, med Home Assistant som nav
 - **Felsökning som pekar ut orsaken:** internet, källan, hemnätet, kontot eller en annan app som strömmar. Varje slutsats visar sitt underlag.
 - **Varför listan inte uppdaterades.** Varje steg i listuppdateringen loggas med orsak och tid. En tom eller kraftigt förkortad lista från källan skriver aldrig över den gamla.
 - **Bibliotek med sök, favoriter och egna grupper** i webbadminen, som syns direkt i boxarna.
+- **Inspelning till USB-minnet i boxen och timeshift** (paus och spolning i direktsändningar via Toucans arkiv).
 - **Anslutningsvakt.** Toucan stänger av konton som strömmar på två enheter samtidigt. Den andra boxen frågar först och väntar tills den första har stoppat. Servern startar aldrig egna strömmar i bakgrunden.
 
 ## Installation
@@ -31,14 +32,14 @@ Egen IPTV-lösning för Formuler Z10 Pro och Z Alpha, med Home Assistant som nav
 Home Assistant installerar tillägg från ett Git-förråd, och GitHub bygger appen åt dig.
 
 1. Skapa ett **publikt** förråd, t.ex. `tv-hub`. Det innehåller inga lösenord, och Home Assistant kan inte läsa privata förråd.
-2. Byt `OWNER` mot ditt GitHub-namn i `repository.yaml` och `tv_hub/config.yaml`.
+2. Byt `lokrantz-lang` mot ditt GitHub-namn i `repository.yaml` och `tv_hub/config.yaml`.
 3. Ladda upp innehållet och lägg in hemligheterna från `github-hemligheter.txt` (Settings > Secrets and variables > Actions).
 4. Under **Actions** körs bygget. När det är grönt finns appen på
-   `https://github.com/OWNER/tv-hub/releases/download/apk-latest/tvhub.apk`.
+   `https://github.com/lokrantz-lang/tv-hub/releases/download/apk-latest/tvhub.apk`.
 
 ### 2. Installera tillägget i Home Assistant
 
-1. **Inställningar > Tillägg > Tilläggsbutiken > ⋮ > Förråd**, lägg till `https://github.com/OWNER/tv-hub`.
+1. **Inställningar > Tillägg > Tilläggsbutiken > ⋮ > Förråd**, lägg till `https://github.com/lokrantz-lang/tv-hub`.
 2. Installera **TV Hub**, slå på *Visa i sidomenyn* och starta.
 3. Öppna TV Hub i sidomenyn:
    - **Portaler:** samma URL, användarnamn och lösenord som i MyTVOnline.
@@ -62,12 +63,22 @@ Se `homeassistant/tv_hub_package.yaml`. Ger status, svarstid, vem som tittar, n�
 
 | Var | Knapp | Gör |
 |---|---|---|
-| Listor | OK | Öppna eller spela |
-| Listor | Håll in OK | Favorit på/av |
-| Listor | Tillbaka | Ett steg åt vänster, sedan avsluta |
-| Live | Upp/ner, CH+/CH− | Byt kanal inom listan du kom från |
-| Live | OK | Visa kanalnamn och programguide |
-| Film/serie | OK, vänster/höger | Spelarkontroller |
+| Menyn | OK | Öppna i helskärm |
+| Listor | OK | Spela kanal, öppna film eller serie |
+| Listor | Höger | Helskärm |
+| Listor | Håll in OK | Fler val: favorit, programguide, detaljer |
+| Helskärm | Upp till översta raden | Sortera och Filter |
+| Helskärm | Tillbaka, eller vänster från första kolumnen | Tillbaka till tre kolumner |
+| Menyraden Inställningar | Vänster tre gånger | Dolt vuxenläge på/av |
+| Sparat filter i menyn | Håll in OK | Ta bort |
+| Live | Upp/ner, CH+/CH− | Byt kanal |
+| Live | Vänster eller 0 | Förra kanalen |
+| Live | Play/paus | Pausa (timeshift) |
+| Live | ◀◀ ▶▶, eller vänster/höger när du är pausad | Spola en minut |
+| Live | ■ | Tillbaka till direkt |
+| Programguide | OK på kommande program | Spela in |
+| Live | OK, OK igen | Info, sedan ljud, undertexter, programguide, spola och spela in |
+| Film/serie | Menyknappen | Ljud och undertexter |
 | Fel | OK | Försök igen |
 
 ## Säkerhet
@@ -79,15 +90,15 @@ Se `homeassistant/tv_hub_package.yaml`. Ger status, svarstid, vem som tittar, n�
 ## Utveckling
 
 ```
-python3 tests/test_e2e.py     # 48 kontroller mot en simulerad Xtream-server
+python3 tests/test_e2e.py     # 137 kontroller mot en simulerad Xtream-server
 python3 tests/demo.py         # demodata: admin på http://127.0.0.1:28080
 ```
 
 Backenden använder bara Pythons standardbibliotek. Appen använder Kotlin, Media3 och RecyclerView, med minSdk 24.
 
-## Kända begränsningar i version 1.0
+## Kända begränsningar
 
 - Har inte provats mot Toucans riktiga server eller på boxarna. Xtream-API:t är standardiserat, men små avvikelser kan finnas.
-- Ingen fullständig programguide (rutnät), bara "Nu" och "Sedan" per kanal.
-- Ingen catch-up/tidsförskjutning ännu, trots att Toucan erbjuder det för vissa kanaler.
-- Kategorier med fler än 2 000 objekt visar de första 2 000. Sök hittar alla.
+- Programguiden visas per kanal, inte som ett rutnät för alla kanaler samtidigt.
+- Catch-up använder Xtreams standardadress (/timeshift/). Om Toucan använder en annan variant behöver den justeras. Det påverkar också timeshift-spolning och inspelning av redan sända program.
+- Inspelning till USB och väckning ur standby har inte provats på Formuler-boxarna.

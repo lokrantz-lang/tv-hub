@@ -3,7 +3,7 @@
 import signal
 import threading
 
-from hub import VERSION, catalog, db, devices, diagnostics, portals
+from hub import VERSION, catalog, db, devices, diagnostics, extras, info, portals, recordings
 from hub.config import CFG
 from hub.server import start_servers
 
@@ -13,6 +13,7 @@ def housekeeping(stop_event):
         try:
             devices.cleanup()
             diagnostics.cleanup()
+            recordings.expire()
         except Exception as exc:
             print(f"[fel] städning: {exc}", flush=True)
         stop_event.wait(600)
@@ -20,8 +21,11 @@ def housekeeping(stop_event):
 
 def main():
     db.connect()
+    catalog.mark_adult()
+    catalog.backfill_years()
+    _ = extras  # registrerar bevakningskontrollen efter synk
     stop_event = threading.Event()
-    for target in (portals.monitor_loop, catalog.sync_loop, housekeeping):
+    for target in (portals.monitor_loop, catalog.sync_loop, info.fetch_loop, housekeeping):
         threading.Thread(target=target, args=(stop_event,), daemon=True, name=target.__name__).start()
     admin, device = start_servers()
     print(

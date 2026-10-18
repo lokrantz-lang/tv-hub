@@ -1,5 +1,5 @@
 name: TV Hub
-version: "1.0.0"
+version: "1.3.0"
 slug: tv_hub
 description: Egen IPTV-tjänst för Formuler-boxar med portalbyte, favoriter, grupper och felsökning
 url: https://github.com/lokrantz-lang/tv-hub
@@ -11,6 +11,7 @@ init: false
 startup: application
 boot: auto
 ingress: true
+homeassistant_api: true
 ingress_port: 8080
 panel_icon: mdi:television-classic
 panel_title: TV Hub
@@ -27,6 +28,7 @@ options:
   timeout: 15
   sync_timeout: 90
   retention_days: 30
+  app_repo: lokrantz-lang/tv-hub
 schema:
   check_interval: int(30,3600)
   sync_interval_hours: int(1,168)
@@ -36,3 +38,4 @@ schema:
   timeout: int(3,60)
   sync_timeout: int(10,600)
   retention_days: int(1,365)
+  app_repo: str

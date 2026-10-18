@@ -108,6 +108,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .hidden { display: none !important; }
 .tabpanel[hidden] { display: none; }
 @media (max-width: 640px) {
+  #rec-form { grid-template-columns: 1fr !important; }
   .hide-sm { display: none; }
   main { padding: 12px; }
   .code { font-size: 32px; }
@@ -128,6 +129,9 @@ tbody tr:last-child td { border-bottom: 0; }
       <button role="tab" data-tab="overview" aria-selected="true">Översikt</button>
       <button role="tab" data-tab="library">Bibliotek</button>
       <button role="tab" data-tab="collections">Favoriter och grupper</button>
+      <button role="tab" data-tab="categories">Kategorier</button>
+      <button role="tab" data-tab="watches">Bevakningar</button>
+      <button role="tab" data-tab="recordings">Inspelningar</button>
       <button role="tab" data-tab="portals">Portaler</button>
       <button role="tab" data-tab="devices">Boxar</button>
       <button role="tab" data-tab="diagnostics">Diagnostik</button>
@@ -154,6 +158,9 @@ tbody tr:last-child td { border-bottom: 0; }
           <div class="bd">
             <div class="stats" id="counts"></div>
             <p class="small muted" id="sync-info" style="margin:10px 0 0"></p>
+            <p class="small muted" id="adult-info" style="margin:4px 0 0"></p>
+            <p class="small muted" id="info-status" style="margin:4px 0 0"></p>
+            <p class="small muted" id="app-status" style="margin:4px 0 0"></p>
           </div>
         </div>
         <div class="panel">
@@ -208,6 +215,72 @@ tbody tr:last-child td { border-bottom: 0; }
           <p class="small muted">Lägg till kanaler, filmer och serier från Bibliotek. Grupperna syns som egna rader i boxarna.</p>
           <div id="groups"></div>
         </div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Sparade filter</h2><span class="small muted">Skapas i boxen via Filter → Spara som rad</span></div>
+      <div class="bd"><ul class="list" id="filter-list"></ul></div>
+    </div>
+  </section>
+
+  <!-- KATEGORIER -->
+  <section class="tabpanel" id="tab-categories" hidden>
+    <div class="panel">
+      <div class="hd"><h2>Kategorier i boxarna</h2><span class="small muted" id="cat-summary"></span></div>
+      <div class="bd" style="display:grid; gap:12px">
+        <p class="small muted" style="margin:0">Dölj kategorier du aldrig använder, till exempel kanaler på andra språk. Dolda kategorier syns inte i boxarnas listor eller sök. Favoriter och grupper påverkas inte. Ordningen här är ordningen i boxarna.</p>
+        <div class="row">
+          <div class="seg" id="cat-type">
+            <button data-type="live" aria-pressed="true">Kanaler</button>
+            <button data-type="vod" aria-pressed="false">Filmer</button>
+            <button data-type="series" aria-pressed="false">Serier</button>
+          </div>
+        </div>
+        <div class="form" style="grid-template-columns: 2fr auto auto">
+          <label class="f">Filtrera<input id="cat-q" type="search" placeholder="t.ex. SE, UK, Sport" autocomplete="off"></label>
+          <button class="btn" id="cat-show-all">Visa alla träffar</button>
+          <button class="btn" id="cat-hide-all">Dölj alla träffar</button>
+        </div>
+        <ul class="list" id="cat-list"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- BEVAKNINGAR -->
+  <section class="tabpanel" id="tab-watches" hidden>
+    <div class="panel">
+      <div class="hd"><h2>Bevaka titlar</h2><button class="btn" id="watch-check">Kontrollera nu</button></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Du får en notis i Home Assistant när en ny titel som matchar dyker upp hos Toucan. Det som redan finns räknas inte. Nya träffar syns också som en egen rad i boxarna i två veckor.</p>
+        <form class="form" id="watch-form" style="grid-template-columns: 2fr 1fr auto">
+          <label class="f">Titel eller sökord<input id="watch-q" required maxlength="80" placeholder="t.ex. Dune, Bonusfamiljen"></label>
+          <label class="f">Typ<select id="watch-type"><option value="">Alla</option><option value="vod">Filmer</option><option value="series">Serier</option><option value="live">Kanaler</option></select></label>
+          <button class="btn primary" type="submit">Bevaka</button>
+        </form>
+        <ul class="list" id="watch-list" style="margin-top:12px"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- INSPELNINGAR -->
+  <section class="tabpanel" id="tab-recordings" hidden>
+    <div class="panel">
+      <div class="hd"><h2>Inspelningar</h2><span class="small muted" id="rec-count"></span></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Inspelningarna sparas på USB-minnet i boxen och spelas upp under <em>Inspelningar</em> i boxens meny. Boxen måste vara påslagen (standby räcker) när programmet sänds. Program som redan har sänts hämtas från Toucans arkiv.</p>
+        <ul class="list" id="rec-list"></ul>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="hd"><h2>Planera inspelning</h2></div>
+      <div class="bd">
+        <form class="form" id="rec-form" style="grid-template-columns: 1fr 2fr" onsubmit="return false">
+          <label class="f">Box<select id="rec-device"></select></label>
+          <label class="f">Kanal<input id="rec-q" type="search" placeholder="t.ex. svt1, tv4" autocomplete="off"></label>
+        </form>
+        <ul class="list" id="rec-channels" style="margin-top:8px"></ul>
+        <h3 id="rec-guide-title" style="margin:16px 0 4px; font-size:15px" hidden></h3>
+        <ul class="list" id="rec-guide"></ul>
       </div>
     </div>
   </section>
@@ -354,6 +427,7 @@ $("reload").addEventListener("click", () => loaders[current] && loaders[current]
 
 /* ---------- översikt ---------- */
 let overview = null;
+let groupList = [];
 loaders.overview = async () => {
   try { overview = await api("overview"); } catch (e) { $("verdict").innerHTML = `<span class="lvl bad"></span><div><div class="big">Kunde inte hämta status</div><div>${esc(e.message)}</div></div>`; return; }
   const d = overview.diagnosis; const top = d.findings[0];
@@ -365,6 +439,14 @@ loaders.overview = async () => {
   const c = overview.catalog;
   $("counts").innerHTML = [["Kanaler", c.live.items], ["Filmer", c.vod.items], ["Serier", c.series.items]].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v.toLocaleString("sv-SE")}</div></div>`).join("");
   const ls = overview.last_sync;
+  $("adult-info").textContent = c.adult_items ? `Varav ${c.adult_items.toLocaleString("sv-SE")} markerade som vuxeninnehåll. De visas bara i boxarnas dolda läge.` : "";
+  const inf = overview.info;
+  $("info-status").textContent = inf && inf.total ? (inf.remaining
+    ? `Filminformation (längd, genre): ${inf.done.toLocaleString("sv-SE")} av ${inf.total.toLocaleString("sv-SE")} hämtade, ${inf.hours_left >= 1 ? `cirka ${Math.round(inf.hours_left)} h kvar` : "under en timme kvar"}.`
+    : `Filminformation hämtad för alla filmer.`) : "";
+  const app = overview.app;
+  $("app-status").textContent = app && app.latest ? `Senaste TV-app: ${app.latest.version_name}. Boxarna uppdaterar sig själva.` : (app && app.error ? `TV-appens version kunde inte kontrolleras: ${app.error}` : "");
+  groupList = overview.groups || [];
   $("sync-info").textContent = overview.sync.running ? `Uppdaterar ${overview.sync.step || ""}…` : ls ? `Senast ${fmtAgo(ls.finished || ls.started)} (${{ ok: "lyckades", partial: "delvis", failed: "misslyckades", running: "pågår" }[ls.status] || ls.status})` : "Listorna har inte hämtats ännu.";
   $("sync-btn").disabled = overview.sync.running;
   const p = overview.portals.find((x) => x.active) || overview.portals.find((x) => x.last_check && x.last_check.api_ok);
@@ -400,7 +482,7 @@ loaders.library = async () => {
 };
 async function loadCategories() {
   const cats = await api(`library/categories?type=${libType}`).catch(() => []);
-  $("lib-cat").innerHTML = `<option value="">Välj kategori…</option>` + cats.map((c) => `<option value="${esc(c.category_id)}">${esc(c.name)} (${c.count})</option>`).join("");
+  $("lib-cat").innerHTML = `<option value="">Välj kategori…</option>` + cats.map((c) => `<option value="${esc(c.category_id)}">${c.adult ? "🔞 " : ""}${esc(c.name)} (${c.count})</option>`).join("");
 }
 $("lib-type").addEventListener("click", async (e) => {
   const b = e.target.closest("button"); if (!b) return;
@@ -424,7 +506,7 @@ function itemRow(it) {
   const img = it.icon ? `<img class="thumb ${it.type !== "live" ? "poster" : ""}" src="${esc(it.icon)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<span class="thumb ${it.type !== "live" ? "poster" : ""}"></span>`;
   const groupOpts = groupsCache.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join("");
   return `<li data-type="${it.type}" data-id="${esc(it.id)}" data-name="${esc(it.name)}">${img}
-    <div class="grow"><div class="ellipsis">${esc(it.name)}</div><div class="small muted ellipsis">${TYPE_LABEL[it.type]}${it.category_name ? " · " + esc(it.category_name) : ""}${it.rating ? " · ★ " + esc(it.rating) : ""}</div></div>
+    <div class="grow"><div class="ellipsis">${it.adult ? '<span class="pill warn">18+</span> ' : ""}${esc(it.name)}</div><div class="small muted ellipsis">${TYPE_LABEL[it.type]}${it.category_name ? " · " + esc(it.category_name) : ""}${it.year ? " · " + it.year : ""}${it.rating_num ? " · ★ " + it.rating_num : ""}${it.duration_min ? " · " + it.duration_min + " min" : ""}</div></div>
     ${it.type === "series" ? `<button class="btn ghost small" data-act="series">Avsnitt</button>` : ""}
     ${groupsCache.length ? `<select data-act="group" aria-label="Lägg i grupp" style="width:auto; min-height:34px"><option value="">+ Grupp</option>${groupOpts}</select>` : ""}
     <button class="star ${it.favorite ? "on" : ""}" data-act="fav" aria-label="Favorit" aria-pressed="${!!it.favorite}">${it.favorite ? "★" : "☆"}</button></li>`;
@@ -461,6 +543,7 @@ $("series-close").addEventListener("click", () => $("series-panel").classList.ad
 
 /* ---------- favoriter och grupper ---------- */
 loaders.collections = async () => {
+  loadFilters();
   const [favs, groups] = await Promise.all([api("favorites").catch(() => []), api("groups").catch(() => [])]);
   groupsCache = groups;
   $("fav-list").innerHTML = favs.map((f) => `<li data-type="${f.type}" data-id="${esc(f.id)}"><div class="grow"><div class="ellipsis">${f.missing ? '<span class="muted">Finns inte längre i källan</span>' : esc(f.name)}</div><div class="small muted">${TYPE_LABEL[f.type]}</div></div><button class="btn ghost small danger" data-act="unfav">Ta bort</button></li>`).join("") || '<li class="empty">Inga favoriter. Markera med ☆ i Bibliotek.</li>';
@@ -505,6 +588,157 @@ $("groups").addEventListener("click", (e) => {
     [order[i], order[j]] = [order[j], order[i]];
     return guarded(async () => { await api(`groups/${gid}`, { method: "PUT", body: { order } }); loaders.collections(); });
   }
+});
+
+/* ---------- sparade filter ---------- */
+const FILTER_LABEL = { sort: "Sortering", min_rating: "Betyg från", min_year: "Från år", max_year: "Till år", min_duration: "Minst min", max_duration: "Högst min", genre: "Genre", category_id: "Kategori" };
+async function loadFilters() {
+  const list = await api("filters").catch(() => []);
+  $("filter-list").innerHTML = list.map((f) => `<li data-id="${f.id}"><div class="grow"><div>${f.adult ? '<span class="pill warn">18+</span> ' : ""}<strong>${esc(f.name)}</strong> <span class="small muted">${TYPE_LABEL[f.type] || ""}</span></div>
+    <div class="small muted">${Object.entries(f.params).map(([k, v]) => `${esc(FILTER_LABEL[k] || k)}: ${esc(v)}`).join(" · ") || "Inga villkor"}</div></div>
+    <button class="btn ghost small danger" data-act="del">Ta bort</button></li>`).join("") || '<li class="empty">Inga sparade filter.</li>';
+}
+$("filter-list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act=del]"); if (!b) return;
+  guarded(async () => { await api(`filters/${b.closest("li").dataset.id}`, { method: "DELETE" }); loadFilters(); });
+});
+
+/* ---------- kategorier ---------- */
+let catType = "live", catRows = [];
+loaders.categories = async () => {
+  catRows = await api(`categories?type=${catType}`).catch((e) => (toast(e.message), []));
+  renderCategories();
+};
+function catMatches() {
+  const q = $("cat-q").value.trim().toLowerCase();
+  return catRows.filter((c) => !q || c.name.toLowerCase().includes(q));
+}
+function renderCategories() {
+  const rows = catMatches();
+  const hidden = catRows.filter((c) => c.hidden).length;
+  $("cat-summary").textContent = `${catRows.length - hidden} visas, ${hidden} dolda`;
+  $("cat-list").innerHTML = rows.slice(0, 400).map((c) => `<li data-id="${esc(c.category_id)}">
+      <input type="checkbox" data-act="toggle" ${c.hidden ? "" : "checked"} aria-label="Visa i boxarna" style="width:20px; min-height:20px">
+      <div class="grow"><div class="ellipsis" style="${c.hidden ? "opacity:.55" : ""}">${c.adult ? "🔞 " : ""}${esc(c.name)}</div><div class="small muted">${c.count} st${c.hidden ? " · dold" : ""}</div></div>
+      <button class="btn icon ghost" data-act="top" title="Överst" aria-label="Flytta överst">⤒</button>
+      <button class="btn icon ghost" data-act="up" aria-label="Flytta upp">↑</button>
+      <button class="btn icon ghost" data-act="down" aria-label="Flytta ner">↓</button></li>`).join("")
+    + (rows.length > 400 ? `<li class="empty">Visar 400 av ${rows.length}. Filtrera för att se fler.</li>` : "")
+    || '<li class="empty">Inga kategorier. Uppdatera listorna först.</li>';
+}
+async function saveCategoryOrder() {
+  await api("categories/prefs", { method: "POST", body: { type: catType, changes: catRows.map((c, i) => ({ category_id: c.category_id, position: i })) } });
+}
+$("cat-type").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return; catType = b.dataset.type;
+  $("cat-type").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  loaders.categories();
+});
+$("cat-q").addEventListener("input", renderCategories);
+$("cat-list").addEventListener("change", (e) => {
+  const box = e.target.closest("input[data-act=toggle]"); if (!box) return;
+  const id = box.closest("li").dataset.id; const c = catRows.find((x) => x.category_id === id);
+  guarded(async () => { await api("categories/prefs", { method: "POST", body: { type: catType, changes: [{ category_id: id, hidden: !box.checked }] } }); c.hidden = !box.checked; renderCategories(); });
+});
+$("cat-list").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-act]"); if (!b) return;
+  const id = b.closest("li").dataset.id; const i = catRows.findIndex((x) => x.category_id === id);
+  const j = b.dataset.act === "up" ? i - 1 : b.dataset.act === "down" ? i + 1 : 0;
+  if (j < 0 || j >= catRows.length || j === i) return;
+  const [moved] = catRows.splice(i, 1); catRows.splice(j, 0, moved);
+  renderCategories();
+  guarded(saveCategoryOrder);
+});
+for (const [btn, hide] of [["cat-show-all", false], ["cat-hide-all", true]]) {
+  $(btn).addEventListener("click", (e) => guarded(async () => {
+    const rows = catMatches();
+    if (hide && !$("cat-q").value.trim() && !confirm("Dölja ALLA kategorier?")) return;
+    await api("categories/prefs", { method: "POST", body: { type: catType, changes: rows.map((c) => ({ category_id: c.category_id, hidden: hide })) } });
+    rows.forEach((c) => (c.hidden = hide)); renderCategories(); toast(`${rows.length} kategorier ${hide ? "dolda" : "visas"}`);
+  }, e.currentTarget));
+}
+
+/* ---------- bevakningar ---------- */
+loaders.watches = async () => {
+  const list = await api("watches").catch((e) => (toast(e.message), []));
+  $("watch-list").innerHTML = list.map((w) => `<li data-id="${w.id}" style="align-items:flex-start"><div class="grow"><div><strong>${esc(w.query)}</strong> <span class="small muted">${w.type ? TYPE_LABEL[w.type] : "Alla typer"} · sedan ${fmtTime(w.created)}</span></div>
+      ${w.hits.length ? `<div class="small">${w.hits.map((h) => `${esc(h.name)} <span class="muted">(${fmtTime(h.at)})</span>`).join("<br>")}</div>` : '<div class="small muted">Inga nya träffar än.</div>'}</div>
+      <button class="btn ghost small danger" data-act="del">Ta bort</button></li>`).join("") || '<li class="empty">Inga bevakningar.</li>';
+};
+$("watch-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  guarded(async () => {
+    const r = await api("watches", { method: "POST", body: { query: $("watch-q").value.trim(), type: $("watch-type").value || null } });
+    toast(r.existing ? `Bevakar. ${r.existing} befintliga träffar räknas som sedda.` : "Bevakar.");
+    $("watch-q").value = ""; loaders.watches();
+  });
+});
+$("watch-list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act=del]"); if (!b) return;
+  guarded(async () => { await api(`watches/${b.closest("li").dataset.id}`, { method: "DELETE" }); loaders.watches(); });
+});
+$("watch-check").addEventListener("click", (e) => guarded(async () => {
+  const r = await api("watches/check", { method: "POST" });
+  toast(r.new.length ? `Nya: ${r.new.join(", ")}` : "Inga nya träffar."); loaders.watches();
+}, e.currentTarget));
+
+/* ---------- inspelningar ---------- */
+const REC_STATUS = { scheduled: ["Planerad", ""], recording: ["Spelar in", "bad"], done: ["Klar", "ok"], failed: ["Misslyckades", "warn"] };
+const fmtUnix = (t) => new Date(t * 1000).toLocaleString("sv-SE", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const fmtClock = (t) => new Date(t * 1000).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
+const fmtSize = (b) => b >= 1e9 ? `${(b / 1e9).toFixed(1).replace(".", ",")} GB` : b ? `${Math.round(b / 1e6)} MB` : "";
+let recChannel = null;
+loaders.recordings = async () => {
+  const [list, devs] = await Promise.all([api("recordings").catch((e) => (toast(e.message), [])), api("devices").catch(() => [])]);
+  const boxes = devs.filter((d) => d.model !== "integration");
+  const sel = $("rec-device"); const keep = sel.value;
+  sel.innerHTML = boxes.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("") || '<option value="">Ingen parad box</option>';
+  if (keep && boxes.some((d) => String(d.id) === keep)) sel.value = keep;
+  $("rec-count").textContent = list.length ? `${list.length} st` : "";
+  $("rec-list").innerHTML = list.map((r) => {
+    const [label, cls] = REC_STATUS[r.status] || [r.status, ""];
+    const src = r.source === "archive" ? " · från arkivet" : "";
+    return `<li data-id="${r.id}" style="align-items:flex-start"><div class="grow"><div class="ellipsis"><strong>${esc(r.title)}</strong> ${r.adult ? '<span class="pill">18+</span>' : ""}</div>
+      <div class="small muted">${esc(r.channel || "")} · ${fmtUnix(r.start)}–${fmtClock(r.end)}${src} · ${esc(r.device_name || "borttagen box")}</div>
+      <div class="small"><span class="pill ${cls}">${label}</span> ${fmtSize(r.size_bytes)} ${r.error ? `<span style="color:var(--bad)">${esc(r.error)}</span>` : ""}</div></div>
+      <div class="row" style="flex-wrap:nowrap">${r.status === "recording" ? '<button class="btn ghost small" data-act="stop">Stoppa</button>' : ""}
+      <button class="btn ghost small danger" data-act="del">Ta bort</button></div></li>`;
+  }).join("") || '<li class="empty">Inga inspelningar. Planera nedan eller i boxens programguide.</li>';
+};
+$("rec-list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const id = b.closest("li").dataset.id;
+  if (b.dataset.act === "stop") return guarded(async () => { await api(`recordings/${id}/stop`, { method: "POST" }); toast("Inspelningen stoppas. Det som spelats in sparas."); setTimeout(loaders.recordings, 1500); }, b);
+  if (!confirm("Ta bort inspelningen? En färdig fil raderas från USB-minnet nästa gång boxen är igång.")) return;
+  guarded(async () => { await api(`recordings/${id}`, { method: "DELETE" }); loaders.recordings(); }, b);
+});
+let recTimer;
+$("rec-q").addEventListener("input", () => { clearTimeout(recTimer); recTimer = setTimeout(async () => {
+  const q = $("rec-q").value.trim();
+  if (q.length < 2) { $("rec-channels").innerHTML = ""; return; }
+  const items = await api(`library/search?type=live&q=${encodeURIComponent(q)}&limit=20`).catch(() => []);
+  $("rec-channels").innerHTML = items.map((c) => `<li data-id="${esc(c.id)}" data-name="${esc(c.name)}" style="cursor:pointer"><div class="grow ellipsis"><strong>${esc(c.name)}</strong> ${c.adult ? '<span class="pill">18+</span>' : ""} ${c.archive_days ? `<span class="small muted">arkiv ${c.archive_days} dagar</span>` : ""}</div><button class="btn ghost small">Programguide</button></li>`).join("") || '<li class="empty">Ingen kanal hittades.</li>';
+}, 250); });
+$("rec-channels").addEventListener("click", (e) => {
+  const li = e.target.closest("li[data-id]"); if (!li) return;
+  recChannel = { id: li.dataset.id, name: li.dataset.name };
+  guarded(async () => {
+    const g = await api(`guide/${encodeURIComponent(recChannel.id)}`);
+    $("rec-guide-title").hidden = false; $("rec-guide-title").textContent = `${recChannel.name}: programguide`;
+    const now = Date.now() / 1000;
+    const progs = g.programs.filter((p) => p.recordable);
+    $("rec-guide").innerHTML = progs.map((p) => `<li data-start="${p.start}" data-end="${p.end}" data-title="${esc(p.title)}"><div class="grow"><div class="ellipsis">${esc(p.title)}</div><div class="small muted">${fmtUnix(p.start)}–${fmtClock(p.end)}${p.now ? " · pågår" : p.end <= now ? " · har sänts, hämtas från arkivet" : ""}</div></div><button class="btn small" data-act="rec">Spela in</button></li>`).join("") || '<li class="empty">Ingen programguide för kanalen.</li>';
+    const first = $("rec-guide").querySelector("li"); if (first) first.scrollIntoView({ block: "nearest" });
+  });
+});
+$("rec-guide").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act=rec]"); if (!b || !recChannel) return;
+  const li = b.closest("li");
+  guarded(async () => {
+    await api("recordings", { method: "POST", body: { device_id: $("rec-device").value, stream_id: recChannel.id, title: li.dataset.title, start: +li.dataset.start, end: +li.dataset.end } });
+    b.textContent = "Planerad ✓"; toast("Inspelningen är planerad. Boxen hämtar schemat inom 20 minuter.");
+    loaders.recordings();
+  }, b);
 });
 
 /* ---------- portaler ---------- */
@@ -590,9 +824,20 @@ function sparkline(svg, points) {
 let pairTimer;
 loaders.devices = async () => {
   const list = await api("devices").catch((e) => (toast(e.message), []));
-  $("device-list").innerHTML = list.map((d) => `<li data-id="${d.id}"><div class="grow"><div><strong>${esc(d.name)}</strong> ${d.playing ? `<span class="pill ok">tittar: ${esc(d.playing.item_name)}</span>` : ""}</div>
+  if (!groupList.length) groupList = (await api("groups").catch(() => [])).map((g) => ({ id: g.id, name: g.name }));
+  $("device-list").innerHTML = list.map((d) => {
+    const isBox = d.model !== "integration";
+    const value = d.only_group_id ? `g${d.only_group_id}` : (d.allow_adult ? "all" : "noadult");
+    const profile = isBox ? `<label class="f" style="min-width:210px">Profil<select data-act="profile">
+        <option value="all" ${value === "all" ? "selected" : ""}>Allt (dolt vuxenläge möjligt)</option>
+        <option value="noadult" ${value === "noadult" ? "selected" : ""}>Utan vuxenläge</option>
+        ${groupList.map((g) => `<option value="g${g.id}" ${value === `g${g.id}` ? "selected" : ""}>Bara gruppen ${esc(g.name)}</option>`).join("")}
+      </select></label>` : "";
+    return `<li data-id="${d.id}"><div class="grow"><div><strong>${esc(d.name)}</strong> ${d.playing ? `<span class="pill ok">tittar: ${esc(d.playing.item_name)}</span>` : ""}</div>
     <div class="small muted">${esc(d.model || "")}${d.app_version ? " · app " + esc(d.app_version) : ""} · senast ${fmtAgo(d.last_seen)}${d.last_ip ? " · " + esc(d.last_ip) : ""}</div></div>
-    <button class="btn ghost small" data-act="rename">Byt namn</button><button class="btn ghost small danger" data-act="delete">Ta bort</button></li>`).join("") || '<li class="empty">Ingen box parad ännu.</li>';
+    ${profile}
+    <button class="btn ghost small" data-act="rename">Byt namn</button><button class="btn ghost small danger" data-act="delete">Ta bort</button></li>`;
+  }).join("") || '<li class="empty">Ingen box parad ännu.</li>';
 };
 $("pair-btn").addEventListener("click", (e) => guarded(async () => {
   const r = await api("devices/pair-code", { method: "POST" });
@@ -600,6 +845,15 @@ $("pair-btn").addEventListener("click", (e) => guarded(async () => {
   clearInterval(pairTimer);
   pairTimer = setInterval(() => { if (new Date(r.expires) < new Date()) { $("pair-code").textContent = "Utgången"; clearInterval(pairTimer); } loaders.devices(); }, 4000);
 }, e.currentTarget));
+$("device-list").addEventListener("change", (e) => {
+  const sel = e.target.closest("select[data-act=profile]"); if (!sel) return;
+  const id = sel.closest("li").dataset.id;
+  const v = sel.value;
+  const body = v === "all" ? { allow_adult: true, only_group_id: null }
+    : v === "noadult" ? { allow_adult: false, only_group_id: null }
+    : { allow_adult: false, only_group_id: Number(v.slice(1)) };
+  guarded(async () => { await api(`devices/${id}`, { method: "PUT", body }); toast("Profilen sparad. Boxen använder den vid nästa visning."); });
+});
 $("device-list").addEventListener("click", (e) => {
   const b = e.target.closest("[data-act]"); if (!b) return;
   const id = b.closest("li").dataset.id;
@@ -663,7 +917,7 @@ $("cap-run").addEventListener("click", (e) => guarded(async () => {
 let startTab = "overview";
 try { startTab = localStorage.getItem("tvhub-tab") || "overview"; } catch (_) {}
 showTab(document.getElementById("tab-" + startTab) ? startTab : "overview");
-setInterval(() => { if (!document.hidden && (current === "overview" || current === "devices")) loaders[current](); }, 15000);
+setInterval(() => { if (!document.hidden && (current === "overview" || current === "devices" || current === "recordings")) loaders[current](); }, 15000);
 </script>
 </body>
 </html>

@@ -12,7 +12,9 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import VERSION, catalog, db, devices, diagnostics, portals
+from concurrent.futures import ThreadPoolExecutor
+
+from . import VERSION, catalog, db, devices, diagnostics, extras, info, portals, recordings, updates
 from .config import CFG
 from .xtream import XtreamError
 
@@ -34,6 +36,7 @@ def _int_arg(query, name, default, low=0, high=10**6):
 
 
 # ---------- cache för serier och EPG ----------
+_epg_pool = ThreadPoolExecutor(max_workers=8)
 _cache = {}
 _cache_lock = threading.Lock()
 
@@ -252,6 +255,9 @@ def admin_overview(h):
         "sync": catalog.sync_status(),
         "last_sync": (catalog.sync_runs(1) or [None])[0],
         "device_port": CFG["device_port"],
+        "info": info.status(),
+        "app": updates.status(),
+        "groups": [{"id": g["id"], "name": g["name"]} for g in catalog.groups()],
     }
 
 
@@ -449,8 +455,8 @@ def admin_device_token(h):
 
 
 @route(ADMIN, "PUT", r"/api/devices/(\d+)")
-def admin_device_rename(h, did):
-    devices.rename(int(did), h.read_json().get("name"))
+def admin_device_update(h, did):
+    devices.update_device(int(did), h.read_json())
     return 200, {"ok": True}
 
 
@@ -459,6 +465,108 @@ def admin_device_delete(h, did):
     if not devices.remove(int(did)):
         raise HttpError(404, "Enheten finns inte")
     return 200, {"ok": True}
+
+
+# ----- kategorier (dölj och sortera för boxarna) -----
+@route(ADMIN, "GET", r"/api/categories")
+def admin_category_prefs(h):
+    kind = h.query.get("type", ["live"])[0]
+    if kind not in catalog.TYPES:
+        raise HttpError(400, "Okänd typ")
+    return 200, catalog.categories(kind)
+
+
+@route(ADMIN, "POST", r"/api/categories/prefs")
+def admin_category_prefs_set(h):
+    data = h.read_json()
+    changes = data.get("changes")
+    if not isinstance(changes, list) or len(changes) > 5000:
+        raise HttpError(400, "changes måste vara en lista")
+    catalog.set_category_prefs(data.get("type"), changes)
+    return 200, {"ok": True}
+
+
+# ----- sparade filter -----
+@route(ADMIN, "GET", r"/api/filters")
+def admin_filters(h):
+    return 200, extras.saved_filters()
+
+
+@route(ADMIN, "DELETE", r"/api/filters/(\d+)")
+def admin_filter_delete(h, fid):
+    if not extras.delete_filter(int(fid)):
+        raise HttpError(404, "Finns inte")
+    return 200, {"ok": True}
+
+
+# ----- bevakningar -----
+@route(ADMIN, "GET", r"/api/watches")
+def admin_watches(h):
+    return 200, extras.watches()
+
+
+@route(ADMIN, "POST", r"/api/watches")
+def admin_watch_create(h):
+    data = h.read_json()
+    return 201, extras.create_watch(data.get("query"), data.get("type"))
+
+
+@route(ADMIN, "DELETE", r"/api/watches/(\d+)")
+def admin_watch_delete(h, wid):
+    if not extras.delete_watch(int(wid)):
+        raise HttpError(404, "Finns inte")
+    return 200, {"ok": True}
+
+
+@route(ADMIN, "POST", r"/api/watches/check")
+def admin_watch_check(h):
+    hits = extras.check_watches()
+    return 200, {"new": [item["name"] for _, item in hits]}
+
+
+# ----- inspelningar -----
+@route(ADMIN, "GET", r"/api/recordings")
+def admin_recordings(h):
+    return 200, recordings.all_recordings()
+
+
+@route(ADMIN, "POST", r"/api/recordings")
+def admin_recording_create(h):
+    data = h.read_json()
+    try:
+        device_id = int(data.get("device_id"))
+    except (TypeError, ValueError):
+        raise HttpError(400, "Välj en box.")
+    dev = db.q1("SELECT * FROM devices WHERE id = ?", (device_id,))
+    if not dev or dev["model"] == "integration":
+        raise HttpError(400, "Boxen finns inte.")
+    channel = catalog.get_item("live", str(data.get("stream_id") or ""))
+    if channel is None:
+        raise HttpError(404, "Kanalen finns inte.")
+    scope = devices.scope_for(dev, bool(channel.get("adult")))
+    if bool(scope.adult) != bool(channel.get("adult")):
+        raise HttpError(400, "Boxens profil tillåter inte den här kanalen.")
+    rec, created = recordings.create(dev, scope, channel["id"], data.get("title"),
+                                     data.get("start"), data.get("end"))
+    return (201 if created else 200), rec
+
+
+@route(ADMIN, "POST", r"/api/recordings/(\d+)/stop")
+def admin_recording_stop(h, rid):
+    recordings.stop(int(rid))
+    return 200, {"ok": True}
+
+
+@route(ADMIN, "DELETE", r"/api/recordings/(\d+)")
+def admin_recording_delete(h, rid):
+    return 200, {"result": recordings.remove(int(rid))}
+
+
+@route(ADMIN, "GET", r"/api/guide/([\w\-]+)")
+def admin_guide(h, stream_id):
+    if catalog.get_item("live", stream_id) is None:
+        raise HttpError(404, "Kanalen finns inte.")
+    return 200, guide_for(stream_id)
 
 
 # ----- diagnostik -----
@@ -492,6 +600,14 @@ class DeviceHandler(BaseHandler):
             raise HttpError(401, "Boxen är inte parad. Para om den i appen.")
         return dev
 
+    def wants_adult(self):
+        """Läget skickas av appen i varje anrop. Allt annat än "adult" betyder vanligt läge."""
+        return (self.headers.get("X-TVHub-Mode") or "").strip().lower() == "adult"
+
+    def context(self):
+        dev = self.device()
+        return dev, devices.scope_for(dev, self.wants_adult())
+
 
 @route(DEVICE, "GET", r"/device/ping")
 def dev_ping(h):
@@ -511,45 +627,164 @@ def dev_pair(h):
 
 @route(DEVICE, "GET", r"/device/home")
 def dev_home(h):
-    dev = h.device()
+    dev, scope = h.context()
+    if h.query.get("app_version"):
+        db.x("UPDATE devices SET app_version = ? WHERE id = ?", (h.query["app_version"][0][:20], dev["id"]))
+    group_only = scope.group_id is not None
     return 200, {
         "device": {"id": dev["id"], "name": dev["name"]},
-        "favorites": catalog.favorites(),
-        "groups": catalog.groups(with_items=True),
-        "categories": {kind: catalog.categories(kind) for kind in catalog.TYPES},
-        "recent_vod": catalog.recent("vod", 40),
-        "counts": catalog.counts(),
+        "mode": "adult" if scope.adult else "normal",
+        "profile": {"allow_adult": bool(dev["allow_adult"]), "only_group_id": dev["only_group_id"]},
+        "continue": extras.continue_watching(scope),
+        "recent_live": extras.recent_channels(dev["id"], scope),
+        "favorites": catalog.favorites(scope),
+        "groups": catalog.groups(with_items=True, scope=scope),
+        "saved_filters": [] if group_only else extras.saved_filters(scope.adult),
+        "watch_hits": [] if group_only or scope.adult else extras.recent_hits(scope),
+        "categories": {kind: catalog.categories(kind, scope) for kind in catalog.TYPES},
+        "recent_vod": [] if group_only else catalog.recent("vod", 40, scope),
+        "counts": catalog.counts(scope),
+        "recordings": len(recordings.for_device(dev["id"], adult=scope.adult or 0)),
     }
+
+
+BROWSE_KEYS = ("sort", "min_rating", "min_year", "max_year", "min_duration", "max_duration", "genre", "q")
+
+
+@route(DEVICE, "GET", r"/device/browse")
+def dev_browse(h):
+    """Bläddra med sortering och filter. type krävs, category_id valfritt."""
+    dev, scope = h.context()
+    kind = h.query.get("type", ["vod"])[0]
+    if kind not in catalog.TYPES:
+        raise HttpError(400, "Okänd typ")
+    params = {k: h.query[k][0] for k in BROWSE_KEYS if k in h.query}
+    items, total = catalog.browse(kind, scope, h.query.get("category_id", [None])[0], params,
+                                  _int_arg(h.query, "offset", 0), _int_arg(h.query, "limit", 300, 1, 1000))
+    if kind != "live":
+        for item in items:
+            item["watched"] = extras.is_watched(scope.adult or 0, kind, item["id"]) if kind == "vod" else False
+    return 200, {"items": items, "total": total}
 
 
 @route(DEVICE, "GET", r"/device/items")
 def dev_items(h):
-    h.device()
+    dev, scope = h.context()
     kind = h.query.get("type", ["live"])[0]
     cid = h.query.get("category_id", [None])[0]
     if kind not in catalog.TYPES or cid is None:
         raise HttpError(400, "type och category_id krävs")
     return 200, catalog.items_in_category(kind, cid, _int_arg(h.query, "offset", 0),
-                                          _int_arg(h.query, "limit", 500, 1, 2000))
+                                          _int_arg(h.query, "limit", 500, 1, 5000), scope)
+
+
+@route(DEVICE, "GET", r"/device/genres")
+def dev_genres(h):
+    dev, scope = h.context()
+    kind = h.query.get("type", ["vod"])[0]
+    if kind not in catalog.TYPES:
+        raise HttpError(400, "Okänd typ")
+    return 200, catalog.genres(kind, scope)
 
 
 @route(DEVICE, "GET", r"/device/search")
 def dev_search(h):
-    h.device()
+    dev, scope = h.context()
     return 200, catalog.search(h.query.get("q", [""])[0], h.query.get("type", [None])[0],
-                               _int_arg(h.query, "limit", 80, 1, 300))
+                               _int_arg(h.query, "limit", 80, 1, 300), scope=scope)
+
+
+@route(DEVICE, "GET", r"/device/vod/([\w\-]+)")
+def dev_vod(h, vod_id):
+    dev, scope = h.context()
+    if not catalog.in_scope("vod", vod_id, scope):
+        raise HttpError(404, "Finns inte.")
+    item = info.detail("vod", vod_id)
+    if item is None:
+        raise HttpError(404, "Finns inte.")
+    adult = scope.adult or 0
+    item["resume"] = extras.resume_position(adult, "vod", vod_id)
+    item["watched"] = extras.is_watched(adult, "vod", vod_id)
+    return 200, item
 
 
 @route(DEVICE, "GET", r"/device/series/([\w\-]+)")
 def dev_series(h, sid):
-    h.device()
-    return 200, series_detail(sid)
+    dev, scope = h.context()
+    if catalog.get_item("series", sid) is not None and not catalog.in_scope("series", sid, scope):
+        raise HttpError(404, "Finns inte.")
+    detail = dict(series_detail(sid))
+    meta = info.detail("series", sid) or {}
+    for key in ("plot", "genre", "actors", "director", "release", "year", "rating_num", "duration_min", "favorite"):
+        if meta.get(key) and not detail.get(key):
+            detail[key] = meta[key]
+    detail["cover"] = detail.get("cover") or meta.get("poster") or meta.get("icon")
+    progress, watched = extras.series_progress(scope.adult or 0, sid)
+    detail["progress"] = progress
+    detail["watched"] = watched
+    return 200, detail
 
 
 @route(DEVICE, "GET", r"/device/epg/([\w\-]+)")
 def dev_epg(h, stream_id):
     h.device()
     return 200, epg(stream_id)
+
+
+@route(DEVICE, "GET", r"/device/epg-now")
+def dev_epg_now(h):
+    """Nu och nästa för upp till 40 kanaler i ett anrop (för kanallistan)."""
+    h.device()
+    ids = [i for i in (h.query.get("ids", [""])[0]).split(",") if re.match(r"^[\w\-]{1,40}$", i)][:40]
+    now_s = time.time()
+    futures = {i: _epg_pool.submit(epg, i) for i in ids}
+    out = {}
+    for stream_id, future in futures.items():
+        try:
+            listings = future.result(timeout=15)
+        except Exception:
+            listings = []
+        upcoming = [p for p in listings if p.get("end") and p["end"] > now_s]
+        out[stream_id] = {"now": upcoming[0] if upcoming else None,
+                          "next": upcoming[1] if len(upcoming) > 1 else None}
+    return 200, out
+
+
+def guide_for(stream_id):
+    """Programguide för en kanal: bakåt så långt catch-up räcker, och ett och ett halvt dygn framåt."""
+    channel = catalog.get_item("live", stream_id) or {}
+    archive_days = min(int(channel.get("archive_days") or 0), 14)
+    now_s = time.time()
+    since = now_s - max(archive_days, 0.25) * 86400
+    until = now_s + 36 * 3600
+
+    def produce():
+        portal = portals.best_portal()
+        if portal is None:
+            return []
+        try:
+            return portals.client(portal).full_epg(stream_id)
+        except XtreamError:
+            return []
+
+    programs = []
+    for p in cached(("guide", str(stream_id)), 600, produce):
+        if p["end"] < since or p["start"] > until:
+            continue
+        item = dict(p)
+        item["now"] = p["start"] <= now_s < p["end"]
+        item["playable"] = bool(archive_days and p["end"] <= now_s and (p["archive"] or archive_days))
+        item["recordable"] = p["end"] > now_s or item["playable"]
+        programs.append(item)
+    return {"channel": channel.get("name"), "archive_days": archive_days, "programs": programs}
+
+
+@route(DEVICE, "GET", r"/device/guide/([\w\-]+)")
+def dev_guide(h, stream_id):
+    dev, scope = h.context()
+    if not catalog.in_scope("live", stream_id, scope):
+        raise HttpError(404, "Finns inte.")
+    return 200, guide_for(stream_id)
 
 
 @route(DEVICE, "GET", r"/device/neighbours/([\w\-]+)")
@@ -561,24 +796,113 @@ def dev_neighbours(h, item_id):
 
 @route(DEVICE, "POST", r"/device/favorites")
 def dev_favorite(h):
-    h.device()
+    dev, scope = h.context()
     data = h.read_json()
+    if not catalog.in_scope(data.get("type"), data.get("id"), scope):
+        raise HttpError(404, "Finns inte.")
     on = catalog.set_favorite(data.get("type"), data.get("id"), bool(data.get("on", True)))
     return 200, {"favorite": on}
 
 
+@route(DEVICE, "POST", r"/device/filters")
+def dev_filter_create(h):
+    dev, scope = h.context()
+    if scope.group_id is not None:
+        raise HttpError(403, "Inte tillåtet för den här boxen.")
+    data = h.read_json()
+    fid = extras.create_filter(data.get("name"), data.get("type"), data.get("params") or {}, scope.adult)
+    return 201, {"id": fid}
+
+
+@route(DEVICE, "DELETE", r"/device/filters/(\d+)")
+def dev_filter_delete(h, fid):
+    dev, scope = h.context()
+    if not extras.delete_filter(int(fid), scope.adult or 0):
+        raise HttpError(404, "Finns inte.")
+    return 200, {"ok": True}
+
+
 @route(DEVICE, "POST", r"/device/play")
 def dev_play(h):
-    dev = h.device()
+    dev, scope = h.context()
     data = h.read_json()
     result = devices.request_play(
         dev, data.get("type"), data.get("id"), ext=data.get("ext"), force=bool(data.get("force")),
-        exclude_portals=data.get("exclude_portals") or [], name=data.get("name"),
+        exclude_portals=data.get("exclude_portals") or [], name=data.get("name"), scope=scope,
+        series_id=data.get("series_id"), start=data.get("start"), duration=data.get("duration"),
+        icon=data.get("icon"), recording_id=data.get("recording_id"),
     )
     if data.get("failover_from") and result.get("status") == "ok":
         db.log_event("failover", {"from_portal": data.get("failover_from"), "to": result["portal_name"],
                                   "reason": data.get("reason")}, device_id=dev["id"], session_id=result["session_id"])
     return 200, result
+
+
+# ----- inspelningar -----
+@route(DEVICE, "GET", r"/device/recordings")
+def dev_recordings(h):
+    """Utan all=1: det som syns i boxens nuvarande läge. Med all=1: hela schemat för inspelningstjänsten."""
+    dev, scope = h.context()
+    if h.query.get("all", ["0"])[0] == "1":
+        return 200, recordings.for_device(dev["id"])
+    return 200, recordings.for_device(dev["id"], adult=scope.adult or 0)
+
+
+@route(DEVICE, "POST", r"/device/recordings")
+def dev_recording_create(h):
+    dev, scope = h.context()
+    data = h.read_json()
+    rec, created = recordings.create(dev, scope, data.get("stream_id"), data.get("title"),
+                                     data.get("start"), data.get("end"))
+    return (201 if created else 200), rec
+
+
+@route(DEVICE, "POST", r"/device/recordings/(\d+)/status")
+def dev_recording_status(h, rid):
+    dev = h.device()
+    data = h.read_json()
+    return 200, recordings.report(dev, int(rid), data.get("status"), data.get("size_bytes"),
+                                  data.get("file"), data.get("error"))
+
+
+@route(DEVICE, "DELETE", r"/device/recordings/(\d+)")
+def dev_recording_delete(h, rid):
+    dev = h.device()
+    recordings.remove_by_device(dev, int(rid))
+    return 200, {"ok": True}
+
+
+@route(DEVICE, "GET", r"/device/app-update")
+def dev_app_update(h):
+    h.device()
+    current = _int_arg(h.query, "code", 0, 0, 10**9)
+    latest = updates.latest()
+    available = bool(latest and latest["version_code"] > current)
+    return 200, {"available": available, "latest": latest, "current": current}
+
+
+@route(DEVICE, "GET", r"/device/app.apk")
+def dev_app_apk(h):
+    h.device()
+    latest = updates.latest()
+    if not latest:
+        raise HttpError(404, "Ingen version hittades.")
+    try:
+        path = updates.ensure_apk(latest["version_code"])
+    except Exception as exc:
+        raise HttpError(502, f"Kunde inte hämta appen från GitHub: {exc}")
+    size = os.path.getsize(path)
+    h.send_response(200)
+    h.send_header("Content-Type", "application/vnd.android.package-archive")
+    h.send_header("Content-Length", str(size))
+    h.end_headers()
+    with open(path, "rb") as fh:
+        while True:
+            chunk = fh.read(256 * 1024)
+            if not chunk:
+                break
+            h.wfile.write(chunk)
+    return None
 
 
 @route(DEVICE, "POST", r"/device/heartbeat")
@@ -592,7 +916,7 @@ def dev_heartbeat(h):
 def dev_stop(h):
     dev = h.device()
     data = h.read_json()
-    devices.end_session(dev, str(data.get("session_id")), data.get("reason", "stopped"))
+    devices.end_session(dev, str(data.get("session_id")), data.get("reason", "stopped"), data.get("metrics"))
     return 200, {"ok": True}
 
 
