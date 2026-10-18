@@ -153,12 +153,44 @@ class XtreamClient:
             )
         return out
 
+    def vod_info(self, vod_id, timeout=None):
+        data, _ = self.api("get_vod_info", timeout=timeout, vod_id=vod_id)
+        if not isinstance(data, dict):
+            raise XtreamError("bad_response", "get_vod_info: förväntade ett objekt")
+        info = data.get("info")
+        return info if isinstance(info, dict) else {}
+
+    def full_epg(self, stream_id):
+        """Alla program för en kanal som källan har (bakåt och framåt), med catch-up-flagga."""
+        data, _ = self.api("get_simple_data_table", stream_id=stream_id)
+        listings = (data or {}).get("epg_listings") or [] if isinstance(data, dict) else []
+        out = []
+        for item in listings:
+            start, end = _to_int(item.get("start_timestamp")), _to_int(item.get("stop_timestamp"))
+            if not start or not end:
+                continue
+            out.append({
+                "title": _b64(item.get("title")),
+                "description": _b64(item.get("description")),
+                "start": start,
+                "end": end,
+                "archive": str(item.get("has_archive", "0")) == "1",
+            })
+        out.sort(key=lambda p: p["start"])
+        return out
+
     # ---------- uppspelning ----------
     def stream_url(self, kind, item_id, ext):
         user = urllib.parse.quote(self.username, safe="")
         pw = urllib.parse.quote(self.password, safe="")
         folder = {"live": "live", "vod": "movie", "episode": "series"}[kind]
         return f"{self.base}/{folder}/{user}/{pw}/{item_id}.{ext}"
+
+    def timeshift_url(self, stream_id, start_local, minutes, ext="ts"):
+        """Catch-up. start_local = starttid i källans tidszon, format ÅÅÅÅ-MM-DD:TT-MM."""
+        user = urllib.parse.quote(self.username, safe="")
+        pw = urllib.parse.quote(self.password, safe="")
+        return f"{self.base}/timeshift/{user}/{pw}/{int(minutes)}/{start_local}/{stream_id}.{ext}"
 
 
 def _to_int(value):

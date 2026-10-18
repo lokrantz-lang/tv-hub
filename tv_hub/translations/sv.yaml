@@ -21,5 +21,8 @@ configuration:
     description: Stora filmlistor kan ta tid. Höj om filmlistan ofta misslyckas med "svarade inte i tid".
   retention_days:
     name: Spara historik (dagar)
+  app_repo:
+    name: GitHub-förråd för TV-appen
+    description: Varifrån boxarna hämtar nya versioner av appen, t.ex. lokrantz-lang/tv-hub.
 network:
   8099/tcp: Port för TV-boxarna

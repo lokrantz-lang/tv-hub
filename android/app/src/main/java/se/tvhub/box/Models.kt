@@ -9,6 +9,14 @@ fun JSONObject.optStringOrNull(key: String): String? {
     return if (value.isEmpty() || value == "null") null else value
 }
 
+fun JSONObject.optIntOrNull(key: String): Int? = if (isNull(key)) null else optInt(key)
+
+fun JSONObject.optDoubleOrNull(key: String): Double? {
+    if (isNull(key)) return null
+    val value = optDouble(key)
+    return if (value.isNaN()) null else value
+}
+
 /** En kanal, film, serie eller ett avsnitt. */
 data class Item(
     val type: String,
@@ -19,6 +27,12 @@ data class Item(
     var favorite: Boolean,
     val categoryName: String?,
     val num: Int?,
+    val year: Int? = null,
+    val rating: Double? = null,
+    val durationMin: Int? = null,
+    val genre: String? = null,
+    val watched: Boolean = false,
+    val archiveDays: Int = 0,
 ) {
     val typeLabel: String
         get() = when (type) {
@@ -27,6 +41,14 @@ data class Item(
             "series" -> "Serie"
             else -> ""
         }
+
+    /** "2024 · ★ 8,1 · 2 h 46 min" */
+    val facts: String
+        get() = listOfNotNull(
+            year?.toString(),
+            rating?.let { "★ " + Format.rating(it) },
+            durationMin?.let { Format.minutes(it) },
+        ).joinToString(" · ")
 
     companion object {
         fun from(o: JSONObject): Item = Item(
@@ -37,7 +59,13 @@ data class Item(
             ext = o.optStringOrNull("ext"),
             favorite = o.optBoolean("favorite"),
             categoryName = o.optStringOrNull("category_name"),
-            num = if (o.isNull("num")) null else o.optInt("num"),
+            num = o.optIntOrNull("num"),
+            year = o.optIntOrNull("year"),
+            rating = o.optDoubleOrNull("rating_num"),
+            durationMin = o.optIntOrNull("duration_min"),
+            genre = o.optStringOrNull("genre"),
+            watched = o.optBoolean("watched"),
+            archiveDays = o.optInt("archive_days", 0),
         )
 
         fun list(array: JSONArray?): List<Item> {
@@ -47,6 +75,43 @@ data class Item(
                 val o = array.optJSONObject(i) ?: continue
                 if (o.optBoolean("missing")) continue
                 out.add(from(o))
+            }
+            return out
+        }
+    }
+}
+
+/** En post i "Fortsätt titta". */
+data class ContinueItem(
+    val type: String,
+    val id: String,
+    val seriesId: String?,
+    val name: String,
+    val seriesName: String?,
+    val icon: String?,
+    val ext: String?,
+    val positionMs: Long,
+    val durationMs: Long,
+) {
+    companion object {
+        fun list(array: JSONArray?): List<ContinueItem> {
+            if (array == null) return emptyList()
+            val out = ArrayList<ContinueItem>()
+            for (i in 0 until array.length()) {
+                val o = array.optJSONObject(i) ?: continue
+                out.add(
+                    ContinueItem(
+                        type = o.optString("type"),
+                        id = o.optString("id"),
+                        seriesId = o.optStringOrNull("series_id"),
+                        name = o.optStringOrNull("name") ?: "",
+                        seriesName = o.optStringOrNull("series_name"),
+                        icon = o.optStringOrNull("icon"),
+                        ext = o.optStringOrNull("ext"),
+                        positionMs = o.optLong("position_ms"),
+                        durationMs = o.optLong("duration_ms"),
+                    )
+                )
             }
             return out
         }
@@ -63,4 +128,31 @@ data class Row(
     val payload: Any? = null,
     val iconSpace: Boolean = false,
     val star: Boolean = false,
+    val poster: Boolean = false,
 )
+
+/** Formatering av tider och betyg. */
+object Format {
+    fun minutes(total: Int): String {
+        if (total < 60) return "$total min"
+        val h = total / 60
+        val m = total % 60
+        return if (m == 0) "$h h" else "$h h $m min"
+    }
+
+    fun clock(ms: Long): String {
+        val totalSec = ms / 1000
+        val h = totalSec / 3600
+        val m = (totalSec % 3600) / 60
+        val s = totalSec % 60
+        return if (h > 0) String.format("%d:%02d:%02d", h, m, s) else String.format("%d:%02d", m, s)
+    }
+
+    fun rating(value: Double): String = String.format("%.1f", value).replace('.', ',')
+
+    fun remaining(positionMs: Long, durationMs: Long): String {
+        if (durationMs <= 0) return "Påbörjad"
+        val left = ((durationMs - positionMs) / 60000).toInt().coerceAtLeast(1)
+        return "${minutes(left)} kvar"
+    }
+}

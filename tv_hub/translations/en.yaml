@@ -17,5 +17,7 @@ configuration:
     name: List refresh timeout (seconds)
   retention_days:
     name: Keep history (days)
+  app_repo:
+    name: GitHub repository for the TV app
 network:
   8099/tcp: Port for TV boxes

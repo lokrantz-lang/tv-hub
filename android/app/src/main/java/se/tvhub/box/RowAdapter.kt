@@ -1,5 +1,6 @@
 package se.tvhub.box
 
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -7,11 +8,18 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
-/** Lista för fjärrkontroll: fokus följer markeringen, OK klickar, håll in OK = långt tryck. */
+/**
+ * Lista eller rutnät för fjärrkontroll: fokus följer markeringen, OK klickar,
+ * håll in OK = långt tryck. Fokus stannar i listan vid första och sista raden.
+ */
 class RowAdapter(
     private val onClick: (Row, Int) -> Unit,
     private val onFocus: ((Row, Int) -> Unit)? = null,
     private val onLongClick: ((Row, Int) -> Unit)? = null,
+    /** Om upp på första raden ska stanna i listan. */
+    private val stopAtTop: () -> Boolean = { true },
+    /** Får se knapptryck först. Returnera true för att stoppa dem. */
+    private val onKey: ((Row, Int, Int) -> Boolean)? = null,
 ) : RecyclerView.Adapter<RowAdapter.Holder>() {
 
     var rows: List<Row> = emptyList()
@@ -19,6 +27,9 @@ class RowAdapter(
 
     var selectedKey: String? = null
         private set
+
+    /** Antal kolumner när listan visas som rutnät. */
+    var columns = 1
 
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
         val icon: ImageView? = view.findViewById(R.id.icon)
@@ -30,6 +41,13 @@ class RowAdapter(
     fun submit(newRows: List<Row>) {
         rows = newRows
         notifyDataSetChanged()
+    }
+
+    fun append(more: List<Row>) {
+        if (more.isEmpty()) return
+        val start = rows.size
+        rows = rows + more
+        notifyItemRangeInserted(start, more.size)
     }
 
     fun replace(position: Int, row: Row) {
@@ -50,10 +68,18 @@ class RowAdapter(
 
     override fun getItemCount(): Int = rows.size
 
-    override fun getItemViewType(position: Int): Int = if (rows[position].header) 1 else 0
+    override fun getItemViewType(position: Int): Int = when {
+        rows[position].header -> 1
+        rows[position].poster -> 2
+        else -> 0
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-        val layout = if (viewType == 1) R.layout.row_header else R.layout.row_item
+        val layout = when (viewType) {
+            1 -> R.layout.row_header
+            2 -> R.layout.cell_poster
+            else -> R.layout.row_item
+        }
         return Holder(LayoutInflater.from(parent.context).inflate(layout, parent, false))
     }
 
@@ -64,7 +90,7 @@ class RowAdapter(
 
         holder.subtitle?.let { view ->
             if (row.subtitle.isNullOrEmpty()) {
-                view.visibility = View.GONE
+                view.visibility = if (row.poster) View.INVISIBLE else View.GONE
             } else {
                 view.visibility = View.VISIBLE
                 view.text = row.subtitle
@@ -72,7 +98,7 @@ class RowAdapter(
         }
         holder.star?.visibility = if (row.star) View.VISIBLE else View.GONE
         holder.icon?.let { view ->
-            if (row.iconSpace || row.icon != null) {
+            if (row.poster || row.iconSpace || row.icon != null) {
                 view.visibility = View.VISIBLE
                 ImageLoader.load(view, row.icon)
             } else {
@@ -93,6 +119,24 @@ class RowAdapter(
                 true
             } else {
                 false
+            }
+        }
+        holder.itemView.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            val p = holder.bindingAdapterPosition
+            if (p == RecyclerView.NO_POSITION) return@setOnKeyListener false
+            val custom = onKey
+            if (custom != null && custom(rows[p], p, keyCode)) return@setOnKeyListener true
+            val cols = columns.coerceAtLeast(1)
+            val lastRowStart = ((rows.size - 1) / cols) * cols
+            when (keyCode) {
+                // Ner på sista raden (eller upp på första) ska inte hoppa till en annan kolumn.
+                KeyEvent.KEYCODE_DPAD_DOWN -> p >= lastRowStart
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    val firstRow = if (cols > 1) p < cols else p == rows.indexOfFirst { !it.header }
+                    firstRow && stopAtTop()
+                }
+                else -> false
             }
         }
         holder.itemView.setOnFocusChangeListener { _, hasFocus ->

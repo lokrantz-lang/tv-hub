@@ -22,6 +22,7 @@ DEFAULTS = {
     "output_format": "auto",
     "reference_hosts": "1.1.1.1:443,8.8.8.8:443",
     "retention_days": 30,
+    "app_repo": "lokrantz-lang/tv-hub",
 }
 
 ENV_MAP = {
@@ -38,6 +39,7 @@ ENV_MAP = {
     "output_format": "OUTPUT_FORMAT",
     "reference_hosts": "REFERENCE_HOSTS",
     "retention_days": "RETENTION_DAYS",
+    "app_repo": "APP_REPO",
 }
 
 

@@ -46,6 +46,7 @@ object Api {
             conn.setRequestProperty("Accept", "application/json")
             val token = prefs.token
             if (token.isNotEmpty()) conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.setRequestProperty("X-TVHub-Mode", if (prefs.adultMode) "adult" else "normal")
             if (body != null) {
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")

@@ -79,6 +79,9 @@ def check(portal):
     else:
         try:
             info, ms = c.login()
+            timezone = (info.get("server") or {}).get("timezone")
+            if timezone:
+                db.set_setting(f"portal_tz:{portal['id']}", timezone)
             record.update(
                 api_ok=1, api_ms=ms, account_status=info["status"],
                 exp_date=info["exp_date"], max_connections=info["max_connections"],
