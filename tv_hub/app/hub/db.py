@@ -252,6 +252,11 @@ SCHEMA = [
     );
     CREATE INDEX idx_recordings_device ON recordings(device_id, status)
     """,
+    # version 5: eget tilläggsdatum och manuell vuxenmarkering av kategorier
+    """
+    ALTER TABLE items ADD COLUMN first_seen INTEGER;
+    ALTER TABLE category_prefs ADD COLUMN adult_override INTEGER
+    """,
 ]
 
 

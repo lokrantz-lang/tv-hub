@@ -3,7 +3,7 @@
 TV Hub gör Home Assistant till navet för din IPTV:
 
 - **Portaler med automatiskt byte.** Lägg in Toucans adresser. TV Hub kontrollerar inloggningen varannan minut och boxarna använder alltid den som fungerar.
-- **Felsökning.** När bilden hackar eller listorna inte uppdateras säger TV Hub om felet ligger hos källan, din internetleverantör, hemnätet eller kontot, och visar underlaget.
+- **Felsökning.** När bilden stannar upp eller listorna inte uppdateras säger TV Hub om felet ligger hos källan, din internetleverantör, hemnätet eller kontot, och visar underlaget.
 - **Bibliotek med sortering, filter och affischvy, favoriter och egna grupper.** Sök bland alla kanaler, filmer och serier från mobilen eller datorn. Allt syns direkt i boxarna.
 - **Helskärm, sortering och filter** för filmer, serier och kanaler, med sparade filter som egna menyrader.
 - **Fortsätt titta**, sedda avsnitt, senaste kanaler, programguide och catch-up.
@@ -21,7 +21,11 @@ TV Hub gör Home Assistant till navet för din IPTV:
 
 ## Dolt vuxenläge
 
-Vuxenkategorier känns igen automatiskt. I boxen: markera **Inställningar** och tryck **vänster tre gånger**.
+Kategorier med "For Adults", "Porn" eller "XXX" i namnet räknas som vuxeninnehåll. Under **Kategorier** i webbadminen
+kan en kategori markeras som *Alltid 18+* eller *Aldrig 18+*. I boxen: markera **Inställningar** och tryck **vänster tre gånger**.
+
+I vuxenläget döljs favoriter, Fortsätt titta, senaste kanaler och sedda. Tryck **höger tre gånger** på **Inställningar**
+för att visa dem, och igen för att dölja dem. Tittandet sparas alltid, men visas bara när du har valt att visa det.
 Läget stängs av efter 15 minuter utan aktivitet, efter högst 3 timmar och när appen eller boxen startas om.
 En box med profilen *Utan vuxenläge* eller *Bara gruppen …* kan inte byta läge.
 

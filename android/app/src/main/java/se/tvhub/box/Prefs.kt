@@ -55,7 +55,18 @@ class Prefs(context: Context) {
                 .putBoolean("adult_mode", value)
                 .putLong("adult_since", now)
                 .putLong("adult_last_active", now)
+                .putBoolean("adult_history", false)  // vuxenläget startar alltid utan historik
                 .apply()
+        }
+
+    /**
+     * Vuxenläget: visa favoriter, Fortsätt titta och sedda (dolt val: höger tre gånger på Inställningar).
+     * Tittandet sparas alltid; det här styr bara vad som visas.
+     */
+    var adultHistory: Boolean
+        get() = sp.getBoolean("adult_history", false)
+        set(value) {
+            sp.edit().putBoolean("adult_history", value).apply()
         }
 
     /** Anropas vid knapptryck och under uppspelning så att vuxenläget inte stängs av mitt i. */

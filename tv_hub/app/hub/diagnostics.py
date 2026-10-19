@@ -163,7 +163,7 @@ def _events(kind, minutes, device_id=None):
 
 
 def classify_stall(event):
-    """Avgör var ett hack i bilden troligen kommer ifrån."""
+    """Avgör var ett avbrott i bilden troligen kommer ifrån."""
     detail = event["detail"]
     ts = db.parse_iso(event["ts"])
     w0, w1 = db.iso(ts - timedelta(minutes=5)), db.iso(ts + timedelta(minutes=2))
@@ -172,7 +172,7 @@ def classify_stall(event):
     # Internet vid tillfället
     net = db.q("SELECT ok, ts FROM net_checks WHERE ts BETWEEN ? AND ?", (w0, w1))
     if net and not any(r["ok"] for r in net):
-        return "internet", "Internet var nere när det hackade.", evidence
+        return "internet", "Internet var nere när bilden stannade.", evidence
 
     # Källans API vid tillfället
     session = db.q1("SELECT portal_id FROM sessions WHERE id = ?", (event["session_id"],)) if event["session_id"] else None
@@ -183,7 +183,7 @@ def classify_stall(event):
         )
         if checks and any(not c["api_ok"] for c in checks):
             evidence.append("Källans API misslyckades runt samma tid.")
-            return "source", "Källan hade problem samtidigt som det hackade.", evidence
+            return "source", "Källan hade problem samtidigt som bilden stannade.", evidence
         base = [c["api_ms"] for c in db.q(
             "SELECT api_ms FROM checks WHERE portal_id = ? AND api_ok = 1 AND ts >= ?",
             (session["portal_id"], db.ago(hours=24)),
@@ -191,7 +191,7 @@ def classify_stall(event):
         now_ms = [c["api_ms"] for c in checks if c["api_ms"]]
         if base and now_ms and statistics.median(now_ms) > 3 * statistics.median(base) and statistics.median(now_ms) > 1000:
             evidence.append(f"Källans svarstid {round(statistics.median(now_ms))} ms mot normalt {round(statistics.median(base))} ms.")
-            return "source", "Källan var hårt belastad när det hackade.", evidence
+            return "source", "Källan var hårt belastad när bilden stannade.", evidence
 
     # Hemnätet (box till Home Assistant)
     lan = _events("speedtest", 60, event["device_id"])
@@ -215,44 +215,90 @@ def classify_stall(event):
 
     if lan_mbps is None:
         evidence.append("Inget hastighetstest från boxen ännu.")
-    return "unknown", "För lite underlag för en säker slutsats. Mönstret över flera hack ger tydligare svar.", evidence
+    return "unknown", "För lite underlag för en säker slutsats. Fler tillfällen ger ett tydligare svar.", evidence
+
+
+ERROR_TEXTS = {
+    "ERROR_CODE_IO_BAD_HTTP_STATUS": "Källan nekade strömmen (felkod från servern).",
+    "ERROR_CODE_IO_NETWORK_CONNECTION_FAILED": "Boxen fick ingen kontakt med källan.",
+    "ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT": "Källan svarade inte i tid.",
+    "ERROR_CODE_IO_UNSPECIFIED": "Strömmen bröts under uppspelningen.",
+    "ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE": "Källan skickade mindre data än väntat.",
+    "ERROR_CODE_PARSING_CONTAINER_MALFORMED": "Källan skickade en trasig ström.",
+    "ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED": "Boxen kan inte läsa strömmens format.",
+    "ERROR_CODE_PARSING_MANIFEST_MALFORMED": "Källan skickade en trasig spellista.",
+    "ERROR_CODE_DECODER_INIT_FAILED": "Boxen kunde inte starta avkodningen av bilden eller ljudet.",
+    "ERROR_CODE_DECODING_FAILED": "Boxen kunde inte avkoda bilden eller ljudet.",
+    "ERROR_CODE_DECODING_FORMAT_UNSUPPORTED": "Boxen kan inte spela det här formatet.",
+    "ERROR_CODE_BEHIND_LIVE_WINDOW": "Uppspelningen hamnade efter direktsändningen.",
+}
+
+
+def error_text(detail):
+    """Begriplig text för ett uppspelningsfel från appen (Media3:s felkoder är på engelska)."""
+    code = str(detail.get("code") or "")
+    if code in ERROR_TEXTS:
+        return ERROR_TEXTS[code]
+    message = str(detail.get("message") or "")
+    if "source error" in message.lower():
+        return "Källan skickade en ström som inte gick att spela."
+    return "Okänt fel under uppspelningen." if not message else f"Okänt fel ({message[:80]})."
+
+
+def _times(n):
+    return f"{n} {'gång' if n == 1 else 'gånger'}"
 
 
 def playback_findings(minutes=30):
+    """Problem med uppspelning, per box. Upprepade fel av samma slag slås ihop."""
     stalls = _events("stall", minutes)
     errors = _events("error", minutes)
     failovers = _events("failover", minutes)
     names = {d["id"]: d["name"] for d in db.rows(db.q("SELECT id, name FROM devices"))}
+    box = lambda device_id: names.get(device_id) or "en okänd box"
     findings = []
-    if stalls:
-        votes = {}
-        evidence = []
-        for event in stalls[:20]:
+
+    by_device = {}
+    for event in stalls:
+        by_device.setdefault(event["device_id"], []).append(event)
+    titles = {
+        "internet": "din internetuppkoppling",
+        "source": "källan (Toucan)",
+        "lan": "hemnätet till boxen",
+        "path": "källans strömserver eller din internetleverantör",
+    }
+    for device_id, events in by_device.items():
+        votes, evidence = {}, []
+        for event in events[:20]:
             area, text, ev = classify_stall(event)
             votes.setdefault(area, []).append(text)
-            evidence.append(f"{event['ts']} {names.get(event['device_id'], '?')}: {text}")
+            evidence.append(f"{event['ts']}: {text}")
         area = max(votes, key=lambda a: len(votes[a]))
-        titles = {
-            "internet": "Bilden hackar: din internetuppkoppling",
-            "source": "Bilden hackar: källan (Toucan)",
-            "lan": "Bilden hackar: nätverket till boxen",
-            "path": "Bilden hackar: källans strömserver eller din internetleverantör",
-            "unknown": "Bilden har hackat",
-        }
+        cause = f": {titles[area]}" if area in titles else ""
         findings.append(_finding(
             "warn", area if area != "unknown" else "playback",
-            f"{titles[area]} ({len(stalls)} {'gång' if len(stalls) == 1 else 'gånger'} senaste {minutes} min)",
+            f"Bilden stannar upp på {box(device_id)}{cause} ({_times(len(events))} senaste {minutes} min)",
             votes[area][0], evidence[:8],
         ))
-    for event in errors[:3]:
+
+    grouped = {}
+    for event in errors:
+        key = (event["device_id"], error_text(event["detail"]))
+        grouped.setdefault(key, []).append(event)
+    for (device_id, text), events in list(grouped.items())[:5]:
         findings.append(_finding(
-            "warn", "playback", f"Uppspelningsfel på {names.get(event['device_id'], 'en box')}",
-            str(event["detail"].get("message", "")), [event["ts"]],
+            "warn", "playback", f"Uppspelningsfel på {box(device_id)} ({_times(len(events))} senaste {minutes} min)",
+            text, [e["ts"] for e in events[:8]],
         ))
+
     if failovers:
+        boxes = sorted({box(e["device_id"]) for e in failovers})
         findings.append(_finding(
-            "warn", "source", f"Automatiskt portalbyte {len(failovers)} gånger",
-            "Boxarna bytte portal efter fel. Se Händelser.", [f"{e['ts']}: {e['detail']}" for e in failovers[:5]],
+            "warn", "source", f"Automatiskt portalbyte {_times(len(failovers))} ({', '.join(boxes)})",
+            "Strömmen fungerade inte på en portal, så boxen bytte till en annan av sig själv. "
+            "Det pekar på ett tillfälligt fel hos källan.",
+            [f"{e['ts']} {box(e['device_id'])}: från {e['detail'].get('from_portal')} till {e['detail'].get('to')}"
+             for e in failovers[:5]],
         ))
     return findings
 

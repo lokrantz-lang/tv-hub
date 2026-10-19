@@ -348,6 +348,9 @@ def admin_categories(h):
     kind = h.query.get("type", ["live"])[0]
     if kind not in catalog.TYPES:
         raise HttpError(400, "Okänd typ")
+    if "adult" in h.query:
+        # Biblioteket: bara kategorier med innehåll i valt läge (vanligt, 18+ eller allt).
+        return 200, catalog.categories(kind, _admin_scope(h))
     return 200, catalog.categories(kind)
 
 
@@ -698,9 +701,13 @@ class DeviceHandler(BaseHandler):
         """Läget skickas av appen i varje anrop. Allt annat än "adult" betyder vanligt läge."""
         return (self.headers.get("X-TVHub-Mode") or "").strip().lower() == "adult"
 
+    def wants_history(self):
+        """Vuxenläget: "show" visar favoriter och historik, annars döljs de. Sparas gör de alltid."""
+        return (self.headers.get("X-TVHub-History") or "").strip().lower() == "show"
+
     def context(self):
         dev = self.device()
-        return dev, devices.scope_for(dev, self.wants_adult())
+        return dev, devices.scope_for(dev, self.wants_adult(), self.wants_history())
 
 
 @route(DEVICE, "GET", r"/device/ping")
@@ -728,10 +735,11 @@ def dev_home(h):
     return 200, {
         "device": {"id": dev["id"], "name": dev["name"]},
         "mode": "adult" if scope.adult else "normal",
+        "history": not scope.private,
         "profile": {"allow_adult": bool(dev["allow_adult"]), "only_group_id": dev["only_group_id"]},
-        "continue": extras.continue_watching(scope),
-        "recent_live": extras.recent_channels(dev["id"], scope),
-        "favorites": catalog.favorites(scope),
+        "continue": [] if scope.private else extras.continue_watching(scope),
+        "recent_live": [] if scope.private else extras.recent_channels(dev["id"], scope),
+        "favorites": [] if scope.private else catalog.favorites(scope),
         "groups": catalog.groups(with_items=True, scope=scope),
         "saved_filters": [] if group_only else extras.saved_filters(scope.adult),
         "watch_hits": [] if group_only or scope.adult else extras.recent_hits(scope),
@@ -757,7 +765,8 @@ def dev_browse(h):
                                   _int_arg(h.query, "offset", 0), _int_arg(h.query, "limit", 300, 1, 1000))
     if kind != "live":
         for item in items:
-            item["watched"] = extras.is_watched(scope.adult or 0, kind, item["id"]) if kind == "vod" else False
+            item["watched"] = extras.is_watched(scope.adult or 0, kind, item["id"]) \
+                if kind == "vod" and not scope.private else False
     return 200, {"items": items, "total": total}
 
 
@@ -797,8 +806,10 @@ def dev_vod(h, vod_id):
     if item is None:
         raise HttpError(404, "Finns inte.")
     adult = scope.adult or 0
-    item["resume"] = extras.resume_position(adult, "vod", vod_id)
-    item["watched"] = extras.is_watched(adult, "vod", vod_id)
+    item["resume"] = None if scope.private else extras.resume_position(adult, "vod", vod_id)
+    item["watched"] = False if scope.private else extras.is_watched(adult, "vod", vod_id)
+    if scope.private:
+        item["favorite"] = False
     return 200, item
 
 
@@ -813,9 +824,11 @@ def dev_series(h, sid):
         if meta.get(key) and not detail.get(key):
             detail[key] = meta[key]
     detail["cover"] = detail.get("cover") or meta.get("poster") or meta.get("icon")
-    progress, watched = extras.series_progress(scope.adult or 0, sid)
+    progress, watched = ({}, []) if scope.private else extras.series_progress(scope.adult or 0, sid)
     detail["progress"] = progress
     detail["watched"] = watched
+    if scope.private:
+        detail["favorite"] = False
     return 200, detail
 
 

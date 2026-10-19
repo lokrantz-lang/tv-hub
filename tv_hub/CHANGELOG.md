@@ -1,5 +1,24 @@
 # Ändringar
 
+## 1.5.0
+
+- Vuxeninnehåll avgörs nu bara av kategorin ("For Adults", "Porn" eller "XXX" i namnet). Vanliga filmer
+  som *xXx* eller *Hustlers* syns i vanligt läge igen. Kategorier kan markeras manuellt under Kategorier.
+- Vuxenläget: dolt val (höger tre gånger på Inställningar) som visar eller döljer favoriter, Fortsätt
+  titta, senaste kanaler och sedda. Läget startar alltid med dem dolda. Tittandet sparas ändå.
+- Spola i filmer, avsnitt, inspelningar och tidigare program: vänster 10 s bakåt, höger 30 s framåt.
+  Håll in för att spola snabbare.
+- Tillbaka två gånger i menyn för att stänga appen.
+- "Nya filmer" heter nu "Nytt tillagt" och visar filmer, serier och kanaler med datum.
+  Nya titlar får TV Hubs eget datum från och med nu.
+- Manuell inspelning med valfri längd, även för kanaler utan programguide (i boxen och i webbadminen).
+- Tydligare varningar: alltid med boxens namn, på svenska och sammanslagna när samma fel upprepas.
+
+## 1.4.1
+
+- Biblioteket: kategorilistan följer valet under Innehåll. Vuxenkategorier visas bara med
+  "Bara 18+" eller "Allt", och valet Innehåll finns nu även för kanaler.
+
 ## 1.4.0
 
 - Nytt bibliotek i webbadminen: samma sortering och filter som i boxen (betyg, längd, årtal, genre,

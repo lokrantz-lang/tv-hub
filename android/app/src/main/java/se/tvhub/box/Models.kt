@@ -33,6 +33,8 @@ data class Item(
     val genre: String? = null,
     val watched: Boolean = false,
     val archiveDays: Int = 0,
+    /** När titeln lades till (sekunder), för "Nytt tillagt". */
+    val added: Long? = null,
 ) {
     val typeLabel: String
         get() = when (type) {
@@ -66,6 +68,7 @@ data class Item(
             genre = o.optStringOrNull("genre"),
             watched = o.optBoolean("watched"),
             archiveDays = o.optInt("archive_days", 0),
+            added = if (o.isNull("added")) null else o.optLong("added").takeIf { it > 0 },
         )
 
         fun list(array: JSONArray?): List<Item> {
@@ -146,6 +149,25 @@ object Format {
         val m = (totalSec % 3600) / 60
         val s = totalSec % 60
         return if (h > 0) String.format("%d:%02d:%02d", h, m, s) else String.format("%d:%02d", m, s)
+    }
+
+    /** "Ny idag", "Ny igår", "Ny 17 okt" */
+    fun addedLabel(seconds: Long): String {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        val today = cal.timeInMillis
+        val ms = seconds * 1000
+        val days = if (ms >= today) 0 else ((today - ms) / 86_400_000L + 1)
+        return when (days) {
+            0L -> "Ny idag"
+            1L -> "Ny igår"
+            else -> "Ny " + java.text.SimpleDateFormat(
+                if (days > 300) "d MMM yyyy" else "d MMM", java.util.Locale("sv", "SE"),
+            ).format(java.util.Date(ms)).replace(".", "")
+        }
     }
 
     fun rating(value: Double): String = String.format("%.1f", value).replace('.', ',')

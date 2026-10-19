@@ -44,7 +44,7 @@ import java.util.Locale
  * Uppspelning.
  *  - Frågar TV Hub om strömadress (anslutningsvakten kan svara "en annan box tittar").
  *  - Skickar heartbeat med mätvärden och position var tionde sekund. Positionen ger "Fortsätt titta".
- *  - Rapporterar hack och fel så att webbadminen kan säga var problemet ligger.
+ *  - Rapporterar avbrott och fel så att webbadminen kan säga var problemet ligger.
  *  - Försöker igen en gång, byter sedan portal automatiskt.
  *  - Live: upp/ner byter kanal, vänster (eller 0) går till förra kanalen, OK två gånger ger val.
  *  - Film och avsnitt startar där du slutade. Nästa avsnitt spelas automatiskt.
@@ -154,6 +154,10 @@ class PlayerActivity : Activity() {
     private var seekTargetMs = 0L      // väggklocka (ms) som spolningen siktar på
     private var seekTask: Runnable? = null
     private var currentProgram: JSONObject? = null
+
+    // Spolning i film, avsnitt, inspelning och catch-up: vänster 10 s bakåt, höger 30 s framåt
+    private var vodSeekTarget = -1L
+    private var vodSeekTask: Runnable? = null
     private lateinit var shiftView: TextView
 
     private val hideOverlay = Runnable { overlay.visibility = View.GONE }
@@ -464,7 +468,7 @@ class PlayerActivity : Activity() {
         stalls++
         stallMsTotal += ms
         Api.report("stall", sessionId, metrics().put("ms", ms))
-        // Efter andra hacket: mät hemnätet en gång, så att diagnostiken kan utesluta Wi-Fi.
+        // Efter andra avbrottet: mät hemnätet en gång, så att diagnostiken kan utesluta Wi-Fi.
         if (stalls >= 2 && !speedTested) {
             speedTested = true
             val sid = sessionId
@@ -647,6 +651,66 @@ class PlayerActivity : Activity() {
         prefs.setRecordingPosition(itemId, if (nearEnd) 0L else position)
     }
 
+    /** Spola med vänster/höger. Tryck i följd läggs ihop; håller man in går det snabbare. */
+    private fun seekVod(direction: Int, repeat: Int) {
+        val p = player ?: return
+        if (!p.isCurrentMediaItemSeekable) {
+            Toast.makeText(this, "Det går inte att spola i den här strömmen.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val base = if (vodSeekTarget >= 0) vodSeekTarget else p.currentPosition
+        val speed = when {
+            repeat >= 20 -> 6
+            repeat >= 8 -> 3
+            else -> 1
+        }
+        val step = (if (direction < 0) 10_000L else 30_000L) * speed
+        val duration = p.duration.takeIf { it > 0 }
+        val max = duration?.let { (it - 1_000L).coerceAtLeast(0L) } ?: Long.MAX_VALUE
+        vodSeekTarget = (base + direction * step).coerceIn(0L, max)
+        shiftView.text = (if (direction < 0) "◀◀  " else "▶▶  ") + Format.clock(vodSeekTarget) +
+            (duration?.let { "  /  " + Format.clock(it) } ?: "")
+        shiftView.visibility = View.VISIBLE
+        overlay.visibility = View.VISIBLE
+        handler.removeCallbacks(hideOverlay)
+        playerView.showController()
+        vodSeekTask?.let { handler.removeCallbacks(it) }
+        val task = Runnable {
+            vodSeekTask = null
+            val target = vodSeekTarget
+            vodSeekTarget = -1L
+            player?.seekTo(target)
+            handler.postDelayed({
+                if (vodSeekTask == null) {
+                    shiftView.visibility = View.GONE
+                    overlay.visibility = View.GONE
+                }
+            }, 2_500)
+        }
+        vodSeekTask = task
+        handler.postDelayed(task, 450)
+    }
+
+    /** Manuell inspelning från nu, för kanaler utan programguide (eller när man vill välja längd själv). */
+    private fun recordNow() {
+        val choices = listOf(30 to "30 min", 60 to "1 h", 90 to "1 h 30 min", 120 to "2 h", 180 to "3 h", 360 to "Tills jag stoppar (högst 6 h)")
+        AlertDialog.Builder(this)
+            .setTitle("Spela in $itemName från nu")
+            .setItems(choices.map { it.second }.toTypedArray()) { _, which ->
+                val start = System.currentTimeMillis() / 1000
+                val title = "$itemName " + SimpleDateFormat("d MMM HH:mm", Locale("sv", "SE")).format(Date()).replace(".", "")
+                val body = JSONObject().put("stream_id", itemId).put("title", title)
+                    .put("start", start).put("end", start + choices[which].first * 60L)
+                Api.obj("POST", "/device/recordings", body) { result ->
+                    result.onSuccess {
+                        RecScheduler.sync(this)
+                        Toast.makeText(this, "● Spelar in till USB-minnet. Stoppa under Inspelningar.", Toast.LENGTH_LONG).show()
+                    }.onFailure { Toast.makeText(this, Api.friendly(it), Toast.LENGTH_LONG).show() }
+                }
+            }
+            .show()
+    }
+
     private fun recordCurrentProgram() {
         val program = currentProgram
         if (program == null) {
@@ -823,6 +887,14 @@ class PlayerActivity : Activity() {
     // ---------------------------------------------------------------- fjärrkontroll
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val arrow = event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+        if (type != "live" && arrow && !fatalShown) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                prefs.touch()
+                seekVod(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1, event.repeatCount)
+            }
+            return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN) {
             prefs.touch()
             val code = event.keyCode
@@ -988,6 +1060,7 @@ class PlayerActivity : Activity() {
             currentProgram?.let { program ->
                 options.add("● Spela in \"${program.optString("title")}\"" to { recordCurrentProgram() })
             }
+            options.add("● Spela in nu (välj längd)…" to { recordNow() })
             Session.previousChannel?.takeIf { it.first != itemId }?.let { prev ->
                 options.add("Förra kanalen: ${prev.second}" to { previousChannel() })
             }

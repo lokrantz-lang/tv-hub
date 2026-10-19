@@ -39,7 +39,8 @@ LIVE = [
          ("C More Fotboll", "2"), ("Eurosport 1 HD", "2"), ("V Sport Premium", "2")], start=1)
 ] + [{"num": 90, "name": "Hot Channel HD", "stream_id": 190, "stream_icon": "", "epg_channel_id": "",
       "added": "1700000000", "category_id": "3"}]
-VOD_CATS = [{"category_id": "10", "category_name": "Filmer 2026"}, {"category_id": "11", "category_name": "Svenska"}]
+VOD_CATS = [{"category_id": "10", "category_name": "Filmer 2026"}, {"category_id": "11", "category_name": "Svenska"},
+            {"category_id": "12", "category_name": "18+ For Adults"}]
 VOD = [
     {"stream_id": 500 + i, "name": name, "stream_icon": f"__BASE__/img/v{500 + i}.png", "rating": "7.1", "added": str(1700000000 + i),
      "category_id": cat, "container_extension": "mkv"}
@@ -47,7 +48,7 @@ VOD = [
         [("Dune: Part Two (2024)", "10"), ("Oppenheimer (2023)", "10"), ("Jönssonligan (1981)", "11"),
          ("Så som i himmelen", "11"), ("Bamse och dunderklockan", "11")], start=1)
 ] + [{"stream_id": 599, "name": "Nattfilm", "stream_icon": "", "rating": "", "added": "1700000099",
-      "category_id": "10", "container_extension": "mp4", "is_adult": "1"}]
+      "category_id": "12", "container_extension": "mp4", "is_adult": "1"}]
 SERIES_CATS = [{"category_id": "20", "category_name": "Serier"}]
 SERIES = [{"series_id": 900, "name": "Bonusfamiljen", "cover": "__BASE__/img/s900.png", "category_id": "20", "rating": "8",
            "last_modified": "1700000000", "plot": "Familjedrama i Stockholm.", "genre": "Drama, Komedi",

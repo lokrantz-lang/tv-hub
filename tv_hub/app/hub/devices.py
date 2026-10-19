@@ -100,10 +100,12 @@ def update_device(device_id, data):
         db.x("UPDATE devices SET only_group_id = ? WHERE id = ?", (group_id, device_id))
 
 
-def scope_for(device, wants_adult):
-    """Vad boxen får se: läget från appen, begränsat av boxens profil."""
+def scope_for(device, wants_adult, wants_history=True):
+    """Vad boxen får se: läget från appen, begränsat av boxens profil.
+    wants_history gäller bara vuxenläget (dolt val i appen: höger tre gånger på Inställningar)."""
     adult = 1 if wants_adult and device["allow_adult"] else 0
-    return catalog.Scope(adult=adult, group_id=device["only_group_id"], hide_hidden=True)
+    return catalog.Scope(adult=adult, group_id=device["only_group_id"], hide_hidden=True,
+                         history=bool(wants_history) or not adult)
 
 
 def rename(device_id, name):
@@ -312,7 +314,8 @@ def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(
         "name": display,
         "heartbeat_ms": 10000,
         "user_agent": CFG["user_agent"],
-        "resume": extras.resume_position(adult, kind, item_id) if kind in ("vod", "episode") else None,
+        "resume": extras.resume_position(adult, kind, item_id)
+        if kind in ("vod", "episode") and not (scope is not None and scope.private) else None,
         "archive_days": int((item or {}).get("archive_days") or 0) if kind in ("live", "catchup") else 0,
     }
 

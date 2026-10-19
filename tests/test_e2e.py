@@ -21,12 +21,14 @@ D = f"http://127.0.0.1:{DEVICE}"
 FAILS = []
 
 
-def call(method, url, body=None, token=None, raw=False, mode=None):
+def call(method, url, body=None, token=None, raw=False, mode=None, history=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Content-Type", "application/json")
     if mode:
         req.add_header("X-TVHub-Mode", mode)
+    if history:
+        req.add_header("X-TVHub-History", history)
     if token:
         req.add_header("Authorization", f"Bearer {token}")
     try:
@@ -145,19 +147,24 @@ def main():
         check("vanligt läge: ingen vuxenkategori", "XXX | For Adults" not in live_cats and len(live_cats) == 2, live_cats)
         check("vanligt läge: räknar bort vuxeninnehåll", hn["counts"]["live"]["items"] == 7 and hn["counts"]["vod"]["items"] == 5, hn["counts"])
         check("vanligt läge: vuxenfavorit dold", all(f["id"] != "190" for f in hn["favorites"]), [f["id"] for f in hn["favorites"]])
-        s, items = call("GET", f"{D}/device/items?type=vod&category_id=10", token=ta)
-        check("vanligt läge: vuxenfilm i vanlig kategori dold", all(i["id"] != "599" for i in items), [i["id"] for i in items])
+        vod_cats_normal = [c["name"] for c in hn["categories"]["vod"]]
+        check("vanligt läge: vuxenkategori för filmer dold", "18+ For Adults" not in vod_cats_normal, vod_cats_normal)
         s, res = call("GET", f"{D}/device/search?q=hot", token=ta)
         check("vanligt läge: sök hittar inte vuxenkanal", res == [], res)
-        s, ha = call("GET", f"{D}/device/home", token=ta, mode="adult")
+        s, ha = call("GET", f"{D}/device/home", token=ta, mode="adult", history="show")
         live_cats = [c["name"] for c in ha["categories"]["live"]]
         vod_cats = [c["name"] for c in ha["categories"]["vod"]]
         check("vuxenläge: bara vuxenkategorin", live_cats == ["XXX | For Adults"], live_cats)
-        check("vuxenläge: vanlig kategori med vuxenfilm syns", vod_cats == ["Filmer 2026"], vod_cats)
+        check("vuxenläge: bara vuxenkategorin för filmer", vod_cats == ["18+ For Adults"], vod_cats)
         check("vuxenläge: bara vuxenfavoriter", [f["id"] for f in ha["favorites"]] == ["190"], ha["favorites"])
         check("vuxenläge: inga vanliga grupper", ha["groups"] == [], ha["groups"])
-        s, items = call("GET", f"{D}/device/items?type=vod&category_id=10", token=ta, mode="adult")
-        check("vuxenläge: bara vuxenfilmen i kategorin", [i["id"] for i in items] == ["599"], items)
+        s, items = call("GET", f"{D}/device/items?type=vod&category_id=12", token=ta, mode="adult")
+        check("vuxenläge: vuxenfilmen i sin kategori", [i["id"] for i in items] == ["599"], items)
+        s, hp = call("GET", f"{D}/device/home", token=ta, mode="adult")
+        check("vuxenläge utan historik: favoriter dolda", hp["favorites"] == [] and hp["history"] is False, hp["favorites"])
+        check("vuxenläge med historik: favoriter syns", ha["history"] is True, ha.get("history"))
+        s, hn2 = call("GET", f"{D}/device/home", token=ta, history="hide")
+        check("vanligt läge påverkas inte av historikvalet", hn2["history"] is True, hn2.get("history"))
         s, res = call("GET", f"{D}/device/search?q=hot", token=ta, mode="adult")
         check("vuxenläge: sök hittar vuxenkanal", [r["id"] for r in res] == ["190"], res)
         s, res = call("GET", f"{D}/device/search?q=svt", token=ta, mode="adult")
@@ -198,7 +205,7 @@ def main():
         call("POST", f"{D}/device/report", {"kind": "stall", "session_id": ep_play["session_id"],
                                             "detail": {"bandwidth_bps": 8e6, "bitrate_bps": 6e6, "ms": 2300}}, token=tb)
         s, diag = call("GET", f"{A}/api/diagnostics")
-        stall = [f for f in diag["diagnosis"]["findings"] if "hackar" in f["title"]]
+        stall = [f for f in diag["diagnosis"]["findings"] if "stannar upp" in f["title"]]
         check("hack klassas som hemnätet (12,5 Mbit/s)", stall and stall[0]["area"] == "lan", stall)
         s, cap = call("POST", f"{A}/api/diagnostics/capacity-test", {"type": "vod"})
         check("kapacitetstest nekas när en box tittar", cap["ok"] is False and "tittar" in cap["error"], cap)
@@ -245,6 +252,7 @@ def main():
         version_12(ta, tb, pa, pb, good)
         version_13(ta, tb, pa, pb)
         library_14()
+        version_15(ta, tb, pa, pb)
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -516,6 +524,13 @@ def library_14():
     check("admin: sidor", len(page["items"]) == 2 and page["total"] == normal["total"], page)
     s, b = call("GET", f"{A}/api/library/browse?type=live&q=svt&sort=num")
     check("admin: sök kanaler", [i["id"] for i in b["items"]] == ["101", "102"], b)
+    s, cats = call("GET", f"{A}/api/library/categories?type=live&adult=0")
+    s, acats = call("GET", f"{A}/api/library/categories?type=live&adult=1")
+    s, allcats = call("GET", f"{A}/api/library/categories?type=live")
+    check("admin: kategorilistan följer innehållsvalet", "3" not in [c["category_id"] for c in cats]
+          and [c["category_id"] for c in acats] == ["3"] and "3" in [c["category_id"] for c in allcats], (cats, acats))
+    s, b = call("GET", f"{A}/api/library/browse?type=live&adult=1&category_id=3")
+    check("admin: vuxenkanaler visas med Bara 18+", [i["id"] for i in b["items"]] == ["190"], b)
     s, g = call("GET", f"{A}/api/library/genres?type=vod")
     check("admin: genrer", "Drama" in [x["name"] for x in g] and "Vuxen" not in [x["name"] for x in g], g)
     s, d = call("GET", f"{A}/api/library/vod/501")
@@ -532,6 +547,80 @@ def library_14():
     check("bildproxyn vägrar lokala filer", s == 400, bad)
     s, bad = call("GET", f"{D}/api/img?u={urllib.parse.quote(icon, safe='')}")
     check("bildproxyn nås inte via box-porten", s == 404, s)
+
+
+def version_15(ta, tb, pa, pb):
+    print("Version 1.5: vuxenregel, historik, nytt tillagt, manuell inspelning, tydligare varningar")
+    sys.path.insert(0, os.path.join(ROOT, "tv_hub", "app"))
+    from hub.catalog import is_adult_name
+    for name in ("XXX | For Adults", "18+ For Adults", "others For Adults", "AI Porn 18+ For Adults", "For Adults"):
+        check(f"vuxenkategori: {name}", is_adult_name(name))
+    for name in ("Adult Swim", "xXx: Return of Xander Cage", "Hustlers", "Vuxna människor", "18+ Thriller", "Adults in the Room"):
+        check(f"inte vuxen: {name}", not is_adult_name(name))
+
+    # Manuell markering av kategori
+    call("POST", f"{A}/api/categories/prefs", {"type": "live", "changes": [{"category_id": "2", "adult": True}]})
+    s, hn = call("GET", f"{D}/device/home", token=ta)
+    check("manuellt markerad vuxenkategori döljs i vanligt läge", "Sport" not in [c["name"] for c in hn["categories"]["live"]], hn["categories"]["live"])
+    s, cats = call("GET", f"{A}/api/categories?type=live")
+    check("admin ser manuell markering", next(c for c in cats if c["category_id"] == "2")["adult_override"] == 1, cats)
+    call("POST", f"{A}/api/categories/prefs", {"type": "live", "changes": [{"category_id": "3", "adult": False}, {"category_id": "2", "adult": None}]})
+    s, hn = call("GET", f"{D}/device/home", token=ta)
+    names = [c["name"] for c in hn["categories"]["live"]]
+    check("avmarkerad kategori syns i vanligt läge, automatisk återställd", "XXX | For Adults" in names and "Sport" in names, names)
+    call("POST", f"{A}/api/categories/prefs", {"type": "live", "changes": [{"category_id": "3", "adult": None}]})
+    call("POST", f"{A}/api/catalog/sync"); time.sleep(1); wait_for(lambda: _sync_done(), timeout=30)
+    s, hn = call("GET", f"{D}/device/home", token=ta)
+    check("automatisk markering gäller igen efter synk", "XXX | For Adults" not in [c["name"] for c in hn["categories"]["live"]], hn["categories"]["live"])
+
+    # Historik i vuxenläget: sparas alltid, visas bara med "show"
+    s, p = call("POST", f"{D}/device/play", {"type": "vod", "id": "599"}, token=ta, mode="adult")
+    check("vuxenfilm startar", p["status"] == "ok", p)
+    call("POST", f"{D}/device/stop", {"session_id": p["session_id"], "metrics": {"position_ms": 900000, "duration_ms": 5400000}}, token=ta)
+    s, hidden = call("GET", f"{D}/device/home", token=ta, mode="adult")
+    s, shown = call("GET", f"{D}/device/home", token=ta, mode="adult", history="show")
+    check("utan historik: Fortsätt titta tom", hidden["continue"] == [], hidden["continue"])
+    check("med historik: filmen finns (sparades ändå)", [c["id"] for c in shown["continue"]] == ["599"], shown["continue"])
+    s, p2 = call("POST", f"{D}/device/play", {"type": "vod", "id": "599"}, token=ta, mode="adult")
+    check("utan historik: startar från början", p2["resume"] is None, p2.get("resume"))
+    call("POST", f"{D}/device/stop", {"session_id": p2["session_id"]}, token=ta)
+    s, p3 = call("POST", f"{D}/device/play", {"type": "vod", "id": "599"}, token=ta, mode="adult", history="show")
+    check("med historik: fortsätter där du slutade", p3["resume"] and p3["resume"]["position_ms"] >= 900000, p3.get("resume"))
+    call("POST", f"{D}/device/stop", {"session_id": p3["session_id"]}, token=ta)
+
+    # Nytt tillagt: eget datum för titlar som kommit efter första synken
+    fake_mode("ok", extra=1)
+    call("POST", f"{A}/api/catalog/sync"); time.sleep(1); wait_for(lambda: _sync_done(), timeout=30)
+    s, b = call("GET", f"{D}/device/browse?type=vod&sort=added&limit=3", token=ta)
+    first = b["items"][0]
+    check("nytt tillagt: nyaste först med dagens datum", first["id"] == "520" and abs(first["added"] - time.time()) < 3600, b["items"][:2])
+    s, b2 = call("GET", f"{D}/device/browse?type=live&sort=added&limit=3", token=ta)
+    check("nytt tillagt fungerar för kanaler", s == 200 and b2["items"], b2)
+    fake_mode("ok", extra=0)
+
+    # Manuell inspelning utan programguide
+    now = int(time.time())
+    s, r = call("POST", f"{D}/device/recordings", {"stream_id": "190", "title": "Hot Channel HD 19 okt 22:00",
+                                                    "start": now, "end": now + 3600}, token=ta, mode="adult")
+    check("manuell inspelning av kanal utan programguide", s == 201 and r["source"] == "live", r)
+    s, ar = call("POST", f"{A}/api/recordings", {"device_id": pa["device_id"], "stream_id": "104", "title": "",
+                                                 "start": now + 7200, "end": now + 9000})
+    check("manuell inspelning från webbadminen, namn från kanalen", s == 201 and ar["title"] == "SE: Kanal 5", ar)
+    call("DELETE", f"{A}/api/recordings/{r['id']}"); call("DELETE", f"{A}/api/recordings/{ar['id']}")
+
+    # Tydligare varningar
+    s, p = call("POST", f"{D}/device/play", {"type": "live", "id": "101"}, token=tb)
+    for _ in range(2):
+        call("POST", f"{D}/device/report", {"kind": "error", "session_id": p.get("session_id"),
+                                            "detail": {"code": "ERROR_CODE_PARSING_CONTAINER_MALFORMED", "message": "Source error"}}, token=tb)
+    call("POST", f"{D}/device/stop", {"session_id": p.get("session_id")}, token=tb)
+    s, diag = call("GET", f"{A}/api/diagnostics")
+    s, devs = call("GET", f"{A}/api/devices")
+    bname = next(d["name"] for d in devs if d["id"] == pb["device_id"])
+    errs = [f for f in diag["diagnosis"]["findings"] if f["title"].startswith(f"Uppspelningsfel på {bname}")]
+    check("fel anger boxen och slås ihop", len(errs) == 1 and "2 gånger" in errs[0]["title"], [f["title"] for f in diag["diagnosis"]["findings"]])
+    check("fel förklaras på svenska", errs and "trasig ström" in errs[0]["detail"], errs)
+    check("ordet hackar används inte", not any("hack" in f["title"].lower() for f in diag["diagnosis"]["findings"]), diag["diagnosis"]["findings"])
 
 
 def _up(url):

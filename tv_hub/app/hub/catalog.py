@@ -23,10 +23,11 @@ STEPS = [
     ("series", "items", "get_series"),
 ]
 # Känner igen vuxenkategorier på namnet, t.ex. "XXX | Adult", "18+ Vuxen".
-ADULT_RE = re.compile(
-    r"(xxx|\badults?\b|18\s*\+|\+\s*18|\bporn|\berotic|\berotik|\bvuxen|\bvuxna|\bplayboy|\bhustler|\bbrazzers)",
-    re.IGNORECASE,
-)
+# Vuxeninnehåll avgörs bara av kategorin: namn med "For Adults", "XXX" eller "Porn".
+# Titlar som "xXx" eller "Adult World" i vanliga kategorier räknas inte. Kategorier kan
+# dessutom markeras eller avmarkeras manuellt i webbadminen (category_prefs.adult_override).
+ADULT_RE = re.compile(r"(for\s*adults?|porn)", re.IGNORECASE)
+ADULT_XXX = re.compile(r"(^|[|:\-]\s*)XXX(\s|$|[|:\-])")  # "XXX | ..." med versaler, inte filmen "xXx"
 YEAR_IN_NAME = re.compile(r"(?:\(|\[|-\s)((?:19|20)\d{2})(?:\)|\]|\s*$)")
 _sync_lock = threading.Lock()
 _sync_state = {"running": False, "step": None}
@@ -37,10 +38,16 @@ _after_sync = []  # funktioner som körs efter varje lyckad synk (bevakningar m.
 # Scope: vad en viss box får se
 # ====================================================================
 class Scope:
-    def __init__(self, adult=None, group_id=None, hide_hidden=False):
+    def __init__(self, adult=None, group_id=None, hide_hidden=False, history=True):
         self.adult = adult            # None = alla, 0 = vanligt läge, 1 = vuxenläge
         self.group_id = group_id      # profil "bara grupp X"
         self.hide_hidden = hide_hidden
+        self.history = history        # vuxenläge: visa favoriter och historik
+
+    @property
+    def private(self):
+        """Vuxenläge utan historik: favoriter, Fortsätt titta och sedda visas inte (men sparas)."""
+        return bool(self.adult) and not self.history
 
     def sql(self, alias="i", hide=True):
         conds, args = [], []
@@ -96,7 +103,7 @@ def _category(raw):
 
 
 def is_adult_name(text):
-    return bool(text and ADULT_RE.search(str(text)))
+    return bool(text and (ADULT_RE.search(str(text)) or ADULT_XXX.search(str(text))))
 
 
 def _truthy(value):
@@ -159,7 +166,7 @@ def _map_item(kind, raw):
         _int(raw.get("added") or raw.get("last_modified")),
         _int(raw.get("num")),
         raw.get("epg_channel_id") or None,
-        1 if _truthy(raw.get("is_adult")) or is_adult_name(name) else 0,
+        0,  # sätts av mark_adult() utifrån kategorin
         year_from(raw, name) if kind != "live" else None,
         rating_from(raw) if kind != "live" else None,
         archive_days,
@@ -311,11 +318,16 @@ def _store(kind, part, data, result):
         )
         return
     with db.tx() as conn:
+        # Eget tilläggsdatum: när TV Hub först såg titeln. Titlar som fanns när funktionen kom
+        # (eller vid första synken) har inget och visas med källans datum.
+        old = {r[0]: r[1] for r in conn.execute("SELECT item_id, first_seen FROM items WHERE type = ?", (kind,))}
+        now = int(time.time())
+        rows = [r + ((old[r[1]] if r[1] in old else (now if old else None)),) for r in rows]
         conn.execute("DELETE FROM items WHERE type = ?", (kind,))
         conn.executemany(
             """INSERT OR REPLACE INTO items (type, item_id, name, name_norm, category_id, icon, ext,
-               rating, added, num, epg_id, adult, year, rating_num, archive_days)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               rating, added, num, epg_id, adult, year, rating_num, archive_days, first_seen)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             rows,
         )
         if kind == "series":
@@ -330,17 +342,19 @@ def _store(kind, part, data, result):
 
 
 def mark_adult():
-    """Markerar kategorier efter namn och låter alla objekt i en vuxenkategori ärva markeringen."""
+    """Markerar kategorier (manuellt val, annars namnet) och låter objekten följa sin kategori."""
     with db.tx() as conn:
-        for row in conn.execute("SELECT type, category_id, name FROM categories").fetchall():
-            conn.execute(
-                "UPDATE categories SET adult = ? WHERE type = ? AND category_id = ?",
-                (1 if is_adult_name(row["name"]) else 0, row["type"], row["category_id"]),
-            )
+        rows = conn.execute(
+            """SELECT c.type, c.category_id, c.name, p.adult_override FROM categories c
+               LEFT JOIN category_prefs p ON p.type = c.type AND p.category_id = c.category_id"""
+        ).fetchall()
+        for row in rows:
+            adult = row["adult_override"] if row["adult_override"] is not None else (1 if is_adult_name(row["name"]) else 0)
+            conn.execute("UPDATE categories SET adult = ? WHERE type = ? AND category_id = ?",
+                         (adult, row["type"], row["category_id"]))
         conn.execute(
-            """UPDATE items SET adult = 1 WHERE adult = 0 AND EXISTS (
-                   SELECT 1 FROM categories c WHERE c.type = items.type
-                   AND c.category_id = items.category_id AND c.adult = 1)"""
+            """UPDATE items SET adult = COALESCE((SELECT c.adult FROM categories c WHERE c.type = items.type
+                   AND c.category_id = items.category_id), 0)"""
         )
 
 
@@ -398,7 +412,8 @@ def counts(scope=ADMIN):
 # ====================================================================
 # Läsning
 # ====================================================================
-ITEM_COLS = ("i.type, i.item_id, i.name, i.category_id, i.icon, i.ext, i.rating, i.added, i.num, i.epg_id, "
+ITEM_COLS = ("i.type, i.item_id, i.name, i.category_id, i.icon, i.ext, i.rating, "
+             "COALESCE(i.first_seen, i.added) AS added, i.num, i.epg_id, "
              "i.adult, i.archive_days, COALESCE(i.year, f.year) AS year, "
              "COALESCE(i.rating_num, f.rating) AS rating_num, f.duration_min, f.genre")
 FROM_ITEMS = "items i LEFT JOIN item_info f ON f.type = i.type AND f.item_id = i.item_id"
@@ -432,7 +447,7 @@ def categories(kind, scope=ADMIN):
         return []
     cond, args = scope.sql("i", hide=False)
     rows = db.rows(db.q(
-        f"""SELECT c.category_id, c.name, c.sort, c.adult,
+        f"""SELECT c.category_id, c.name, c.sort, c.adult, p.adult_override,
                    COALESCE(p.hidden, 0) AS hidden, p.position,
                    (SELECT COUNT(*) FROM items i WHERE i.type = c.type AND i.category_id = c.category_id{cond}) AS count
             FROM categories c LEFT JOIN category_prefs p ON p.type = c.type AND p.category_id = c.category_id
@@ -443,6 +458,7 @@ def categories(kind, scope=ADMIN):
     for c in rows:
         c["adult"] = bool(c["adult"])
         c["hidden"] = bool(c["hidden"])
+        c["auto_adult"] = is_adult_name(c["name"])
     if scope is ADMIN:
         return rows
     return [c for c in rows if c["count"] > 0 and not (scope.hide_hidden and c["hidden"])]
@@ -460,7 +476,7 @@ SORTS = {
 
 # Alla kolumner som går att sortera och filtrera på, samlade i en vy (alias i).
 BROWSE_FROM = """(SELECT i.type, i.item_id, i.name, i.name_norm, i.category_id, i.icon, i.ext, i.rating,
-                         i.added, i.num, i.epg_id, i.adult, i.archive_days,
+                         COALESCE(i.first_seen, i.added) AS added, i.num, i.epg_id, i.adult, i.archive_days,
                          COALESCE(i.year, f.year) AS year, COALESCE(i.rating_num, f.rating) AS rating_num,
                          f.duration_min, f.genre, c.name AS category_name
                   FROM items i
@@ -521,7 +537,7 @@ def browse(kind, scope=ADMIN, category_id=None, params=None, offset=0, limit=300
         f"SELECT * FROM {BROWSE_FROM} WHERE {where_sql} ORDER BY {SORTS[sort]} LIMIT ? OFFSET ?",
         (*all_args, int(limit), int(offset)),
     )
-    favs = favorite_keys()
+    favs = set() if scope.private else favorite_keys()
     return [_item(r, favs) for r in rows], total
 
 
@@ -610,14 +626,23 @@ def set_category_prefs(kind, changes):
         for change in changes:
             cid = str(change.get("category_id"))
             current = conn.execute(
-                "SELECT hidden, position FROM category_prefs WHERE type = ? AND category_id = ?", (kind, cid)
+                "SELECT hidden, position, adult_override FROM category_prefs WHERE type = ? AND category_id = ?",
+                (kind, cid),
             ).fetchone()
             hidden = int(bool(change["hidden"])) if "hidden" in change else (current["hidden"] if current else 0)
             position = change["position"] if "position" in change else (current["position"] if current else None)
+            if "adult" in change:
+                # true/false = manuellt val, null = automatiskt efter namnet
+                override = None if change["adult"] is None else int(bool(change["adult"]))
+            else:
+                override = current["adult_override"] if current else None
             conn.execute(
-                "INSERT OR REPLACE INTO category_prefs (type, category_id, hidden, position) VALUES (?,?,?,?)",
-                (kind, cid, hidden, position),
+                """INSERT OR REPLACE INTO category_prefs (type, category_id, hidden, position, adult_override)
+                   VALUES (?,?,?,?,?)""",
+                (kind, cid, hidden, position, override),
             )
+    if any("adult" in change for change in changes):
+        mark_adult()
 
 
 # ====================================================================
@@ -665,7 +690,7 @@ def set_favorite(kind, item_id, on):
 # ====================================================================
 def groups(with_items=False, scope=ADMIN):
     out = []
-    favs = favorite_keys()
+    favs = set() if scope.private else favorite_keys()
     for g in db.q("SELECT * FROM groups ORDER BY sort, name"):
         if scope.group_id is not None and g["id"] != scope.group_id:
             continue

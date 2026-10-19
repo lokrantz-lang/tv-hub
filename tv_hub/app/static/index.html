@@ -109,6 +109,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .tabpanel[hidden] { display: none; }
 @media (max-width: 640px) {
   #rec-form { grid-template-columns: 1fr !important; }
+  .rec-manual-form { grid-template-columns: 1fr 1fr !important; }
   .hide-sm { display: none; }
   main { padding: 12px; }
   .code { font-size: 32px; }
@@ -119,8 +120,10 @@ tbody tr:last-child td { border-bottom: 0; }
 
 /* bibliotek */
 .lib-controls { display: grid; gap: 12px; }
+.rec-manual-form { grid-template-columns: 1.3fr 1fr 2fr auto; }
 .lib-row { grid-template-columns: 2fr 1.3fr 1.2fr; }
 .lib-filters { grid-template-columns: repeat(5, 1fr); }
+.lib-filters.only-adult { grid-template-columns: minmax(180px, 240px); }
 .lib-results.view-list { display: flex; flex-direction: column; }
 .lib-results.view-list .card { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); cursor: pointer; }
 .lib-results.view-list .card:first-child { border-top: 0; }
@@ -236,16 +239,16 @@ tbody tr:last-child td { border-bottom: 0; }
           <label class="f">Sortera<select id="lib-sort"></select></label>
         </div>
         <div class="form lib-row lib-filters" id="lib-filters">
-          <label class="f">Betyg<select id="f-rating">
+          <label class="f nolive">Betyg<select id="f-rating">
             <option value="">Alla</option><option value="5">★ 5 eller högre</option><option value="6">★ 6 eller högre</option>
             <option value="7">★ 7 eller högre</option><option value="8">★ 8 eller högre</option></select></label>
-          <label class="f" id="f-duration-wrap">Längd<select id="f-duration">
+          <label class="f nolive" id="f-duration-wrap">Längd<select id="f-duration">
             <option value="">Alla</option><option value="-90">Under 1 h 30 min</option><option value="-120">Under 2 h</option>
             <option value="120-">Över 2 h</option></select></label>
-          <label class="f">Årtal<select id="f-year">
+          <label class="f nolive">Årtal<select id="f-year">
             <option value="">Alla</option><option value="2020-">Från 2020</option><option value="2010-">Från 2010</option>
             <option value="2000-">Från 2000</option><option value="-1999">Före 2000</option></select></label>
-          <label class="f">Genre<select id="f-genre"><option value="">Alla</option></select></label>
+          <label class="f nolive">Genre<select id="f-genre"><option value="">Alla</option></select></label>
           <label class="f">Innehåll<select id="f-adult">
             <option value="0">Vanligt</option><option value="1">Bara 18+</option><option value="all">Allt</option></select></label>
         </div>
@@ -294,7 +297,8 @@ tbody tr:last-child td { border-bottom: 0; }
     <div class="panel">
       <div class="hd"><h2>Kategorier i boxarna</h2><span class="small muted" id="cat-summary"></span></div>
       <div class="bd" style="display:grid; gap:12px">
-        <p class="small muted" style="margin:0">Dölj kategorier du aldrig använder, till exempel kanaler på andra språk. Dolda kategorier syns inte i boxarnas listor eller sök. Favoriter och grupper påverkas inte. Ordningen här är ordningen i boxarna.</p>
+        <p class="small muted" style="margin:0">Dölj kategorier du aldrig använder, till exempel kanaler på andra språk. Dolda kategorier syns inte i boxarnas listor eller sök. Favoriter och grupper påverkas inte. Ordningen här är ordningen i boxarna.<br>
+          <strong>18+:</strong> kategorier med "For Adults", "Porn" eller "XXX" i namnet visas bara i boxarnas dolda vuxenläge. Välj <em>Alltid 18+</em> eller <em>Aldrig 18+</em> om regeln har fel för en kategori.</p>
         <div class="row">
           <div class="seg" id="cat-type">
             <button data-type="live" aria-pressed="true">Kanaler</button>
@@ -345,6 +349,18 @@ tbody tr:last-child td { border-bottom: 0; }
           <label class="f">Kanal<input id="rec-q" type="search" placeholder="t.ex. svt1, tv4" autocomplete="off"></label>
         </form>
         <ul class="list" id="rec-channels" style="margin-top:8px"></ul>
+        <div id="rec-manual" hidden style="margin-top:14px">
+          <h3 style="margin:0 0 6px; font-size:15px" id="rec-manual-title">Manuell inspelning</h3>
+          <p class="small muted" style="margin:0 0 8px">För kanaler utan programguide, eller när du vill välja tid själv.</p>
+          <form class="form rec-manual-form" id="rec-manual-form">
+            <label class="f">Start<input id="rec-m-start" type="datetime-local" required></label>
+            <label class="f">Längd<select id="rec-m-len">
+              <option value="30">30 min</option><option value="60" selected>1 h</option><option value="90">1 h 30 min</option>
+              <option value="120">2 h</option><option value="180">3 h</option><option value="360">6 h (max)</option></select></label>
+            <label class="f">Namn (valfritt)<input id="rec-m-title" maxlength="120" placeholder="Kanalens namn och tid"></label>
+            <button class="btn primary" type="submit" style="align-self:end">Spela in</button>
+          </form>
+        </div>
         <h3 id="rec-guide-title" style="margin:16px 0 4px; font-size:15px" hidden></h3>
         <ul class="list" id="rec-guide"></ul>
       </div>
@@ -501,7 +517,7 @@ loaders.overview = async () => {
   $("verdict").innerHTML = `<span class="lvl ${d.level}"></span><div><div class="big">${esc(top ? (d.level === "ok" ? "Allt fungerar" : top.title) : "Inga data ännu")}</div><div>${esc(top && d.level !== "ok" ? top.detail : "Toucan, internet och listorna ser bra ut.")}</div></div>`;
   $("findings").innerHTML = d.findings.map(findingHtml).join("") || '<li class="empty">Inga kontroller ännu.</li>';
   const s = overview.sessions;
-  $("playing").innerHTML = s.length ? `<ul class="list">${s.map((x) => `<li><span class="lvl ok" style="margin:0"></span><div class="grow"><div class="ellipsis"><strong>${esc(x.device_name)}</strong>: ${esc(x.item_name)}</div><div class="small muted">sedan ${fmtTime(x.started)}${x.metrics && x.metrics.bandwidth_bps ? ` · ${(x.metrics.bandwidth_bps / 1e6).toFixed(1)} Mbit/s` : ""}${x.metrics && x.metrics.stalls ? ` · ${x.metrics.stalls} hack` : ""}</div></div></li>`).join("")}</ul>` : '<div class="empty">Ingen box tittar.</div>';
+  $("playing").innerHTML = s.length ? `<ul class="list">${s.map((x) => `<li><span class="lvl ok" style="margin:0"></span><div class="grow"><div class="ellipsis"><strong>${esc(x.device_name)}</strong>: ${esc(x.item_name)}</div><div class="small muted">sedan ${fmtTime(x.started)}${x.metrics && x.metrics.bandwidth_bps ? ` · ${(x.metrics.bandwidth_bps / 1e6).toFixed(1)} Mbit/s` : ""}${x.metrics && x.metrics.stalls ? ` · ${x.metrics.stalls} avbrott i bilden` : ""}</div></div></li>`).join("")}</ul>` : '<div class="empty">Ingen box tittar.</div>';
   const c = overview.catalog;
   $("counts").innerHTML = [["Kanaler", c.live.items], ["Filmer", c.vod.items], ["Serier", c.series.items]].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v.toLocaleString("sv-SE")}</div></div>`).join("");
   const ls = overview.last_sync;
@@ -540,7 +556,7 @@ $("sync-btn").addEventListener("click", (e) => guarded(async () => {
 
 /* ---------- bibliotek ---------- */
 const LIB_SORTS = {
-  live: [["num", "Kanalnummer"], ["name", "Namn"]],
+  live: [["num", "Kanalnummer"], ["name", "Namn"], ["added", "Senast tillagda"]],
   vod: [["added", "Senast tillagda"], ["rating", "Betyg"], ["year", "Årtal"], ["duration", "Längd, kortast först"], ["duration_desc", "Längd, längst först"], ["name", "Namn"]],
   series: [["added", "Senast tillagda"], ["rating", "Betyg"], ["year", "Årtal"], ["name", "Namn"]],
 };
@@ -559,8 +575,10 @@ loaders.library = async () => {
 };
 function setSeg(id, key, value) { $(id).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset[key] === value)); }
 async function loadCategories() {
-  const cats = await api(`library/categories?type=${lib.type}`).catch(() => []);
+  const keep = $("lib-cat").value;
+  const cats = await api(`library/categories?type=${lib.type}&adult=${$("f-adult").value}`).catch(() => []);
   $("lib-cat").innerHTML = `<option value="">Alla kategorier</option>` + cats.map((c) => `<option value="${esc(c.category_id)}">${c.adult ? "🔞 " : ""}${c.hidden ? "(dold) " : ""}${esc(c.name)} (${c.count})</option>`).join("");
+  if (cats.some((c) => String(c.category_id) === keep)) $("lib-cat").value = keep;
 }
 async function loadGenres() {
   if (lib.type === "live") return;
@@ -571,7 +589,8 @@ async function loadGenres() {
 }
 async function libTypeChanged(reset = true) {
   $("lib-sort").innerHTML = LIB_SORTS[lib.type].map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
-  $("lib-filters").classList.toggle("hidden", lib.type === "live");
+  document.querySelectorAll("#lib-filters .nolive").forEach((el) => el.classList.toggle("hidden", lib.type === "live"));
+  $("lib-filters").classList.toggle("only-adult", lib.type === "live");
   $("f-duration-wrap").classList.toggle("hidden", lib.type !== "vod");
   if (reset) { ["f-rating", "f-duration", "f-year", "f-genre"].forEach((id) => $(id).value = ""); $("lib-q").value = ""; }
   await Promise.all([loadCategories(), loadGenres()]);
@@ -616,10 +635,19 @@ async function runLibrary(append = false) {
 function facts(it) {
   return [it.year, it.rating_num ? "★ " + String(it.rating_num).replace(".", ",") : null, it.duration_min ? fmtMin(it.duration_min) : null].filter(Boolean).join(" · ");
 }
+function addedLabel(ts) {
+  const d = new Date(ts * 1000), today = new Date(); today.setHours(0, 0, 0, 0);
+  const day = new Date(d); day.setHours(0, 0, 0, 0);
+  const diff = Math.round((today - day) / 86400000);
+  if (diff <= 0) return "Ny idag";
+  if (diff === 1) return "Ny igår";
+  return "Ny " + d.toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined });
+}
 const fmtMin = (m) => m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
 function cardHtml(it) {
   const art = it.icon ? `<img class="art" src="${img(it.icon)}" alt="" loading="lazy" onerror="this.removeAttribute('src')">` : `<span class="art"></span>`;
-  const sub = it.type === "live" ? (it.category_name || "") : (facts(it) || it.category_name || "");
+  let sub = it.type === "live" ? (it.category_name || "") : (facts(it) || it.category_name || "");
+  if ($("lib-sort").value === "added" && it.added) sub = `${addedLabel(it.added)} · ${sub}`;
   return `<div class="card ${it.type}" data-type="${it.type}" data-id="${esc(it.id)}" data-name="${esc(it.name)}" tabindex="0">${art}
     ${it.watched ? '<span class="seen">✓ Sedd</span>' : ""}
     <div class="meta" style="min-width:0"><div class="title" title="${esc(it.name)}">${it.adult ? '<span class="pill warn">18+</span> ' : ""}${it.type === "live" && it.num ? `<span class="muted">${it.num}</span> ` : ""}${esc(it.name)}</div>
@@ -640,7 +668,7 @@ $("lib-view").addEventListener("click", (e) => {
 let qTimer;
 $("lib-q").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(() => runLibrary(), 300); });
 ["lib-cat", "lib-sort", "f-rating", "f-duration", "f-year", "f-genre"].forEach((id) => $(id).addEventListener("change", () => runLibrary()));
-$("f-adult").addEventListener("change", async () => { await Promise.all([loadGenres()]); runLibrary(); });
+$("f-adult").addEventListener("change", async () => { await Promise.all([loadCategories(), loadGenres()]); runLibrary(); });
 $("lib-clear").addEventListener("click", () => {
   ["lib-q", "lib-cat", "f-rating", "f-duration", "f-year", "f-genre"].forEach((id) => $(id).value = "");
   $("f-adult").value = "0"; runLibrary();
@@ -812,6 +840,11 @@ function renderCategories() {
   $("cat-list").innerHTML = rows.slice(0, 400).map((c) => `<li data-id="${esc(c.category_id)}">
       <input type="checkbox" data-act="toggle" ${c.hidden ? "" : "checked"} aria-label="Visa i boxarna" style="width:20px; min-height:20px">
       <div class="grow"><div class="ellipsis" style="${c.hidden ? "opacity:.55" : ""}">${c.adult ? "🔞 " : ""}${esc(c.name)}</div><div class="small muted">${c.count} st${c.hidden ? " · dold" : ""}</div></div>
+      <select data-act="adult" title="Vuxeninnehåll" aria-label="Vuxeninnehåll" style="width:auto; min-height:34px">
+        <option value="auto" ${c.adult_override == null ? "selected" : ""}>Auto (${c.auto_adult ? "18+" : "vanlig"})</option>
+        <option value="1" ${c.adult_override === 1 ? "selected" : ""}>Alltid 18+</option>
+        <option value="0" ${c.adult_override === 0 ? "selected" : ""}>Aldrig 18+</option>
+      </select>
       <button class="btn icon ghost" data-act="top" title="Överst" aria-label="Flytta överst">⤒</button>
       <button class="btn icon ghost" data-act="up" aria-label="Flytta upp">↑</button>
       <button class="btn icon ghost" data-act="down" aria-label="Flytta ner">↓</button></li>`).join("")
@@ -828,6 +861,17 @@ $("cat-type").addEventListener("click", (e) => {
 });
 $("cat-q").addEventListener("input", renderCategories);
 $("cat-list").addEventListener("change", (e) => {
+  const sel = e.target.closest("select[data-act=adult]");
+  if (sel) {
+    const id = sel.closest("li").dataset.id;
+    const adult = sel.value === "auto" ? null : sel.value === "1";
+    guarded(async () => {
+      await api("categories/prefs", { method: "POST", body: { type: catType, changes: [{ category_id: id, adult }] } });
+      toast(adult === null ? "Automatiskt efter namnet" : adult ? "Markerad som 18+" : "Markerad som vanlig");
+      loaders.categories();
+    });
+    return;
+  }
   const box = e.target.closest("input[data-act=toggle]"); if (!box) return;
   const id = box.closest("li").dataset.id; const c = catRows.find((x) => x.category_id === id);
   guarded(async () => { await api("categories/prefs", { method: "POST", body: { type: catType, changes: [{ category_id: id, hidden: !box.checked }] } }); c.hidden = !box.checked; renderCategories(); });
@@ -914,6 +958,12 @@ $("rec-q").addEventListener("input", () => { clearTimeout(recTimer); recTimer = 
 $("rec-channels").addEventListener("click", (e) => {
   const li = e.target.closest("li[data-id]"); if (!li) return;
   recChannel = { id: li.dataset.id, name: li.dataset.name };
+  $("rec-manual").hidden = false;
+  $("rec-manual-title").textContent = `Manuell inspelning: ${recChannel.name}`;
+  const start = new Date(Date.now() + 60000); start.setSeconds(0, 0);
+  const pad = (n) => String(n).padStart(2, "0");
+  $("rec-m-start").value = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}T${pad(start.getHours())}:${pad(start.getMinutes())}`;
+  $("rec-m-title").value = "";
   guarded(async () => {
     const g = await api(`guide/${encodeURIComponent(recChannel.id)}`);
     $("rec-guide-title").hidden = false; $("rec-guide-title").textContent = `${recChannel.name}: programguide`;
@@ -922,6 +972,20 @@ $("rec-channels").addEventListener("click", (e) => {
     $("rec-guide").innerHTML = progs.map((p) => `<li data-start="${p.start}" data-end="${p.end}" data-title="${esc(p.title)}"><div class="grow"><div class="ellipsis">${esc(p.title)}</div><div class="small muted">${fmtUnix(p.start)}–${fmtClock(p.end)}${p.now ? " · pågår" : p.end <= now ? " · har sänts, hämtas från arkivet" : ""}</div></div><button class="btn small" data-act="rec">Spela in</button></li>`).join("") || '<li class="empty">Ingen programguide för kanalen.</li>';
     const first = $("rec-guide").querySelector("li"); if (first) first.scrollIntoView({ block: "nearest" });
   });
+});
+$("rec-manual-form").addEventListener("submit", (e) => {
+  e.preventDefault(); if (!recChannel) return;
+  const startMs = new Date($("rec-m-start").value).getTime();
+  if (!startMs) return toast("Ange starttid.");
+  const start = Math.floor(Math.max(startMs, Date.now()) / 1000);
+  const end = start + (+$("rec-m-len").value) * 60;
+  const when = new Date(start * 1000).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const title = $("rec-m-title").value.trim() || `${recChannel.name} ${when}`;
+  guarded(async () => {
+    await api("recordings", { method: "POST", body: { device_id: $("rec-device").value, stream_id: recChannel.id, title, start, end } });
+    toast("Inspelningen är planerad. Boxen hämtar schemat inom 20 minuter.");
+    loaders.recordings();
+  }, e.submitter);
 });
 $("rec-guide").addEventListener("click", (e) => {
   const b = e.target.closest("[data-act=rec]"); if (!b || !recChannel) return;
@@ -1076,7 +1140,7 @@ loaders.diagnostics = async () => {
     }).join("") || '<li class="empty">Ingen uppdatering ännu.</li>';
   }
 };
-const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden hackade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar" };
+const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden stannade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar" };
 function describeEvent(ev) {
   const d = ev.detail || {};
   switch (ev.kind) {

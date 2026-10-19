@@ -91,6 +91,13 @@ class MainActivity : Activity() {
     private var secretPresses = 0
     private var secretStartedAt = 0L
 
+    // Dolt val i vuxenläget: tre tryck åt höger på "Inställningar" visar eller döljer favoriter och historik.
+    private var historyPresses = 0
+    private var historyStartedAt = 0L
+
+    // Tillbaka två gånger i menyn stänger appen.
+    private var backPressedAt = 0L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
@@ -213,9 +220,31 @@ class MainActivity : Activity() {
                 }
                 return true
             }
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && event.repeatCount == 0 && prefs.adultMode && isOnSettingsRow()) {
+                val now = SystemClock.elapsedRealtime()
+                if (now - historyStartedAt > 2_000) {
+                    historyStartedAt = now
+                    historyPresses = 0
+                }
+                historyPresses++
+                if (historyPresses >= 3) {
+                    historyPresses = 0
+                    historyStartedAt = 0L
+                    prefs.adultHistory = !prefs.adultHistory
+                    Toast.makeText(this, if (prefs.adultHistory) "Historik visas" else "Historik dold", Toast.LENGTH_SHORT).show()
+                    resetMode()
+                }
+                return true
+            }
         }
         return super.dispatchKeyEvent(event)
     }
+
+    /** Sektioner med en mellankolumn: kategorier och "Nytt tillagt". */
+    private fun hasMiddle(key: String?): Boolean = key != null && (key.startsWith("cat:") || key == "recent")
+
+    /** Vuxenläge utan historik: favoriter och historik visas inte. */
+    private fun privateMode(): Boolean = home?.optString("mode") == "adult" && home?.optBoolean("history", true) == false
 
     private fun isOnSettingsRow(): Boolean {
         val item = currentFocus?.let { menuList.findContainingItemView(it) } ?: return false
@@ -253,6 +282,13 @@ class MainActivity : Activity() {
         }
         if (inItems || Focus.contains(middleList, focused) || focused == searchBox) {
             Focus.position(menuList, menuAdapter.indexOf(section).coerceAtLeast(0))
+            return
+        }
+        // I menyn: två tryck inom två sekunder för att stänga appen.
+        val now = SystemClock.elapsedRealtime()
+        if (now - backPressedAt > 2_000) {
+            backPressedAt = now
+            Toast.makeText(this, "Tryck Tillbaka igen för att stänga", Toast.LENGTH_SHORT).show()
             return
         }
         super.onBackPressed()
@@ -315,7 +351,7 @@ class MainActivity : Activity() {
         val cont = data.optJSONArray("continue")?.length() ?: 0
         if (cont > 0) rows.add(Row("Fortsätt titta", subtitle = countLabel(cont), key = "continue"))
         rows.add(Row("Sök", key = "search"))
-        rows.add(Row("Favoriter", subtitle = countLabel(data.optJSONArray("favorites")?.length()), key = "favorites"))
+        if (!privateMode()) rows.add(Row("Favoriter", subtitle = countLabel(data.optJSONArray("favorites")?.length()), key = "favorites"))
         val recordings = data.optInt("recordings")
         rows.add(Row("Inspelningar", subtitle = if (recordings > 0) countLabel(recordings) else null, key = "recordings"))
         val recentLive = data.optJSONArray("recent_live")?.length() ?: 0
@@ -339,7 +375,7 @@ class MainActivity : Activity() {
                 rows.add(Row(label, subtitle = countLabel(counts?.optJSONObject(type)?.optInt("items")), key = "cat:$type"))
             }
         }
-        if ((data.optJSONArray("recent_vod")?.length() ?: 0) > 0) rows.add(Row("Nya filmer", key = "recent"))
+        if (data.optJSONObject("profile")?.isNull("only_group_id") != false) rows.add(Row("Nytt tillagt", key = "recent"))
         rows.add(Row("Inställningar", key = "settings"))
         Focus.submitKeeping(menuList, menuAdapter, rows)
         menuAdapter.select(section)
@@ -364,7 +400,7 @@ class MainActivity : Activity() {
         if (row.key != section) showSection(row.key)
         when {
             row.key == "search" -> searchBox.requestFocus()
-            row.key.startsWith("cat:") -> Focus.first(middleList)
+            hasMiddle(row.key) -> Focus.first(middleList)
             entries.isNotEmpty() || listing != null -> enterFullscreen()
             else -> Focus.first(itemsList)
         }
@@ -394,7 +430,7 @@ class MainActivity : Activity() {
         menuAdapter.select(key)
         info.text = ""
         loadToken++
-        val isCategoryView = key.startsWith("cat:")
+        val isCategoryView = hasMiddle(key)
         middlePane.visibility = if (isCategoryView && !fullscreen) View.VISIBLE else View.GONE
         searchBox.visibility = if (key == "search") View.VISIBLE else View.GONE
         listing = null
@@ -436,9 +472,15 @@ class MainActivity : Activity() {
                 showEntries(Item.list(data.optJSONArray("watch_hits")), keepFocus, "Inget nytt.")
             }
             key == "recent" -> {
-                listing = Listing("Nya filmer", "vod", null, mutableMapOf("sort" to "added"))
-                paneTitle.text = "Nya filmer"
-                loadListing(reset = true)
+                middleTitle.text = "Nytt tillagt"
+                paneTitle.text = ""
+                categoryKey = null
+                val rows = listOf("vod" to "Filmer", "series" to "Serier", "live" to "Kanaler").map { (type, label) ->
+                    Row(label, subtitle = "Senast tillagda först", key = "$type:new", payload = Pair(type, "new"))
+                }
+                middleAdapter.submit(rows)
+                middleList.scrollToPosition(0)
+                showEntries(emptyList(), false, "Välj Filmer, Serier eller Kanaler. Det nyaste visas först, med datum.")
             }
             key.startsWith("filter:") -> {
                 val f = menuAdapter.rows.firstOrNull { it.key == key }?.payload as? JSONObject
@@ -520,8 +562,12 @@ class MainActivity : Activity() {
         middleAdapter.select(row.key)
         // Behåll vald sortering och filter när man byter kategori.
         val params = listing?.takeIf { it.type == type }?.params ?: mutableMapOf()
-        listing = Listing(row.title, type, if (categoryId == "all") null else categoryId, params)
-        paneTitle.text = row.title
+        listing = if (categoryId == "new") {
+            Listing("Nytt tillagt: ${row.title.lowercase()}", type, null, mutableMapOf("sort" to "added"))
+        } else {
+            Listing(row.title, type, if (categoryId == "all") null else categoryId, params)
+        }
+        paneTitle.text = listing?.title ?: row.title
         updateToolbar()
         if (open) enterFullscreen(focusNow = false)
         loadListing(reset = true, focusFirst = open)
@@ -579,7 +625,9 @@ class MainActivity : Activity() {
             section == "search" || section == "favorites" || section == "hits"
         val grid = isGrid()
         val title = if (item.type == "live" && item.num != null && !mixed) "${item.num}   ${item.name}" else item.name
+        val newLabel = if (section == "recent" && listing?.params?.get("sort") == "added") item.added?.let { Format.addedLabel(it) } else null
         val subtitle = when {
+            newLabel != null -> listOfNotNull(newLabel, if (item.type == "live") item.categoryName else item.facts.ifEmpty { null }).joinToString(" · ")
             item.type == "live" -> epgNow[item.id]?.ifEmpty { null } ?: if (mixed) item.typeLabel else item.categoryName
             grid -> listOfNotNull(if (item.watched) "✓ Sedd" else null, item.facts.ifEmpty { null }).joinToString(" · ")
             mixed -> listOfNotNull(item.typeLabel, item.facts.ifEmpty { null }).joinToString(" · ")
@@ -671,7 +719,7 @@ class MainActivity : Activity() {
         fullscreen = false
         menuPane.visibility = View.VISIBLE
         info.visibility = View.VISIBLE
-        val inCategories = section?.startsWith("cat:") == true
+        val inCategories = hasMiddle(section)
         middlePane.visibility = if (inCategories) View.VISIBLE else View.GONE
         rerender()
         if (restoreFocus) {
@@ -782,7 +830,7 @@ class MainActivity : Activity() {
             "vod" -> options.add("Detaljer" to { DetailActivity.start(this, item.id, item.name) })
             "series" -> options.add("Avsnitt" to { SeriesActivity.start(this, item.id, item.name) })
         }
-        options.add(favoriteLabel to { toggleFavorite(item, position) })
+        if (!privateMode()) options.add(favoriteLabel to { toggleFavorite(item, position) })
         AlertDialog.Builder(this)
             .setTitle(item.name)
             .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
