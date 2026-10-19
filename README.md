@@ -21,7 +21,7 @@ Egen IPTV-lösning för Formuler Z10 Pro och Z Alpha, med Home Assistant som nav
 - **Portaler med automatiskt byte.** Inloggningen kontrolleras varannan minut. Boxarna får alltid en portal som fungerar, och byter själva om strömmen dör.
 - **Felsökning som pekar ut orsaken:** internet, källan, hemnätet, kontot eller en annan app som strömmar. Varje slutsats visar sitt underlag.
 - **Varför listan inte uppdaterades.** Varje steg i listuppdateringen loggas med orsak och tid. En tom eller kraftigt förkortad lista från källan skriver aldrig över den gamla.
-- **Bibliotek med sök, favoriter och egna grupper** i webbadminen, som syns direkt i boxarna.
+- **Bibliotek med sök, sortering, filter, affischvy, favoriter och egna grupper** i webbadminen, som syns direkt i boxarna.
 - **Inspelning till USB-minnet i boxen och timeshift** (paus och spolning i direktsändningar via Toucans arkiv).
 - **Anslutningsvakt.** Toucan stänger av konton som strömmar på två enheter samtidigt. Den andra boxen frågar först och väntar tills den första har stoppat. Servern startar aldrig egna strömmar i bakgrunden.
 
@@ -90,7 +90,7 @@ Se `homeassistant/tv_hub_package.yaml`. Ger status, svarstid, vem som tittar, n�
 ## Utveckling
 
 ```
-python3 tests/test_e2e.py     # 137 kontroller mot en simulerad Xtream-server
+python3 tests/test_e2e.py     # 152 kontroller mot en simulerad Xtream-server
 python3 tests/demo.py         # demodata: admin på http://127.0.0.1:28080
 ```
 

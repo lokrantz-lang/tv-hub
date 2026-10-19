@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -243,6 +244,7 @@ def main():
 
         version_12(ta, tb, pa, pb, good)
         version_13(ta, tb, pa, pb)
+        library_14()
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -496,6 +498,40 @@ def version_13(ta, tb, pa, pb):
     check("box B får schemat", [r["id"] for r in bl] == [ar["id"]], bl)
     s, bad = call("POST", f"{A}/api/recordings", {"stream_id": "101", "start": now + 60, "end": now + 120})
     check("box måste väljas", s == 400, bad)
+
+
+def library_14():
+    print("Version 1.4: biblioteket i webbadminen")
+    s, b = call("GET", f"{A}/api/library/browse?type=vod&sort=duration&max_duration=120")
+    check("admin: sortera och filtrera som i boxen", [i["id"] for i in b["items"]] == ["505", "503"] and b["total"] == 2, b)
+    s, b = call("GET", f"{A}/api/library/browse?type=vod&sort=rating&min_rating=7&min_year=1980&genre=Drama")
+    check("admin: kombinerade filter", b["total"] >= 1 and all(i["rating_num"] >= 7 for i in b["items"]), b)
+    s, normal = call("GET", f"{A}/api/library/browse?type=vod")
+    s, adult = call("GET", f"{A}/api/library/browse?type=vod&adult=1")
+    s, both = call("GET", f"{A}/api/library/browse?type=vod&adult=all")
+    check("admin: vanligt läge visar inte 18+", "599" not in [i["id"] for i in normal["items"]], normal["total"])
+    check("admin: bara 18+", [i["id"] for i in adult["items"]] == ["599"], adult["items"])
+    check("admin: allt", both["total"] == normal["total"] + 1, (both["total"], normal["total"]))
+    s, page = call("GET", f"{A}/api/library/browse?type=vod&offset=2&limit=2")
+    check("admin: sidor", len(page["items"]) == 2 and page["total"] == normal["total"], page)
+    s, b = call("GET", f"{A}/api/library/browse?type=live&q=svt&sort=num")
+    check("admin: sök kanaler", [i["id"] for i in b["items"]] == ["101", "102"], b)
+    s, g = call("GET", f"{A}/api/library/genres?type=vod")
+    check("admin: genrer", "Drama" in [x["name"] for x in g] and "Vuxen" not in [x["name"] for x in g], g)
+    s, d = call("GET", f"{A}/api/library/vod/501")
+    check("admin: detaljer med handling", s == 200 and d.get("plot") and d.get("duration_min") == 166, d)
+    icon = next((i["icon"] for i in normal["items"] if i["icon"]), "")
+    check("affischadresser finns", icon.startswith("http"), normal["items"])
+    s, png = call("GET", f"{A}/api/img?u={urllib.parse.quote(icon, safe='')}", raw=True)
+    check("affisch via servern (https-säkert)", s == 200 and png[:4] == b"\x89PNG", (s, png[:8]))
+    s, png2 = call("GET", f"{A}/api/img?u={urllib.parse.quote(icon, safe='')}", raw=True)
+    check("affisch från cachen", s == 200 and png2 == png, s)
+    s, bad = call("GET", f"{A}/api/img?u={urllib.parse.quote(f'http://127.0.0.1:{FAKE_PORT}/player_api.php', safe='')}")
+    check("bildproxyn vägrar annat än bilder", s == 415, (s, bad))
+    s, bad = call("GET", f"{A}/api/img?u=file:///etc/passwd")
+    check("bildproxyn vägrar lokala filer", s == 400, bad)
+    s, bad = call("GET", f"{D}/api/img?u={urllib.parse.quote(icon, safe='')}")
+    check("bildproxyn nås inte via box-porten", s == 404, s)
 
 
 def _up(url):

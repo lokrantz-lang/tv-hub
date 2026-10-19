@@ -1,5 +1,15 @@
 # Ändringar
 
+## 1.4.0
+
+- Nytt bibliotek i webbadminen: samma sortering och filter som i boxen (betyg, längd, årtal, genre,
+  senast tillagda) och sök inom en kategori.
+- Tre visningar: lista, små och stora affischer. Valet sparas.
+- Klicka på en titel för detaljer: affisch, handling, regi, skådespelare, avsnitt för serier,
+  favorit och grupp. Från en kanal kan man gå direkt till inspelning.
+- Välj innehåll: vanligt, bara 18+ eller allt.
+- Affischerna hämtas via Home Assistant, så att de syns även via Nabu Casa (https).
+
 ## 1.3.0
 
 - Inspelning till USB-minnet i boxen. Spela in från programguiden (OK på ett kommande program,

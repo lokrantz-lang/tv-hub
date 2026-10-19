@@ -4,7 +4,7 @@ TV Hub gör Home Assistant till navet för din IPTV:
 
 - **Portaler med automatiskt byte.** Lägg in Toucans adresser. TV Hub kontrollerar inloggningen varannan minut och boxarna använder alltid den som fungerar.
 - **Felsökning.** När bilden hackar eller listorna inte uppdateras säger TV Hub om felet ligger hos källan, din internetleverantör, hemnätet eller kontot, och visar underlaget.
-- **Bibliotek, favoriter och egna grupper.** Sök bland alla kanaler, filmer och serier från mobilen eller datorn. Allt syns direkt i boxarna.
+- **Bibliotek med sortering, filter och affischvy, favoriter och egna grupper.** Sök bland alla kanaler, filmer och serier från mobilen eller datorn. Allt syns direkt i boxarna.
 - **Helskärm, sortering och filter** för filmer, serier och kanaler, med sparade filter som egna menyrader.
 - **Fortsätt titta**, sedda avsnitt, senaste kanaler, programguide och catch-up.
 - **Profiler per box**, dolda kategorier och bevakning av nya titlar.

@@ -367,6 +367,100 @@ def admin_search(h):
     return 200, catalog.search(q, kind, _int_arg(h.query, "limit", 100, 1, 500), _int_arg(h.query, "offset", 0))
 
 
+def _admin_scope(h):
+    """Innehåll i webbadminen: vanligt (standard), bara vuxen eller allt."""
+    mode = h.query.get("adult", ["0"])[0]
+    return catalog.Scope(adult=None if mode == "all" else (1 if mode == "1" else 0))
+
+
+@route(ADMIN, "GET", r"/api/library/browse")
+def admin_browse(h):
+    kind = h.query.get("type", ["vod"])[0]
+    if kind not in catalog.TYPES:
+        raise HttpError(400, "Okänd typ")
+    params = {k: h.query[k][0] for k in BROWSE_KEYS if k in h.query and h.query[k][0] != ""}
+    items, total = catalog.browse(kind, _admin_scope(h), h.query.get("category_id", [None])[0] or None, params,
+                                  _int_arg(h.query, "offset", 0), _int_arg(h.query, "limit", 120, 1, 500))
+    if kind == "vod":
+        for item in items:
+            item["watched"] = extras.is_watched(1 if item.get("adult") else 0, kind, item["id"])
+    return 200, {"items": items, "total": total}
+
+
+@route(ADMIN, "GET", r"/api/library/genres")
+def admin_genres(h):
+    kind = h.query.get("type", ["vod"])[0]
+    if kind not in catalog.TYPES:
+        raise HttpError(400, "Okänd typ")
+    return 200, catalog.genres(kind, _admin_scope(h))
+
+
+@route(ADMIN, "GET", r"/api/library/vod/([\w\-]+)")
+def admin_vod(h, vod_id):
+    item = info.detail("vod", vod_id)
+    if item is None:
+        raise HttpError(404, "Finns inte.")
+    return 200, item
+
+
+IMG_DIR = None
+IMG_MAX_BYTES = 3 * 1024 * 1024
+IMG_MAX_FILES = 4000
+
+
+@route(ADMIN, "GET", r"/api/img")
+def admin_img(h):
+    """Hämtar affischer via servern. Källans bilder ligger ofta på http, vilket webbläsaren
+    blockerar när webbadminen öppnas via https (Nabu Casa). Bilderna sparas i en cache."""
+    import hashlib
+    import urllib.request
+    global IMG_DIR
+    url = h.query.get("u", [""])[0]
+    if not re.match(r"^https?://", url) or len(url) > 1000:
+        raise HttpError(400, "Ogiltig bildadress")
+    if IMG_DIR is None:
+        IMG_DIR = os.path.join(CFG["data_dir"], "imgcache")
+        os.makedirs(IMG_DIR, exist_ok=True)
+    path = os.path.join(IMG_DIR, hashlib.sha1(url.encode("utf-8")).hexdigest())
+    body, ctype = None, "image/jpeg"
+    if os.path.isfile(path):
+        with open(path, "rb") as fh:
+            body = fh.read()
+        ctype = "image/png" if body[:4] == b"\x89PNG" else ("image/webp" if body[8:12] == b"WEBP" else "image/jpeg")
+    else:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": CFG["user_agent"]})
+            with urllib.request.urlopen(req, timeout=8) as res:
+                ctype = (res.headers.get("Content-Type") or "").split(";")[0].strip()
+                if not ctype.startswith("image/") or ctype == "image/svg+xml":
+                    raise HttpError(415, "Inte en bild")
+                body = res.read(IMG_MAX_BYTES + 1)
+        except HttpError:
+            raise
+        except Exception:
+            raise HttpError(502, "Bilden kunde inte hämtas")
+        if len(body) > IMG_MAX_BYTES:
+            raise HttpError(413, "För stor bild")
+        try:
+            with open(path, "wb") as fh:
+                fh.write(body)
+            names = os.listdir(IMG_DIR)
+            if len(names) > IMG_MAX_FILES:
+                full = sorted((os.path.join(IMG_DIR, n) for n in names), key=os.path.getmtime)
+                for old in full[: len(full) - IMG_MAX_FILES + 200]:
+                    os.remove(old)
+        except OSError:
+            pass
+    h.send_response(200)
+    h.send_header("Content-Type", ctype)
+    h.send_header("Content-Length", str(len(body)))
+    h.send_header("Cache-Control", "private, max-age=604800")
+    h.send_header("X-Content-Type-Options", "nosniff")
+    h.end_headers()
+    h.wfile.write(body)
+    return None
+
+
 @route(ADMIN, "GET", r"/api/library/series/([\w\-]+)")
 def admin_series(h, sid):
     return 200, series_detail(sid)

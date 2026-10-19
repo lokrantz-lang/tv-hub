@@ -1,5 +1,5 @@
 name: TV Hub
-version: "1.3.0"
+version: "1.4.0"
 slug: tv_hub
 description: Egen IPTV-tjänst för Formuler-boxar med portalbyte, favoriter, grupper och felsökning
 url: https://github.com/lokrantz-lang/tv-hub

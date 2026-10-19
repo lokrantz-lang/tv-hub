@@ -13,6 +13,20 @@ from urllib.parse import parse_qs, urlparse
 USER, PASS = "testuser", "testpass"
 STATE = {"mode": "ok", "active_cons": 0}
 
+def _poster(path, w=60, h=90):
+    """En enfärgad PNG som affisch (färgen beror på adressen)."""
+    import struct
+    import zlib
+    seed = sum(path.encode())
+    rgb = bytes(((seed * 37) % 200 + 30, (seed * 91) % 200 + 30, (seed * 53) % 200 + 30))
+    raw = b"".join(b"\x00" + rgb * w for _ in range(h))
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
 LIVE_CATS = [{"category_id": "1", "category_name": "SE | Sverige"},
              {"category_id": "2", "category_name": "Sport"},
              {"category_id": "3", "category_name": "XXX | For Adults"}]
@@ -27,7 +41,7 @@ LIVE = [
       "added": "1700000000", "category_id": "3"}]
 VOD_CATS = [{"category_id": "10", "category_name": "Filmer 2026"}, {"category_id": "11", "category_name": "Svenska"}]
 VOD = [
-    {"stream_id": 500 + i, "name": name, "stream_icon": "", "rating": "7.1", "added": str(1700000000 + i),
+    {"stream_id": 500 + i, "name": name, "stream_icon": f"__BASE__/img/v{500 + i}.png", "rating": "7.1", "added": str(1700000000 + i),
      "category_id": cat, "container_extension": "mkv"}
     for i, (name, cat) in enumerate(
         [("Dune: Part Two (2024)", "10"), ("Oppenheimer (2023)", "10"), ("Jönssonligan (1981)", "11"),
@@ -35,7 +49,7 @@ VOD = [
 ] + [{"stream_id": 599, "name": "Nattfilm", "stream_icon": "", "rating": "", "added": "1700000099",
       "category_id": "10", "container_extension": "mp4", "is_adult": "1"}]
 SERIES_CATS = [{"category_id": "20", "category_name": "Serier"}]
-SERIES = [{"series_id": 900, "name": "Bonusfamiljen", "cover": "", "category_id": "20", "rating": "8",
+SERIES = [{"series_id": 900, "name": "Bonusfamiljen", "cover": "__BASE__/img/s900.png", "category_id": "20", "rating": "8",
            "last_modified": "1700000000", "plot": "Familjedrama i Stockholm.", "genre": "Drama, Komedi",
            "releaseDate": "2017-09-11", "cast": "Vera Vitali", "episode_run_time": "45"}]
 VOD_INFO = {  # längd i sekunder och genre per film
@@ -67,7 +81,10 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def send(self, status, payload, ctype="application/json"):
-        body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+        if isinstance(payload, bytes):
+            body = payload
+        else:
+            body = json.dumps(payload).replace("__BASE__", f"http://{self.headers.get('Host', '127.0.0.1')}").encode()
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -91,6 +108,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if url.path == "/":
             return self.send(404, b"not found", "text/plain")
+        if url.path.startswith("/img/"):
+            return self.send(200, _poster(url.path), "image/png")
 
         if url.path == "/player_api.php":
             if mode == "down_api":

@@ -116,6 +116,49 @@ tbody tr:last-child td { border-bottom: 0; }
   td .btn { min-height: 32px; padding: 4px 8px; }
   .list li { flex-wrap: wrap; }
 }
+
+/* bibliotek */
+.lib-controls { display: grid; gap: 12px; }
+.lib-row { grid-template-columns: 2fr 1.3fr 1.2fr; }
+.lib-filters { grid-template-columns: repeat(5, 1fr); }
+.lib-results.view-list { display: flex; flex-direction: column; }
+.lib-results.view-list .card { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); cursor: pointer; }
+.lib-results.view-list .card:first-child { border-top: 0; }
+.lib-results.view-list .card .art { width: 34px; height: 50px; }
+.lib-results.view-list .card.live .art { width: 44px; height: 44px; }
+.lib-results.view-list .card .meta { flex: 1; min-width: 0; }
+.lib-results.view-small, .lib-results.view-large { display: grid; gap: 14px; }
+.lib-results.view-small { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); }
+.lib-results.view-large { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); }
+.lib-results:not(.view-list) .card { display: flex; flex-direction: column; gap: 6px; cursor: pointer; min-width: 0; position: relative; }
+.lib-results:not(.view-list) .card .art { width: 100%; aspect-ratio: 2 / 3; }
+.lib-results:not(.view-list) .card.live .art { aspect-ratio: 1 / 1; object-fit: contain; padding: 10%; }
+.lib-results:not(.view-list) .card .actions { position: absolute; top: 4px; right: 4px; }
+.lib-results:not(.view-list) .card .actions .star { background: rgba(0,0,0,.55); color: #fff; border-radius: 999px; width: 30px; height: 30px; font-size: 16px; }
+.lib-results:not(.view-list) .card .actions .star.on { color: #ffcc33; }
+.lib-results.view-small .card .sub { display: none; }
+.card .art { border-radius: 8px; background: var(--panel-2); object-fit: cover; flex: none; display: block; }
+.card .title { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card:hover .title { color: var(--accent); }
+.card .seen { position: absolute; left: 6px; top: 6px; background: rgba(0,0,0,.6); color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 6px; }
+.lib-results.view-list .card .seen { position: static; background: none; color: var(--ok); padding: 0; }
+.detail-dialog { border: 0; border-radius: 14px; padding: 0; background: var(--panel); color: var(--text); width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; }
+.detail-dialog::backdrop { background: rgba(0,0,0,.6); }
+.detail-body { display: grid; grid-template-columns: 200px 1fr; gap: 18px; padding: 18px; }
+.detail-body .poster { width: 100%; border-radius: 10px; background: var(--panel-2); aspect-ratio: 2 / 3; object-fit: cover; }
+.detail-body .poster.live { aspect-ratio: 1 / 1; object-fit: contain; }
+.detail-body h3 { margin: 0 0 4px; font-size: 20px; }
+.detail-body .plot { font-size: 14px; line-height: 1.5; margin: 10px 0; }
+.detail-body .close { position: absolute; top: 10px; right: 12px; }
+@media (max-width: 640px) {
+  .lib-row, .lib-filters { grid-template-columns: 1fr 1fr; }
+  .lib-row:not(.lib-filters) .f:first-child { grid-column: 1 / -1; }
+  .lib-results.view-large { grid-template-columns: repeat(2, 1fr); }
+  .lib-results.view-small { grid-template-columns: repeat(3, 1fr); }
+  .detail-body { grid-template-columns: 1fr; }
+  .detail-body .poster { max-width: 180px; }
+}
 </style>
 </head>
 <body>
@@ -174,28 +217,51 @@ tbody tr:last-child td { border-bottom: 0; }
   <!-- BIBLIOTEK -->
   <section class="tabpanel" id="tab-library" hidden>
     <div class="panel">
-      <div class="bd" style="display:grid; gap:12px">
-        <div class="row">
+      <div class="bd lib-controls">
+        <div class="row" style="justify-content:space-between">
           <div class="seg" id="lib-type">
             <button data-type="live" aria-pressed="true">Kanaler</button>
             <button data-type="vod" aria-pressed="false">Filmer</button>
             <button data-type="series" aria-pressed="false">Serier</button>
           </div>
+          <div class="seg" id="lib-view" aria-label="Visning">
+            <button data-view="list" aria-pressed="true" title="Lista">☰ Lista</button>
+            <button data-view="small" aria-pressed="false" title="Små rutor">▦ Små</button>
+            <button data-view="large" aria-pressed="false" title="Stora rutor">▣ Stora</button>
+          </div>
         </div>
-        <div class="form" style="grid-template-columns: 2fr 1fr">
+        <div class="form lib-row">
           <label class="f">Sök<input id="lib-q" type="search" placeholder="t.ex. svt, dune, fotboll" autocomplete="off"></label>
           <label class="f">Kategori<select id="lib-cat"></select></label>
+          <label class="f">Sortera<select id="lib-sort"></select></label>
+        </div>
+        <div class="form lib-row lib-filters" id="lib-filters">
+          <label class="f">Betyg<select id="f-rating">
+            <option value="">Alla</option><option value="5">★ 5 eller högre</option><option value="6">★ 6 eller högre</option>
+            <option value="7">★ 7 eller högre</option><option value="8">★ 8 eller högre</option></select></label>
+          <label class="f" id="f-duration-wrap">Längd<select id="f-duration">
+            <option value="">Alla</option><option value="-90">Under 1 h 30 min</option><option value="-120">Under 2 h</option>
+            <option value="120-">Över 2 h</option></select></label>
+          <label class="f">Årtal<select id="f-year">
+            <option value="">Alla</option><option value="2020-">Från 2020</option><option value="2010-">Från 2010</option>
+            <option value="2000-">Från 2000</option><option value="-1999">Före 2000</option></select></label>
+          <label class="f">Genre<select id="f-genre"><option value="">Alla</option></select></label>
+          <label class="f">Innehåll<select id="f-adult">
+            <option value="0">Vanligt</option><option value="1">Bara 18+</option><option value="all">Allt</option></select></label>
         </div>
       </div>
     </div>
     <div class="panel" style="margin-top:16px">
-      <div class="hd"><h2 id="lib-title">Resultat</h2><span class="small muted" id="lib-count"></span></div>
-      <div class="bd"><ul class="list" id="lib-list"></ul></div>
+      <div class="hd"><h2 id="lib-title">Resultat</h2>
+        <div class="row" style="gap:8px"><span class="small muted" id="lib-count"></span><button class="btn ghost small hidden" id="lib-clear">Rensa filter</button></div></div>
+      <div class="bd">
+        <div id="lib-list" class="lib-results view-list"></div>
+        <div id="lib-more" class="empty hidden">Hämtar fler…</div>
+      </div>
     </div>
-    <div class="panel hidden" id="series-panel" style="margin-top:16px">
-      <div class="hd"><h2 id="series-title"></h2><button class="btn ghost" id="series-close">Stäng</button></div>
-      <div class="bd" id="series-body"></div>
-    </div>
+    <dialog id="lib-detail" class="detail-dialog">
+      <div class="detail-body" id="lib-detail-body"></div>
+    </dialog>
   </section>
 
   <!-- FAVORITER OCH GRUPPER -->
@@ -473,73 +539,199 @@ $("sync-btn").addEventListener("click", (e) => guarded(async () => {
 }, e.currentTarget));
 
 /* ---------- bibliotek ---------- */
-let libType = "live", groupsCache = [];
-async function loadGroupsCache() { groupsCache = await api("groups").catch(() => []); }
-loaders.library = async () => {
-  await loadGroupsCache();
-  await loadCategories();
-  runLibrary();
+const LIB_SORTS = {
+  live: [["num", "Kanalnummer"], ["name", "Namn"]],
+  vod: [["added", "Senast tillagda"], ["rating", "Betyg"], ["year", "Årtal"], ["duration", "Längd, kortast först"], ["duration_desc", "Längd, längst först"], ["name", "Namn"]],
+  series: [["added", "Senast tillagda"], ["rating", "Betyg"], ["year", "Årtal"], ["name", "Namn"]],
 };
+const LIB_PAGE = 120;
+const lib = { type: "live", view: "list", items: [], total: 0, loading: false, token: 0 };
+let groupsCache = [];
+try { const saved = JSON.parse(localStorage.getItem("tvhub-lib") || "{}"); if (saved.type) lib.type = saved.type; if (saved.view) lib.view = saved.view; } catch (_) {}
+const libSave = () => { try { localStorage.setItem("tvhub-lib", JSON.stringify({ type: lib.type, view: lib.view })); } catch (_) {} };
+const img = (u) => u ? "api/img?u=" + encodeURIComponent(u) : "";
+async function loadGroupsCache() { groupsCache = await api("groups").catch(() => []); }
+
+loaders.library = async () => {
+  setSeg("lib-type", "type", lib.type); setSeg("lib-view", "view", lib.view);
+  await loadGroupsCache();
+  await libTypeChanged(false);
+};
+function setSeg(id, key, value) { $(id).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset[key] === value)); }
 async function loadCategories() {
-  const cats = await api(`library/categories?type=${libType}`).catch(() => []);
-  $("lib-cat").innerHTML = `<option value="">Välj kategori…</option>` + cats.map((c) => `<option value="${esc(c.category_id)}">${c.adult ? "🔞 " : ""}${esc(c.name)} (${c.count})</option>`).join("");
+  const cats = await api(`library/categories?type=${lib.type}`).catch(() => []);
+  $("lib-cat").innerHTML = `<option value="">Alla kategorier</option>` + cats.map((c) => `<option value="${esc(c.category_id)}">${c.adult ? "🔞 " : ""}${c.hidden ? "(dold) " : ""}${esc(c.name)} (${c.count})</option>`).join("");
 }
-$("lib-type").addEventListener("click", async (e) => {
+async function loadGenres() {
+  if (lib.type === "live") return;
+  const keep = $("f-genre").value;
+  const g = await api(`library/genres?type=${lib.type}&adult=${$("f-adult").value}`).catch(() => []);
+  $("f-genre").innerHTML = '<option value="">Alla</option>' + g.map((x) => `<option value="${esc(x.name)}">${esc(x.name)} (${x.count})</option>`).join("");
+  if (g.some((x) => x.name === keep)) $("f-genre").value = keep;
+}
+async function libTypeChanged(reset = true) {
+  $("lib-sort").innerHTML = LIB_SORTS[lib.type].map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+  $("lib-filters").classList.toggle("hidden", lib.type === "live");
+  $("f-duration-wrap").classList.toggle("hidden", lib.type !== "vod");
+  if (reset) { ["f-rating", "f-duration", "f-year", "f-genre"].forEach((id) => $(id).value = ""); $("lib-q").value = ""; }
+  await Promise.all([loadCategories(), loadGenres()]);
+  runLibrary();
+}
+function libParams() {
+  const p = new URLSearchParams({ type: lib.type, sort: $("lib-sort").value, adult: $("f-adult").value });
+  const q = $("lib-q").value.trim(); if (q) p.set("q", q);
+  const cat = $("lib-cat").value; if (cat) p.set("category_id", cat);
+  if (lib.type !== "live") {
+    const r = $("f-rating").value; if (r) p.set("min_rating", r);
+    const [ylo, yhi] = $("f-year").value.split("-"); if (ylo) p.set("min_year", ylo); if (yhi) p.set("max_year", yhi);
+    const g = $("f-genre").value; if (g) p.set("genre", g);
+    if (lib.type === "vod") { const [dlo, dhi] = $("f-duration").value.split("-"); if (dlo) p.set("min_duration", dlo); if (dhi) p.set("max_duration", dhi); }
+  }
+  return p;
+}
+function filtersActive() {
+  return !!($("lib-q").value.trim() || $("lib-cat").value || (lib.type !== "live" && ($("f-rating").value || $("f-year").value || $("f-genre").value || $("f-duration").value)) || $("f-adult").value !== "0");
+}
+async function runLibrary(append = false) {
+  const token = append ? lib.token : ++lib.token;
+  if (append) { if (lib.loading || lib.items.length >= lib.total) return; } else { lib.items = []; lib.total = 0; }
+  lib.loading = true;
+  const p = libParams(); p.set("offset", lib.items.length); p.set("limit", LIB_PAGE);
+  $("lib-more").classList.toggle("hidden", !append);
+  if (!append) $("lib-list").innerHTML = '<div class="empty">Hämtar…</div>';
+  try {
+    const r = await api("library/browse?" + p.toString());
+    if (token !== lib.token) return;
+    lib.items = lib.items.concat(r.items); lib.total = r.total;
+    const html = r.items.map(cardHtml).join("");
+    if (append) $("lib-list").insertAdjacentHTML("beforeend", html); else $("lib-list").innerHTML = html || '<div class="empty">Inget matchar.</div>';
+  } catch (e) { if (!append) $("lib-list").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  finally { if (token === lib.token) lib.loading = false; $("lib-more").classList.add("hidden"); }
+  $("lib-list").className = "lib-results view-" + lib.view;
+  const cat = $("lib-cat").value ? $("lib-cat").selectedOptions[0].textContent.replace(/ \(\d+\)$/, "") : `Alla ${({ live: "kanaler", vod: "filmer", series: "serier" })[lib.type]}`;
+  $("lib-title").textContent = $("lib-q").value.trim() ? `Sökning: ${$("lib-q").value.trim()}` : cat;
+  $("lib-count").textContent = lib.total ? `${lib.items.length < lib.total ? `${lib.items.length} av ` : ""}${lib.total.toLocaleString("sv-SE")} st` : "";
+  $("lib-clear").classList.toggle("hidden", !filtersActive());
+}
+function facts(it) {
+  return [it.year, it.rating_num ? "★ " + String(it.rating_num).replace(".", ",") : null, it.duration_min ? fmtMin(it.duration_min) : null].filter(Boolean).join(" · ");
+}
+const fmtMin = (m) => m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
+function cardHtml(it) {
+  const art = it.icon ? `<img class="art" src="${img(it.icon)}" alt="" loading="lazy" onerror="this.removeAttribute('src')">` : `<span class="art"></span>`;
+  const sub = it.type === "live" ? (it.category_name || "") : (facts(it) || it.category_name || "");
+  return `<div class="card ${it.type}" data-type="${it.type}" data-id="${esc(it.id)}" data-name="${esc(it.name)}" tabindex="0">${art}
+    ${it.watched ? '<span class="seen">✓ Sedd</span>' : ""}
+    <div class="meta" style="min-width:0"><div class="title" title="${esc(it.name)}">${it.adult ? '<span class="pill warn">18+</span> ' : ""}${it.type === "live" && it.num ? `<span class="muted">${it.num}</span> ` : ""}${esc(it.name)}</div>
+    <div class="sub">${esc(sub)}${lib.view === "list" && it.genre ? " · " + esc(it.genre) : ""}</div></div>
+    <div class="actions"><button class="star ${it.favorite ? "on" : ""}" data-act="fav" aria-label="Favorit" aria-pressed="${!!it.favorite}">${it.favorite ? "★" : "☆"}</button></div></div>`;
+}
+
+$("lib-type").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b || b.dataset.type === lib.type) return;
+  lib.type = b.dataset.type; setSeg("lib-type", "type", lib.type); libSave(); libTypeChanged();
+});
+$("lib-view").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
-  libType = b.dataset.type;
-  $("lib-type").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
-  await loadCategories(); runLibrary();
+  lib.view = b.dataset.view; setSeg("lib-view", "view", lib.view); libSave();
+  $("lib-list").className = "lib-results view-" + lib.view;
+  $("lib-list").innerHTML = lib.items.map(cardHtml).join("") || $("lib-list").innerHTML;
 });
 let qTimer;
-$("lib-q").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(runLibrary, 250); });
-$("lib-cat").addEventListener("change", () => { $("lib-q").value = ""; runLibrary(); });
-async function runLibrary() {
-  const q = $("lib-q").value.trim(); const cat = $("lib-cat").value;
-  let items = [];
-  if (q) { items = await api(`library/search?type=${libType}&q=${encodeURIComponent(q)}&limit=200`).catch((e) => (toast(e.message), [])); $("lib-title").textContent = `Sökning: ${q}`; }
-  else if (cat) { items = await api(`library/items?type=${libType}&category_id=${encodeURIComponent(cat)}&limit=1000`).catch(() => []); $("lib-title").textContent = $("lib-cat").selectedOptions[0].textContent; }
-  else { $("lib-title").textContent = "Resultat"; $("lib-count").textContent = ""; $("lib-list").innerHTML = '<li class="empty">Sök eller välj en kategori.</li>'; return; }
-  $("lib-count").textContent = `${items.length} st`;
-  $("lib-list").innerHTML = items.map(itemRow).join("") || '<li class="empty">Inga träffar.</li>';
-}
-function itemRow(it) {
-  const img = it.icon ? `<img class="thumb ${it.type !== "live" ? "poster" : ""}" src="${esc(it.icon)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<span class="thumb ${it.type !== "live" ? "poster" : ""}"></span>`;
-  const groupOpts = groupsCache.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join("");
-  return `<li data-type="${it.type}" data-id="${esc(it.id)}" data-name="${esc(it.name)}">${img}
-    <div class="grow"><div class="ellipsis">${it.adult ? '<span class="pill warn">18+</span> ' : ""}${esc(it.name)}</div><div class="small muted ellipsis">${TYPE_LABEL[it.type]}${it.category_name ? " · " + esc(it.category_name) : ""}${it.year ? " · " + it.year : ""}${it.rating_num ? " · ★ " + it.rating_num : ""}${it.duration_min ? " · " + it.duration_min + " min" : ""}</div></div>
-    ${it.type === "series" ? `<button class="btn ghost small" data-act="series">Avsnitt</button>` : ""}
-    ${groupsCache.length ? `<select data-act="group" aria-label="Lägg i grupp" style="width:auto; min-height:34px"><option value="">+ Grupp</option>${groupOpts}</select>` : ""}
-    <button class="star ${it.favorite ? "on" : ""}" data-act="fav" aria-label="Favorit" aria-pressed="${!!it.favorite}">${it.favorite ? "★" : "☆"}</button></li>`;
-}
-$("lib-list").addEventListener("click", (e) => {
-  const li = e.target.closest("li[data-id]"); if (!li) return;
-  const act = e.target.closest("[data-act]"); if (!act) return;
-  if (act.dataset.act === "fav") toggleFav(li.dataset.type, li.dataset.id, act);
-  if (act.dataset.act === "series") openSeries(li.dataset.id, li.dataset.name);
+$("lib-q").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(() => runLibrary(), 300); });
+["lib-cat", "lib-sort", "f-rating", "f-duration", "f-year", "f-genre"].forEach((id) => $(id).addEventListener("change", () => runLibrary()));
+$("f-adult").addEventListener("change", async () => { await Promise.all([loadGenres()]); runLibrary(); });
+$("lib-clear").addEventListener("click", () => {
+  ["lib-q", "lib-cat", "f-rating", "f-duration", "f-year", "f-genre"].forEach((id) => $(id).value = "");
+  $("f-adult").value = "0"; runLibrary();
 });
-$("lib-list").addEventListener("change", (e) => {
-  const sel = e.target.closest("select[data-act=group]"); if (!sel || !sel.value) return;
-  const li = sel.closest("li");
-  const g = groupsCache.find((x) => String(x.id) === sel.value);
-  guarded(async () => { await api(`groups/${sel.value}/items`, { method: "POST", body: { type: li.dataset.type, id: li.dataset.id } }); toast(`Lagd i ${g ? g.name : "gruppen"}`); });
-  sel.value = "";
+// Hämta nästa sida när man närmar sig slutet.
+window.addEventListener("scroll", () => {
+  if (current !== "library" || lib.loading || lib.items.length >= lib.total) return;
+  if (window.innerHeight + window.scrollY > document.body.offsetHeight - 800) runLibrary(true);
+}, { passive: true });
+
+$("lib-list").addEventListener("click", (e) => {
+  const card = e.target.closest(".card[data-id]"); if (!card) return;
+  const fav = e.target.closest("[data-act=fav]");
+  if (fav) { e.stopPropagation(); toggleFav(card.dataset.type, card.dataset.id, fav); return; }
+  openDetail(card.dataset.type, card.dataset.id);
+});
+$("lib-list").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const card = e.target.closest(".card[data-id]"); if (card) openDetail(card.dataset.type, card.dataset.id);
 });
 async function toggleFav(type, id, btn) {
   const on = !btn.classList.contains("on");
   await guarded(async () => {
     await api("favorites", { method: "POST", body: { type, id, on } });
-    btn.classList.toggle("on", on); btn.textContent = on ? "★" : "☆"; btn.setAttribute("aria-pressed", on);
+    document.querySelectorAll(`.card[data-type="${type}"][data-id="${CSS.escape(id)}"] [data-act=fav]`).forEach((b) => {
+      b.classList.toggle("on", on); b.textContent = on ? "★" : "☆"; b.setAttribute("aria-pressed", on);
+    });
+    const it = lib.items.find((x) => x.type === type && String(x.id) === String(id)); if (it) it.favorite = on;
+    toast(on ? "Lagd till i favoriter" : "Borttagen ur favoriter");
   });
 }
-async function openSeries(id, name) {
-  $("series-panel").classList.remove("hidden"); $("series-title").textContent = name; $("series-body").innerHTML = '<div class="empty">Hämtar…</div>';
+async function openDetail(type, id) {
+  const base = lib.items.find((x) => x.type === type && String(x.id) === String(id)) || { type, id, name: "" };
+  const dlg = $("lib-detail");
+  renderDetail(base, null);
+  if (!dlg.open) dlg.showModal();
   try {
-    const s = await api(`library/series/${encodeURIComponent(id)}`);
-    $("series-body").innerHTML = (s.plot ? `<p class="small">${esc(s.plot)}</p>` : "") + s.seasons.map((se) => `<h3 style="font-size:14px; margin:12px 0 4px">Säsong ${esc(se.season)}</h3><ul class="list">${se.episodes.map((ep) => `<li><div class="grow"><div class="ellipsis">${esc(ep.num)}. ${esc(ep.title)}</div>${ep.plot ? `<div class="small muted ellipsis">${esc(ep.plot)}</div>` : ""}</div><span class="small muted">${esc(ep.duration || "")}</span></li>`).join("")}</ul>`).join("");
-    $("series-panel").scrollIntoView({ behavior: "smooth" });
-  } catch (e) { $("series-body").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    if (type === "vod") renderDetail(Object.assign({}, base, await api(`library/vod/${encodeURIComponent(id)}`)), null);
+    if (type === "series") renderDetail(base, await api(`library/series/${encodeURIComponent(id)}`));
+  } catch (e) { toast(e.message); }
 }
-$("series-close").addEventListener("click", () => $("series-panel").classList.add("hidden"));
+function renderDetail(it, series) {
+  const poster = it.poster || it.icon || (series && series.cover);
+  const plot = it.plot || (series && series.plot);
+  const groupOpts = groupsCache.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join("");
+  const people = [it.director ? `Regi: ${esc(it.director)}` : "", it.actors ? `Medverkande: ${esc(it.actors)}` : ""].filter(Boolean).join("<br>");
+  const seasons = series && series.seasons ? series.seasons.map((se) => `<h4 style="margin:14px 0 4px; font-size:14px">Säsong ${esc(se.season)}</h4><ul class="list">${se.episodes.map((ep) => `<li><div class="grow"><div class="ellipsis">${esc(ep.num)}. ${esc(ep.title)}</div>${ep.plot ? `<div class="small muted ellipsis">${esc(ep.plot)}</div>` : ""}</div><span class="small muted">${esc(ep.duration || "")}</span></li>`).join("")}</ul>`).join("") : "";
+  $("lib-detail-body").innerHTML = `
+    <div>${poster ? `<img class="poster ${it.type}" src="${img(poster)}" alt="" onerror="this.removeAttribute('src')">` : `<div class="poster ${it.type}"></div>`}</div>
+    <div style="min-width:0">
+      <button class="btn ghost small close" data-act="close" aria-label="Stäng">✕</button>
+      <h3>${it.adult ? '<span class="pill warn">18+</span> ' : ""}${esc(it.name)}</h3>
+      <div class="small muted">${[TYPE_LABEL[it.type], it.category_name, facts(it), it.genre, it.country].filter(Boolean).map(esc).join(" · ")}</div>
+      ${it.watched ? '<div class="small" style="color:var(--ok); margin-top:4px">✓ Sedd</div>' : ""}
+      ${plot ? `<p class="plot">${esc(plot)}</p>` : (it.type === "vod" && !series ? '<p class="plot muted">Hämtar handling…</p>' : "")}
+      ${people ? `<p class="small muted">${people}</p>` : ""}
+      <div class="row" style="gap:8px; margin-top:12px; flex-wrap:wrap">
+        <button class="btn ${it.favorite ? "" : "primary"} star-btn" data-act="fav" aria-pressed="${!!it.favorite}" data-type="${it.type}" data-id="${esc(it.id)}">${it.favorite ? "★ Favorit" : "☆ Lägg till i favoriter"}</button>
+        ${groupsCache.length ? `<select data-act="group" style="width:auto"><option value="">+ Lägg i grupp</option>${groupOpts}</select>` : ""}
+        ${it.type === "live" ? `<button class="btn" data-act="record">Spela in från guiden…</button>` : ""}
+      </div>
+      ${series === null && it.type === "series" ? '<div class="empty">Hämtar avsnitt…</div>' : seasons}
+    </div>`;
+}
+$("lib-detail").addEventListener("click", (e) => {
+  const dlg = $("lib-detail");
+  if (e.target === dlg) return dlg.close();  // klick utanför rutan
+  const act = e.target.closest("[data-act]"); if (!act) return;
+  if (act.dataset.act === "close") dlg.close();
+  if (act.dataset.act === "fav") {
+    const on = act.getAttribute("aria-pressed") !== "true";
+    guarded(async () => {
+      await api("favorites", { method: "POST", body: { type: act.dataset.type, id: act.dataset.id, on } });
+      act.setAttribute("aria-pressed", on); act.textContent = on ? "★ Favorit" : "☆ Lägg till i favoriter"; act.classList.toggle("primary", !on);
+      const it = lib.items.find((x) => x.type === act.dataset.type && String(x.id) === act.dataset.id); if (it) it.favorite = on;
+      document.querySelectorAll(`.card[data-type="${act.dataset.type}"][data-id="${CSS.escape(act.dataset.id)}"] [data-act=fav]`).forEach((b) => { b.classList.toggle("on", on); b.textContent = on ? "★" : "☆"; });
+      toast(on ? "Lagd till i favoriter" : "Borttagen ur favoriter");
+    });
+  }
+  if (act.dataset.act === "record") {
+    const name = $("lib-detail-body").querySelector("h3").textContent.trim();
+    dlg.close(); showTab("recordings"); $("rec-q").value = name; $("rec-q").dispatchEvent(new Event("input"));
+  }
+});
+$("lib-detail").addEventListener("change", (e) => {
+  const sel = e.target.closest("select[data-act=group]"); if (!sel || !sel.value) return;
+  const favBtn = $("lib-detail").querySelector("[data-act=fav]");
+  const g = groupsCache.find((x) => String(x.id) === sel.value);
+  guarded(async () => { await api(`groups/${sel.value}/items`, { method: "POST", body: { type: favBtn.dataset.type, id: favBtn.dataset.id } }); toast(`Lagd i ${g ? g.name : "gruppen"}`); });
+  sel.value = "";
+});
 
 /* ---------- favoriter och grupper ---------- */
 loaders.collections = async () => {
