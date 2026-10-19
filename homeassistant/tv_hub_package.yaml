@@ -68,7 +68,7 @@ automation:
         to: "on"
         for: "00:05:00"
     actions:
-      # Byt notify.notify mot din telefon, t.ex. notify.mobile_app_henriks_telefon
+      # Byt notify.notify mot din telefon, t.ex. mobile_app_din_telefon
       - action: notify.notify
         data:
           title: "TV Hub: {{ state_attr('sensor.tv_hub_status', 'headline') }}"
