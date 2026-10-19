@@ -63,10 +63,10 @@ VOD_INFO = {  # längd i sekunder och genre per film
 }
 APK = b"PK" + b"\x00" * 200_000
 SERIES_INFO = {
-    "info": {"name": "Bonusfamiljen", "plot": "Familjedrama.", "cover": ""},
+    "info": {"name": "Bonusfamiljen", "plot": "Familjedrama.", "cover": "", "backdrop_path": ["__BASE__/img/bs900.png"]},
     "episodes": {
         "1": [{"id": "9001", "episode_num": 1, "title": "S01E01", "container_extension": "mp4",
-               "info": {"duration": "00:45:00", "plot": "Första."}}],
+               "info": {"duration": "00:45:00", "plot": "Första.", "movie_image": "__BASE__/img/e9001.png"}}],
         "2": [{"id": "9002", "episode_num": 1, "title": "S02E01", "container_extension": "mp4",
                "info": {"duration": "00:44:00"}}],
     },
@@ -110,7 +110,8 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/":
             return self.send(404, b"not found", "text/plain")
         if url.path.startswith("/img/"):
-            return self.send(200, _poster(url.path), "image/png")
+            wide = url.path.startswith("/img/b") or url.path.startswith("/img/e")
+            return self.send(200, _poster(url.path, *((160, 90) if wide else (60, 90))), "image/png")
 
         if url.path == "/player_api.php":
             if mode == "down_api":
@@ -157,7 +158,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {"info": {"duration_secs": secs, "genre": genre, "releasedate": release,
                                                 "plot": f"Handling för film {vid}.", "cast": "Skådespelare A",
                                                 "director": "Regissör B", "rating": rating,
-                                                "movie_image": "", "backdrop_path": ["http://x/b.jpg"]},
+                                                "movie_image": "", "backdrop_path": [f"__BASE__/img/b{vid}.png"]},
                                        "movie_data": {"stream_id": int(vid)}})
             if action == "get_simple_data_table":
                 now = int(time.time())

@@ -40,6 +40,7 @@ class GuideActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Prefs(this).modern) Fonts.install(this)
         setContentView(R.layout.activity_guide)
         Api.init(Prefs(this))
         streamId = intent.getStringExtra("id") ?: return finish()
@@ -48,6 +49,7 @@ class GuideActivity : Activity() {
         status = findViewById(R.id.status)
         list = findViewById(R.id.programs)
         adapter = RowAdapter(onClick = { row, _ -> open(row) }, onLongClick = { row, _ -> options(row) })
+        adapter.modern = Prefs(this).modern
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
         list.itemAnimator = null
@@ -132,20 +134,13 @@ class GuideActivity : Activity() {
             Toast.makeText(this, "Inga val för det här programmet.", Toast.LENGTH_SHORT).show()
             return
         }
-        AlertDialog.Builder(this)
-            .setTitle(p.title)
-            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
-            .show()
+        Look.choose(this, p.title, options.map { it.first }) { which -> options[which].second() }
     }
 
     private fun confirmRecord(p: Program) {
-        AlertDialog.Builder(this)
-            .setTitle("Spela in?")
-            .setMessage("${p.title}\n${dayFormat.format(Date(p.start * 1000))} ${timeFormat.format(Date(p.start * 1000))}–${timeFormat.format(Date(p.end * 1000))}\n\n" +
-                "Sparas på USB-minnet. Boxen måste vara påslagen eller i standby när programmet sänds.")
-            .setPositiveButton("Spela in") { _, _ -> record(p) }
-            .setNegativeButton("Avbryt", null)
-            .show()
+        Look.confirm(this, "Spela in?",
+            "${p.title}\n${dayFormat.format(Date(p.start * 1000))} ${timeFormat.format(Date(p.start * 1000))}–${timeFormat.format(Date(p.end * 1000))}\n\n" +
+                "Sparas på USB-minnet. Boxen måste vara påslagen eller i standby när programmet sänds.", "Spela in") { record(p) }
     }
 
     private fun record(p: Program) {

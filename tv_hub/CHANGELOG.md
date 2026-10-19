@@ -1,5 +1,20 @@
 # Ändringar
 
+## 1.6.0
+
+- Nytt modernt utseende i boxarna, inspirerat av Apple TV, Netflix och Google TV:
+  - Smal meny med ikoner till vänster som fälls ut med texter.
+  - Hem med stor bild överst och rader: Fortsätt titta, favoritkanaler med nu-program,
+    nytt, topprankat, grupper och sparade filter.
+  - Live-TV med kanalloggor, nu-program med förlopp och de närmaste programmen.
+  - Filmer och Serier som affischrutnät med kategorier som flikar, sortering och filter.
+  - Sök med eget bokstavsrutnät och senaste sökningar.
+  - Detaljsida med bakgrundsbild och "Mer som detta", seriesida med säsongsflikar och avsnittsbilder.
+  - Spelare med tidslinje, sluttid, LIVE-märke, kanallogga och "Nästa avsnitt".
+  - Sidopaneler i stället för dialogrutor, vit markering och typsnittet Inter.
+- Det klassiska utseendet finns kvar: Inställningar → Utseende.
+- Ny appikon och banner.
+
 ## 1.5.0
 
 - Vuxeninnehåll avgörs nu bara av kategorin ("For Adults", "Porn" eller "XXX" i namnet). Vanliga filmer

@@ -10,40 +10,81 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
 
-/** Enkel bildladdare med minnescache. Bilderna skalas ner för att spara minne på boxen. */
+/**
+ * Enkel bildladdare med minnescache. Bilderna skalas ner till ungefär den storlek de visas i:
+ * affischer och loggor 320 px, bakgrundsbilder högst 960 px. Bilder som laddas tonas in.
+ */
 object ImageLoader {
     private const val MAX_SIDE = 320
-    private val cache = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
+    const val BACKDROP = 960
+    private val cache = object : LruCache<String, Bitmap>(cacheBytes()) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
     private val failed = HashSet<String>()
     private val pool = Executors.newFixedThreadPool(3)
     private val main = Handler(Looper.getMainLooper())
 
-    fun load(view: ImageView, url: String?) {
+    private fun cacheBytes(): Int {
+        val max = Runtime.getRuntime().maxMemory()
+        return (max / 8).coerceIn(16L * 1024 * 1024, 64L * 1024 * 1024).toInt()
+    }
+
+    fun load(view: ImageView, url: String?, maxSide: Int = MAX_SIDE, fade: Boolean = false, onDone: ((Boolean) -> Unit)? = null) {
         view.tag = url
         view.setImageDrawable(null)
-        if (url.isNullOrBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) return
-        val cached = cache.get(url)
-        if (cached != null) {
-            view.setImageBitmap(cached)
+        if (url.isNullOrBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) {
+            onDone?.invoke(false)
             return
         }
-        synchronized(failed) { if (url in failed) return }
+        val key = "$maxSide|$url"
+        val cached = cache.get(key)
+        if (cached != null) {
+            view.alpha = 1f
+            view.setImageBitmap(cached)
+            onDone?.invoke(true)
+            return
+        }
+        synchronized(failed) {
+            if (url in failed) {
+                onDone?.invoke(false)
+                return
+            }
+        }
         pool.execute {
             val bitmap = try {
-                fetch(url)
+                fetch(url, maxSide)
             } catch (_: Throwable) {
                 null
             }
-            if (bitmap != null) cache.put(url, bitmap) else synchronized(failed) { failed.add(url) }
+            if (bitmap != null) cache.put(key, bitmap) else synchronized(failed) { failed.add(url) }
             main.post {
-                if (view.tag == url && bitmap != null) view.setImageBitmap(bitmap)
+                if (view.tag != url) return@post
+                if (bitmap != null) {
+                    view.setImageBitmap(bitmap)
+                    if (fade && !Look.lite) {
+                        view.alpha = 0f
+                        view.animate().alpha(1f).setDuration(220).start()
+                    } else {
+                        view.alpha = 1f
+                    }
+                }
+                onDone?.invoke(bitmap != null)
             }
         }
     }
 
-    private fun fetch(url: String): Bitmap? {
+    /** Hämtar i förväg så att nästa rad visas direkt. */
+    fun prefetch(url: String?, maxSide: Int = MAX_SIDE) {
+        if (url.isNullOrBlank() || cache.get("$maxSide|$url") != null) return
+        pool.execute {
+            try {
+                fetch(url, maxSide)?.let { cache.put("$maxSide|$url", it) }
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private fun fetch(url: String, maxSide: Int): Bitmap? {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 5_000
         conn.readTimeout = 8_000
@@ -55,8 +96,11 @@ object ImageLoader {
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
             var sample = 1
-            while (bounds.outWidth / sample > MAX_SIDE || bounds.outHeight / sample > MAX_SIDE) sample *= 2
-            val options = BitmapFactory.Options().apply { inSampleSize = sample }
+            while (bounds.outWidth / (sample * 2) >= maxSide || bounds.outHeight / (sample * 2) >= maxSide) sample *= 2
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = if (maxSide > MAX_SIDE) Bitmap.Config.RGB_565 else Bitmap.Config.ARGB_8888
+            }
             return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
         } finally {
             conn.disconnect()

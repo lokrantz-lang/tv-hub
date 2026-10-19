@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/hero"
+        android:layout_width="match_parent"
+        android:layout_height="230dp"
+        android:gravity="bottom"
+        android:orientation="vertical"
+        android:paddingEnd="420dp"
+        android:paddingBottom="12dp">
+
+        <TextView
+            android:id="@+id/hero_kicker"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:letterSpacing="0.08"
+            android:textAllCaps="true"
+            android:textColor="@color/m_text2"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/hero_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="2"
+            android:textColor="@color/m_text"
+            android:textSize="34sp" />
+
+        <TextView
+            android:id="@+id/hero_meta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:maxLines="1"
+            android:textColor="@color/m_text2"
+            android:textSize="15sp" />
+
+        <ProgressBar
+            android:id="@+id/hero_progress"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="220dp"
+            android:layout_height="4dp"
+            android:layout_marginTop="8dp"
+            android:max="1000"
+            android:progressDrawable="@drawable/m_progress"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/hero_plot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:ellipsize="end"
+            android:lineSpacingExtra="3dp"
+            android:maxLines="3"
+            android:textColor="@color/m_text"
+            android:textSize="15sp" />
+    </LinearLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/shelves"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingBottom="200dp" />
+</LinearLayout>

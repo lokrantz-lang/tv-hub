@@ -115,6 +115,12 @@ class MainActivity : Activity() {
             Session.recordingsSynced = true
             RecScheduler.sync(this)
         }
+        if (prefs.modern) {
+            // Det moderna utseendet är standard. Det klassiska väljs under Inställningar → Utseende.
+            startActivity(Intent(this, HomeActivity::class.java))
+            finish()
+            return
+        }
         setContentView(R.layout.activity_main)
         menuPane = findViewById(R.id.menu_pane)
         menuList = findViewById(R.id.menu)
@@ -1130,6 +1136,7 @@ class MainActivity : Activity() {
 
     private fun showSettings() {
         val options = arrayOf(
+            "Utseende: Klassiskt (byt till Modernt)",
             "Testa hastigheten i hemnätet",
             "Var inspelningar sparas",
             "Sök efter uppdatering av appen",
@@ -1141,16 +1148,21 @@ class MainActivity : Activity() {
             .setTitle("Inställningar")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> runSpeedTest()
-                    1 -> chooseRecordingStorage()
-                    2 -> Updater.check(this, prefs, quiet = false)
-                    3 -> {
+                    0 -> {
+                        prefs.modern = true
+                        startActivity(Intent(this, HomeActivity::class.java))
+                        finish()
+                    }
+                    1 -> runSpeedTest()
+                    2 -> chooseRecordingStorage()
+                    3 -> Updater.check(this, prefs, quiet = false)
+                    4 -> {
                         home = null
                         section = null
                         loadHome()
                     }
-                    4 -> confirmRepair()
-                    5 -> showAbout()
+                    5 -> confirmRepair()
+                    6 -> showAbout()
                 }
             }
             .show()

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/m_bg">
+
+    <ImageView
+        android:id="@+id/backdrop"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0.55"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/m_scrim_left" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:paddingStart="64dp"
+        android:paddingTop="48dp"
+        android:paddingEnd="48dp">
+
+        <LinearLayout
+            android:layout_width="340dp"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/cover"
+                android:layout_width="160dp"
+                android:layout_height="240dp"
+                android:background="@drawable/m_card_bg"
+                android:contentDescription="@null"
+                android:scaleType="centerCrop" />
+
+            <TextView
+                android:id="@+id/title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="2"
+                android:textColor="@color/m_text"
+                android:textSize="30sp" />
+
+            <TextView
+                android:id="@+id/plot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:ellipsize="end"
+                android:lineSpacingExtra="3dp"
+                android:maxLines="7"
+                android:textColor="@color/m_text2"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="32dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/seasons"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipToPadding="false" />
+
+            <TextView
+                android:id="@+id/status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="14dp"
+                android:text="Hämtar avsnitt…"
+                android:textColor="@color/m_text2"
+                android:textSize="17sp" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/episodes"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_marginTop="8dp"
+                android:clipToPadding="false"
+                android:paddingBottom="40dp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

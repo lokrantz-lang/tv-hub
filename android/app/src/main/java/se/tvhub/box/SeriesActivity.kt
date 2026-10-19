@@ -44,20 +44,54 @@ class SeriesActivity : Activity() {
     private var cover: String? = null
     private var favorite = false
     private var firstLoad = true
+    private var modern = false
+    private val seasonAdapter = RowAdapter(onClick = { row, _ -> jumpToSeason(row.key) })
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_series)
-        Api.init(Prefs(this))
+        val prefs = Prefs(this)
+        Look.init(this)
+        modern = prefs.modern
+        if (modern) Fonts.install(this)
+        setContentView(if (modern) R.layout.activity_series_modern else R.layout.activity_series)
+        Api.init(prefs)
         seriesId = intent.getStringExtra("id") ?: return finish()
         seriesName = intent.getStringExtra("name") ?: ""
         findViewById<TextView>(R.id.title).text = seriesName
         status = findViewById(R.id.status)
         list = findViewById(R.id.episodes)
         adapter = RowAdapter(onClick = { row, _ -> onClick(row) })
+        adapter.modern = modern
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
         list.itemAnimator = null
+        findViewById<RecyclerView?>(R.id.seasons)?.let { seasons ->
+            seasonAdapter.edgeLock = false
+            seasons.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+            seasons.adapter = SeasonChips(seasonAdapter)
+            seasons.itemAnimator = null
+        }
+    }
+
+    /** Säsonger som flikar överst (modernt utseende). OK hoppar till säsongens första avsnitt. */
+    private class SeasonChips(private val rows: RowAdapter) : RecyclerView.Adapter<RowAdapter.Holder>() {
+        init {
+            rows.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+                override fun onChanged() = notifyDataSetChanged()
+            })
+        }
+
+        override fun getItemCount() = rows.itemCount
+
+        override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): RowAdapter.Holder =
+            RowAdapter.Holder(android.view.LayoutInflater.from(parent.context).inflate(R.layout.chip_m, parent, false))
+
+        override fun onBindViewHolder(holder: RowAdapter.Holder, position: Int) = rows.onBindViewHolder(holder, position)
+    }
+
+    private fun jumpToSeason(key: String) {
+        val index = adapter.indexOf(key)
+        if (index >= 0) Focus.position(list, index + 1)
     }
 
     override fun onResume() {
@@ -73,6 +107,9 @@ class SeriesActivity : Activity() {
         data.optStringOrNull("plot")?.let { findViewById<TextView>(R.id.plot).text = it }
         cover = data.optStringOrNull("cover")
         ImageLoader.load(findViewById<ImageView>(R.id.cover), cover)
+        findViewById<ImageView?>(R.id.backdrop)?.let {
+            if (it.drawable == null) ImageLoader.load(it, data.optStringOrNull("backdrop") ?: cover, ImageLoader.BACKDROP, fade = true)
+        }
         favorite = data.optBoolean("favorite")
         val progress = data.optJSONObject("progress") ?: JSONObject()
         val watchedArray = data.optJSONArray("watched")
@@ -110,7 +147,8 @@ class SeriesActivity : Activity() {
                         else -> null
                     }
                     val sub = listOfNotNull(state, ep.optStringOrNull("duration"), ep.optStringOrNull("plot")).joinToString(" · ")
-                    episodeRows.add(Row("$num. $title", subtitle = sub, key = "ep:$id", payload = episode))
+                    episodeRows.add(Row("$num. $title", subtitle = sub, key = "ep:$id", payload = episode,
+                        icon = if (modern) ep.optStringOrNull("image") ?: cover else null, iconSpace = modern))
                 }
             }
         }
@@ -138,6 +176,7 @@ class SeriesActivity : Activity() {
         rows.add(Row(if (favorite) "★  Favorit" else "☆  Lägg till i favoriter", key = "action:favorite", payload = "favorite"))
         rows.addAll(episodeRows)
         adapter.submit(rows)
+        seasonAdapter.submit(episodeRows.filter { it.header }.map { Row(it.title, key = it.key) })
         if (firstLoad) {
             firstLoad = false
             Focus.position(list, 0)
@@ -155,12 +194,9 @@ class SeriesActivity : Activity() {
             "favorite" -> toggleFavorite()
             is Episode -> {
                 if (payload.positionMs > 0) {
-                    AlertDialog.Builder(this)
-                        .setTitle(payload.title)
-                        .setItems(arrayOf("Fortsätt från ${Format.clock(payload.positionMs)}", "Börja om")) { _, which ->
-                            play(payload, if (which == 0) payload.positionMs else 0L)
-                        }
-                        .show()
+                    Look.choose(this, payload.title, listOf("Fortsätt från ${Format.clock(payload.positionMs)}", "Börja om")) { which ->
+                        play(payload, if (which == 0) payload.positionMs else 0L)
+                    }
                 } else {
                     play(payload, 0L)
                 }

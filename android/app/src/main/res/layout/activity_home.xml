@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modernt utseende: smal meny med ikoner, stor bild överst och rader med bilder. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/m_bg">
+
+    <ImageView
+        android:id="@+id/hero_backdrop"
+        android:layout_width="640dp"
+        android:layout_height="360dp"
+        android:layout_gravity="top|end"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop" />
+
+    <View
+        android:id="@+id/hero_scrim_left"
+        android:layout_width="match_parent"
+        android:layout_height="360dp"
+        android:background="@drawable/m_scrim_left" />
+
+    <View
+        android:id="@+id/hero_scrim_bottom"
+        android:layout_width="match_parent"
+        android:layout_height="360dp"
+        android:background="@drawable/m_scrim_bottom" />
+
+    <FrameLayout
+        android:id="@+id/page_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginStart="96dp" />
+
+    <LinearLayout
+        android:id="@+id/rail"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:gravity="center_vertical"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp" />
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center"
+        android:maxWidth="640dp"
+        android:textColor="@color/m_text2"
+        android:textSize="18sp"
+        android:visibility="gone" />
+</FrameLayout>

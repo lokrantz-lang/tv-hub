@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="140dp"
+    android:layout_height="210dp"
+    android:layout_marginEnd="14dp"
+    android:background="@drawable/m_card_bg"
+    android:focusable="true"
+    android:foreground="@drawable/m_card_focus">
+
+    <TextView
+        android:id="@+id/fallback"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:padding="10dp"
+        android:textColor="@color/m_text2"
+        android:textSize="15sp" />
+
+    <ImageView
+        android:id="@+id/art"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop" />
+
+    <TextView
+        android:id="@+id/badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="6dp"
+        android:background="@drawable/m_logo_tile"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:textColor="@color/m_text"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <ProgressBar
+        android:id="@+id/progress"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_gravity="bottom"
+        android:layout_margin="8dp"
+        android:max="1000"
+        android:progressDrawable="@drawable/m_progress"
+        android:visibility="gone" />
+</FrameLayout>

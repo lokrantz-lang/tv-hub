@@ -92,6 +92,8 @@ def series_detail(series_id):
             "name": info.get("name"),
             "plot": info.get("plot"),
             "cover": info.get("cover"),
+            "backdrop": (info.get("backdrop_path") or [None])[0] if isinstance(info.get("backdrop_path"), list)
+            else info.get("backdrop_path"),
             "genre": info.get("genre"),
             "rating": info.get("rating"),
             "seasons": seasons,
@@ -745,6 +747,10 @@ def dev_home(h):
         "watch_hits": [] if group_only or scope.adult else extras.recent_hits(scope),
         "categories": {kind: catalog.categories(kind, scope) for kind in catalog.TYPES},
         "recent_vod": [] if group_only else catalog.recent("vod", 40, scope),
+        # Rader för den nya hemskärmen
+        "recent_series": [] if group_only else catalog.recent("series", 30, scope),
+        "top_vod": [] if group_only else catalog.browse(
+            "vod", scope, None, {"sort": "rating", "min_rating": "7.5", "min_year": str(time.gmtime().tm_year - 6)}, 0, 30)[0],
         "counts": catalog.counts(scope),
         "recordings": len(recordings.for_device(dev["id"], adult=scope.adult or 0)),
     }

@@ -35,6 +35,8 @@ data class Item(
     val archiveDays: Int = 0,
     /** När titeln lades till (sekunder), för "Nytt tillagt". */
     val added: Long? = null,
+    val backdrop: String? = null,
+    val plot: String? = null,
 ) {
     val typeLabel: String
         get() = when (type) {
@@ -69,6 +71,8 @@ data class Item(
             watched = o.optBoolean("watched"),
             archiveDays = o.optInt("archive_days", 0),
             added = if (o.isNull("added")) null else o.optLong("added").takeIf { it > 0 },
+            backdrop = o.optStringOrNull("backdrop"),
+            plot = o.optStringOrNull("plot"),
         )
 
         fun list(array: JSONArray?): List<Item> {
@@ -95,6 +99,7 @@ data class ContinueItem(
     val ext: String?,
     val positionMs: Long,
     val durationMs: Long,
+    val backdrop: String? = null,
 ) {
     companion object {
         fun list(array: JSONArray?): List<ContinueItem> {
@@ -113,6 +118,7 @@ data class ContinueItem(
                         ext = o.optStringOrNull("ext"),
                         positionMs = o.optLong("position_ms"),
                         durationMs = o.optLong("duration_ms"),
+                        backdrop = o.optStringOrNull("backdrop"),
                     )
                 )
             }

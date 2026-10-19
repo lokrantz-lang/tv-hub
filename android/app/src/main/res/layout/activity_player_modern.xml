@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spelaren i modernt utseende: tidslinje med tider, kanallogga, LIVE och nästa avsnitt. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/player_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:show_buffering="never"
+        app:use_controller="false" />
+
+    <ProgressBar
+        android:id="@+id/spinner"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="center"
+        android:indeterminateTint="#FFFFFF" />
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="90dp"
+        android:background="@drawable/m_panel_bg"
+        android:gravity="center"
+        android:maxWidth="760dp"
+        android:padding="24dp"
+        android:textColor="@color/m_text"
+        android:textSize="19sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/next_card"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="56dp"
+        android:layout_marginBottom="170dp"
+        android:background="@drawable/m_panel_bg"
+        android:maxWidth="420dp"
+        android:padding="18dp"
+        android:textColor="@color/m_text"
+        android:textSize="17sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/overlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@drawable/overlay_bg"
+        android:orientation="vertical"
+        android:paddingStart="56dp"
+        android:paddingTop="80dp"
+        android:paddingEnd="56dp"
+        android:paddingBottom="36dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/shift"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/m_logo_tile"
+            android:paddingStart="12dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:textColor="@color/m_text"
+            android:textSize="17sp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/logo"
+                android:layout_width="84dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="16dp"
+                android:background="@drawable/m_logo_tile"
+                android:contentDescription="@null"
+                android:padding="6dp"
+                android:scaleType="fitCenter"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/live_badge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="10dp"
+                        android:background="@drawable/m_live_badge"
+                        android:paddingStart="7dp"
+                        android:paddingEnd="7dp"
+                        android:text="LIVE"
+                        android:textColor="#FFFFFF"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/title"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:maxLines="1"
+                        android:textColor="@color/m_text"
+                        android:textSize="26sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/epg"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:maxLines="2"
+                    android:textColor="@color/m_text2"
+                    android:textSize="16sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/seek_progress"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="5dp"
+            android:layout_marginTop="18dp"
+            android:max="1000"
+            android:progressDrawable="@drawable/m_progress"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/times"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/time_pos"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/m_text"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/ends_at"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:textColor="@color/m_text2"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/time_end"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/m_text"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

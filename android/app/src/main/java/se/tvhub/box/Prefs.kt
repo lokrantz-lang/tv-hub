@@ -110,6 +110,20 @@ class Prefs(context: Context) {
         sp.edit().putLong("pos:$path", positionMs).apply()
     }
 
+    /** Utseende: modernt (standard) eller klassiskt (tre kolumner som tidigare). */
+    var modern: Boolean
+        get() = sp.getBoolean("modern_ui", true)
+        set(value) {
+            sp.edit().putBoolean("modern_ui", value).apply()
+        }
+
+    /** Senaste sökningar i det moderna utseendet. */
+    var recentSearches: List<String>
+        get() = (sp.getString("recent_searches", "") ?: "").split("\n").filter { it.isNotBlank() }
+        set(value) {
+            sp.edit().putString("recent_searches", value.take(8).joinToString("\n")).apply()
+        }
+
     val paired: Boolean
         get() = server.isNotEmpty() && token.isNotEmpty()
 

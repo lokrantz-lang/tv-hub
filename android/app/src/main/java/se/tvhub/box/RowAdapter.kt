@@ -31,6 +31,12 @@ class RowAdapter(
     /** Antal kolumner när listan visas som rutnät. */
     var columns = 1
 
+    /** Modernt utseende: större rader med vit markering. */
+    var modern = false
+
+    /** false = upp/ner vid kanterna får lämna listan (chips och tangenter). */
+    var edgeLock = true
+
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
         val icon: ImageView? = view.findViewById(R.id.icon)
         val title: TextView? = view.findViewById(R.id.title)
@@ -76,9 +82,9 @@ class RowAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
         val layout = when (viewType) {
-            1 -> R.layout.row_header
+            1 -> if (modern) R.layout.row_header_m else R.layout.row_header
             2 -> R.layout.cell_poster
-            else -> R.layout.row_item
+            else -> if (modern) R.layout.row_item_m else R.layout.row_item
         }
         return Holder(LayoutInflater.from(parent.context).inflate(layout, parent, false))
     }
@@ -127,6 +133,7 @@ class RowAdapter(
             if (p == RecyclerView.NO_POSITION) return@setOnKeyListener false
             val custom = onKey
             if (custom != null && custom(rows[p], p, keyCode)) return@setOnKeyListener true
+            if (!edgeLock) return@setOnKeyListener false
             val cols = columns.coerceAtLeast(1)
             val lastRowStart = ((rows.size - 1) / cols) * cols
             when (keyCode) {

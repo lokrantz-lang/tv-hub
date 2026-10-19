@@ -415,7 +415,7 @@ def counts(scope=ADMIN):
 ITEM_COLS = ("i.type, i.item_id, i.name, i.category_id, i.icon, i.ext, i.rating, "
              "COALESCE(i.first_seen, i.added) AS added, i.num, i.epg_id, "
              "i.adult, i.archive_days, COALESCE(i.year, f.year) AS year, "
-             "COALESCE(i.rating_num, f.rating) AS rating_num, f.duration_min, f.genre")
+             "COALESCE(i.rating_num, f.rating) AS rating_num, f.duration_min, f.genre, f.backdrop, f.plot")
 FROM_ITEMS = "items i LEFT JOIN item_info f ON f.type = i.type AND f.item_id = i.item_id"
 
 
@@ -427,7 +427,7 @@ def _item(row, favs=None):
         "rating": row["rating"], "added": row["added"], "num": row["num"], "epg_id": row["epg_id"],
         "adult": bool(row["adult"]),
     }
-    for key in ("year", "rating_num", "duration_min", "genre", "archive_days"):
+    for key in ("year", "rating_num", "duration_min", "genre", "archive_days", "backdrop", "plot"):
         if key in keys:
             item[key] = row[key]
     if "category_name" in keys:
@@ -478,7 +478,7 @@ SORTS = {
 BROWSE_FROM = """(SELECT i.type, i.item_id, i.name, i.name_norm, i.category_id, i.icon, i.ext, i.rating,
                          COALESCE(i.first_seen, i.added) AS added, i.num, i.epg_id, i.adult, i.archive_days,
                          COALESCE(i.year, f.year) AS year, COALESCE(i.rating_num, f.rating) AS rating_num,
-                         f.duration_min, f.genre, c.name AS category_name
+                         f.duration_min, f.genre, f.backdrop, f.plot, c.name AS category_name
                   FROM items i
                   LEFT JOIN item_info f ON f.type = i.type AND f.item_id = i.item_id
                   LEFT JOIN categories c ON c.type = i.type AND c.category_id = i.category_id) i"""

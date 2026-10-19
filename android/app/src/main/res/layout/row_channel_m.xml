@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="76dp"
+    android:layout_marginBottom="4dp"
+    android:background="@drawable/m_row"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="10dp"
+    android:paddingEnd="16dp">
+
+    <FrameLayout
+        android:layout_width="96dp"
+        android:layout_height="56dp"
+        android:background="@drawable/m_logo_tile">
+
+        <TextView
+            android:id="@+id/fallback"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:textColor="@color/m_text2"
+            android:textSize="14sp" />
+
+        <ImageView
+            android:id="@+id/art"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:padding="6dp"
+            android:scaleType="fitCenter" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:textColor="@color/m_on_focus"
+            android:textSize="17sp" />
+
+        <TextView
+            android:id="@+id/subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/m_on_focus"
+            android:textSize="14sp" />
+
+        <ProgressBar
+            android:id="@+id/progress"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="160dp"
+            android:layout_height="3dp"
+            android:layout_marginTop="6dp"
+            android:max="1000"
+            android:progressDrawable="@drawable/m_progress"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/star"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="★"
+        android:textColor="@color/m_on_focus"
+        android:textSize="18sp"
+        android:visibility="gone" />
+</LinearLayout>

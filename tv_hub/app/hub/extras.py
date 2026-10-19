@@ -76,6 +76,7 @@ def continue_watching(scope, limit=20):
             "name": row["name"], "icon": row["icon"] or (parent or {}).get("icon"), "ext": row["ext"],
             "position_ms": row["position_ms"], "duration_ms": row["duration_ms"],
             "series_name": parent["name"] if parent and row["type"] == "episode" else None,
+            "backdrop": (parent or {}).get("backdrop"),
         })
         if len(out) >= limit:
             break

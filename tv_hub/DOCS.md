@@ -29,6 +29,12 @@ för att visa dem, och igen för att dölja dem. Tittandet sparas alltid, men vi
 Läget stängs av efter 15 minuter utan aktivitet, efter högst 3 timmar och när appen eller boxen startas om.
 En box med profilen *Utan vuxenläge* eller *Bara gruppen …* kan inte byta läge.
 
+## Utseende i boxarna
+
+Appen startar i det **moderna utseendet**: meny med ikoner till vänster, Hem med stora bilder och rader,
+Live-TV, Filmer, Serier, Sök och Inspelningar. Det **klassiska utseendet** med tre kolumner finns kvar:
+välj **Inställningar → Utseende** i appen. Valet sparas per box.
+
 ## Inspelning
 
 Inspelningarna sparas på ett USB-minne i boxen. Webbadminen håller schemat och visar status.

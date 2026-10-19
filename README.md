@@ -59,7 +59,17 @@ Home Assistant installerar tillägg från ett Git-förråd, och GitHub bygger ap
 
 Se `homeassistant/tv_hub_package.yaml`. Ger status, svarstid, vem som tittar, när abonnemanget går ut och en notis vid problem.
 
-## Fjärrkontrollen
+## Fjärrkontrollen (modernt utseende)
+
+| Var | Knapp | Gör |
+|---|---|---|
+| Menyn till vänster | Upp/ner, höger | Välj sida, gå in |
+| Kort och listor | OK / håll in OK | Öppna / fler val (favorit, programguide) |
+| Var som helst | Tillbaka | Till menyn; två gånger i menyn stänger appen |
+| Film och avsnitt | OK, vänster/höger | Paus, spola 10 s / 30 s |
+| Inställningar | Vänster ×3 / höger ×3 | Vuxenläge / historik i vuxenläget |
+
+## Fjärrkontrollen (klassiskt utseende)
 
 | Var | Knapp | Gör |
 |---|---|---|
@@ -93,7 +103,7 @@ Se `homeassistant/tv_hub_package.yaml`. Ger status, svarstid, vem som tittar, n�
 ## Utveckling
 
 ```
-python3 tests/test_e2e.py     # 184 kontroller mot en simulerad Xtream-server
+python3 tests/test_e2e.py     # 185 kontroller mot en simulerad Xtream-server
 python3 tests/demo.py         # demodata: admin på http://127.0.0.1:28080
 ```
 

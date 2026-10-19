@@ -8,4 +8,13 @@
     <color name="selected">#26FFFFFF</color>
     <color name="star">#F2B705</color>
     <color name="bad">#FF7A7A</color>
+    <!-- Modernt utseende: nästan svart, neutrala gråtoner, vit accent (som Apple TV) -->
+    <color name="m_bg">#0A0A0C</color>
+    <color name="m_surface">#17171B</color>
+    <color name="m_surface2">#24242A</color>
+    <color name="m_text">#F5F5F7</color>
+    <color name="m_text2">#A1A1AA</color>
+    <color name="m_text3">#6E6E78</color>
+    <color name="m_live">#FF3B30</color>
+    <color name="m_scrim">#E60A0A0C</color>
 </resources>

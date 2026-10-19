@@ -158,6 +158,24 @@ class PlayerActivity : Activity() {
     // Spolning i film, avsnitt, inspelning och catch-up: vänster 10 s bakåt, höger 30 s framåt
     private var vodSeekTarget = -1L
     private var vodSeekTask: Runnable? = null
+
+    // Modernt utseende: egen tidslinje, kanallogga, LIVE och "Nästa avsnitt"
+    private var modern = false
+    private var seekProgress: ProgressBar? = null
+    private var times: View? = null
+    private var timePos: TextView? = null
+    private var timeEnd: TextView? = null
+    private var endsAt: TextView? = null
+    private var liveBadge: TextView? = null
+    private var logoView: android.widget.ImageView? = null
+    private var nextCard: TextView? = null
+    private val clockFormat = SimpleDateFormat("HH:mm", Locale("sv", "SE"))
+    private val barTicker = object : Runnable {
+        override fun run() {
+            updateBar()
+            handler.postDelayed(this, 500)
+        }
+    }
     private lateinit var shiftView: TextView
 
     private val hideOverlay = Runnable { overlay.visibility = View.GONE }
@@ -217,9 +235,20 @@ class PlayerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        setContentView(R.layout.activity_player)
         prefs = Prefs(this)
         Api.init(prefs)
+        Look.init(this)
+        modern = prefs.modern
+        if (modern) Fonts.install(this)
+        setContentView(if (modern) R.layout.activity_player_modern else R.layout.activity_player)
+        seekProgress = findViewById(R.id.seek_progress)
+        times = findViewById(R.id.times)
+        timePos = findViewById(R.id.time_pos)
+        timeEnd = findViewById(R.id.time_end)
+        endsAt = findViewById(R.id.ends_at)
+        liveBadge = findViewById(R.id.live_badge)
+        logoView = findViewById(R.id.logo)
+        nextCard = findViewById(R.id.next_card)
         playerView = findViewById(R.id.player_view)
         overlay = findViewById(R.id.overlay)
         titleView = findViewById(R.id.title)
@@ -247,6 +276,7 @@ class PlayerActivity : Activity() {
             return
         }
         if (type == "file") playFile() else requestPlay()
+        if (modern) handler.post(barTicker)
     }
 
     override fun onStop() {
@@ -322,6 +352,14 @@ class PlayerActivity : Activity() {
                 fatalShown = false
                 statusView.visibility = View.GONE
                 if (type == "live") rememberChannel()
+                logoView?.let { logo ->
+                    if (type == "live" && icon != null) {
+                        logo.visibility = View.VISIBLE
+                        ImageLoader.load(logo, icon)
+                    } else {
+                        logo.visibility = View.GONE
+                    }
+                }
                 // Efter portalbyte: fortsätt där strömmen bröts.
                 val position = when {
                     type == "live" && shiftStart > 0 -> shiftOffsetMs
@@ -410,8 +448,8 @@ class PlayerActivity : Activity() {
         newPlayer.addListener(listener)
         playerView.player = newPlayer
         val live = type == "live"
-        playerView.useController = !live
-        playerView.isFocusable = !live
+        playerView.useController = !live && !modern
+        playerView.isFocusable = !live && !modern
         if (!live) playerView.requestFocus()
         if (positionMs > 0 && (type == "vod" || type == "episode" || type == "file" || shiftStart > 0)) {
             newPlayer.setMediaItem(MediaItem.fromUri(url), positionMs)
@@ -694,9 +732,7 @@ class PlayerActivity : Activity() {
     /** Manuell inspelning från nu, för kanaler utan programguide (eller när man vill välja längd själv). */
     private fun recordNow() {
         val choices = listOf(30 to "30 min", 60 to "1 h", 90 to "1 h 30 min", 120 to "2 h", 180 to "3 h", 360 to "Tills jag stoppar (högst 6 h)")
-        AlertDialog.Builder(this)
-            .setTitle("Spela in $itemName från nu")
-            .setItems(choices.map { it.second }.toTypedArray()) { _, which ->
+        Look.choose(this, "Spela in $itemName från nu", choices.map { it.second }) { which ->
                 val start = System.currentTimeMillis() / 1000
                 val title = "$itemName " + SimpleDateFormat("d MMM HH:mm", Locale("sv", "SE")).format(Date()).replace(".", "")
                 val body = JSONObject().put("stream_id", itemId).put("title", title)
@@ -708,7 +744,6 @@ class PlayerActivity : Activity() {
                     }.onFailure { Toast.makeText(this, Api.friendly(it), Toast.LENGTH_LONG).show() }
                 }
             }
-            .show()
     }
 
     private fun recordCurrentProgram() {
@@ -908,6 +943,21 @@ class PlayerActivity : Activity() {
                 showOptions()
                 return true
             }
+            if (modern && type != "live") {
+                // Egen tidslinje i det moderna utseendet: OK pausar/fortsätter, eller startar nästa avsnitt.
+                when (code) {
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER,
+                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> {
+                        if (nextCard?.visibility == View.VISIBLE && code != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) playNextNow() else toggleVod(null)
+                        return true
+                    }
+                    KeyEvent.KEYCODE_MEDIA_PLAY -> { toggleVod(true); return true }
+                    KeyEvent.KEYCODE_MEDIA_PAUSE -> { toggleVod(false); return true }
+                    KeyEvent.KEYCODE_MEDIA_REWIND -> { seekVod(-1, event.repeatCount); return true }
+                    KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { seekVod(1, event.repeatCount); return true }
+                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_INFO -> { showOverlay(5_000); return true }
+                }
+            }
             if (type == "live") {
                 val shifted = pausedAt > 0 || shiftStart > 0 || behindMs > 0
                 when (code) {
@@ -982,6 +1032,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun moveTo(index: Int) {
+        if (type == "live") icon = null  // loggan för nästa kanal är okänd här
         queueIndex = index
         itemId = queueIds[index]
         itemName = queueNames.getOrNull(index) ?: itemId
@@ -1031,6 +1082,84 @@ class PlayerActivity : Activity() {
         switchSoon()
     }
 
+    /** Paus och fortsätt för film, avsnitt och inspelning (modernt utseende). */
+    private fun toggleVod(play: Boolean?) {
+        val p = player ?: return
+        val wantPlay = play ?: !p.playWhenReady
+        p.playWhenReady = wantPlay
+        shiftView.text = if (wantPlay) "▶" else "❚❚  Pausad"
+        shiftView.visibility = if (wantPlay) View.GONE else View.VISIBLE
+        if (wantPlay) showOverlay(3_000) else {
+            overlay.visibility = View.VISIBLE
+            handler.removeCallbacks(hideOverlay)
+        }
+        updateBar()
+    }
+
+    private fun playNextNow() {
+        if (type != "episode" || queueIndex < 0 || queueIndex + 1 >= queueIds.size) return
+        nextCard?.visibility = View.GONE
+        val final = metrics()
+        player?.duration?.takeIf { it > 0 }?.let { final.put("position_ms", it).put("duration_ms", it) }
+        stopSession("ended", final)
+        moveTo(queueIndex + 1)
+        releasePlayer()
+        lastPositionMs = 0L
+        requestPlay()
+    }
+
+    /** Tidslinjen: förfluten tid, tid kvar och sluttid. För live: programmets förlopp och LIVE. */
+    private fun updateBar() {
+        if (!modern) return
+        val p = player
+        val bar = seekProgress ?: return
+        if (type == "live") {
+            val program = currentProgram
+            val shifted = pausedAt > 0 || shiftStart > 0 || behindMs > 0
+            liveBadge?.visibility = if (shifted) View.GONE else View.VISIBLE
+            val start = program?.optLong("start") ?: 0L
+            val end = program?.optLong("end") ?: 0L
+            if (start > 0 && end > start) {
+                val watched = watchedWallMs() / 1000
+                bar.progress = ((watched - start).coerceIn(0, end - start) * 1000 / (end - start)).toInt()
+                timePos?.text = clockFormat.format(Date(start * 1000))
+                timeEnd?.text = clockFormat.format(Date(end * 1000))
+                endsAt?.text = program?.optString("title") ?: ""
+                bar.visibility = View.VISIBLE
+                times?.visibility = View.VISIBLE
+            } else {
+                bar.visibility = View.GONE
+                times?.visibility = View.GONE
+            }
+            return
+        }
+        liveBadge?.visibility = View.GONE
+        if (p == null) return
+        val duration = p.duration
+        if (duration <= 0) {
+            bar.visibility = View.GONE
+            times?.visibility = View.GONE
+            return
+        }
+        val position = if (vodSeekTarget >= 0) vodSeekTarget else p.currentPosition
+        bar.progress = (position * 1000 / duration).toInt().coerceIn(0, 1000)
+        timePos?.text = Format.clock(position)
+        timeEnd?.text = "−" + Format.clock((duration - position).coerceAtLeast(0))
+        endsAt?.text = "Slutar " + clockFormat.format(Date(System.currentTimeMillis() + (duration - position)))
+        bar.visibility = View.VISIBLE
+        times?.visibility = View.VISIBLE
+        // "Nästa avsnitt" de sista 20 sekunderna (som Netflix).
+        val hasNext = type == "episode" && queueIndex >= 0 && queueIndex + 1 < queueIds.size
+        val card = nextCard ?: return
+        if (hasNext && duration - position in 1..20_000 && p.playWhenReady) {
+            val left = ((duration - position) / 1000).coerceAtLeast(1)
+            card.text = "Nästa avsnitt om $left s\n${queueNames.getOrNull(queueIndex + 1) ?: ""}\nOK: spela nu"
+            card.visibility = View.VISIBLE
+        } else {
+            card.visibility = View.GONE
+        }
+    }
+
     private fun showOverlay(durationMs: Long) {
         overlay.visibility = View.VISIBLE
         handler.removeCallbacks(hideOverlay)
@@ -1065,10 +1194,7 @@ class PlayerActivity : Activity() {
                 options.add("Förra kanalen: ${prev.second}" to { previousChannel() })
             }
         }
-        AlertDialog.Builder(this)
-            .setTitle(itemName)
-            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
-            .show()
+        Look.choose(this, itemName, options.map { it.first }) { which -> options[which].second() }
     }
 
     private fun trackLabel(format: MediaFormat, fallback: String): String {
@@ -1122,10 +1248,7 @@ class PlayerActivity : Activity() {
                 Toast.LENGTH_SHORT).show()
             return
         }
-        AlertDialog.Builder(this)
-            .setTitle(if (trackType == C.TRACK_TYPE_AUDIO) "Ljudspår" else "Undertexter")
-            .setItems(labels.toTypedArray()) { _, which -> actions[which]() }
-            .show()
+        Look.choose(this, if (trackType == C.TRACK_TYPE_AUDIO) "Ljudspår" else "Undertexter", labels) { which -> actions[which]() }
     }
 
     private fun goToProgramStart(startMs: Long) {

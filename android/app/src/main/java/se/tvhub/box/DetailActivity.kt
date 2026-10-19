@@ -9,10 +9,12 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import org.json.JSONObject
 
 /** Detaljsida för en film: affisch, handling, betyg, längd, skådespelare. Fortsätt eller börja om. */
-class DetailActivity : Activity() {
+class DetailActivity : Activity(), CardListener {
     companion object {
         fun start(context: Context, vodId: String, name: String) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("id", vodId).putExtra("name", name))
@@ -30,11 +32,16 @@ class DetailActivity : Activity() {
     private var icon: String? = null
     private var favorite = false
     private var resumeMs = 0L
+    private var modern = false
+    private var moreLoaded = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_detail)
         prefs = Prefs(this)
+        Look.init(this)
+        modern = prefs.modern
+        if (modern) Fonts.install(this)
+        setContentView(if (modern) R.layout.activity_detail_modern else R.layout.activity_detail)
         Api.init(prefs)
         vodId = intent.getStringExtra("id") ?: return finish()
         name = intent.getStringExtra("name") ?: ""
@@ -49,6 +56,7 @@ class DetailActivity : Activity() {
         resumeButton.setOnClickListener { play(resumeMs) }
         playButton.setOnClickListener { play(0L) }
         favoriteButton.setOnClickListener { toggleFavorite() }
+        if (modern) listOf(resumeButton, playButton, favoriteButton).forEach { Look.focusGrow(it, 1.05f) }
         playButton.requestFocus()
     }
 
@@ -71,6 +79,10 @@ class DetailActivity : Activity() {
         favorite = data.optBoolean("favorite")
         findViewById<TextView>(R.id.title).text = name
         ImageLoader.load(findViewById<ImageView>(R.id.poster), data.optStringOrNull("poster") ?: icon)
+        findViewById<ImageView?>(R.id.backdrop)?.let {
+            if (it.drawable == null) ImageLoader.load(it, data.optStringOrNull("backdrop") ?: data.optStringOrNull("poster") ?: icon, ImageLoader.BACKDROP, fade = true)
+        }
+        if (modern && !moreLoaded) loadMore(data.optStringOrNull("genre"))
         val item = Item.from(data)
         val meta = listOfNotNull(
             item.facts.ifEmpty { null },
@@ -102,6 +114,31 @@ class DetailActivity : Activity() {
         favoriteButton.visibility = View.VISIBLE
         favoriteButton.text = if (favorite) "★  Favorit" else "☆  Favorit"
     }
+
+    /** "Mer som detta": högst betygsatta i samma genre. */
+    private fun loadMore(genre: String?) {
+        val list = findViewById<RecyclerView?>(R.id.more) ?: return
+        val first = genre?.split(",", "/", "|", "&")?.map { it.trim() }?.firstOrNull { it.length >= 2 } ?: return
+        moreLoaded = true
+        Api.obj("GET", "/device/browse?type=vod&genre=${Api.enc(first)}&sort=rating&limit=24") { result ->
+            result.onSuccess { data ->
+                val cards = Item.list(data.optJSONArray("items")).filter { it.id != vodId }.map { Card.poster(it) }
+                if (cards.isEmpty()) return@onSuccess
+                val adapter = CardAdapter(this)
+                list.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+                list.adapter = adapter
+                adapter.submit(cards)
+                findViewById<TextView?>(R.id.more_title)?.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    override fun onCardClick(card: Card, shelf: Shelf?) {
+        val item = card.payload as? Item ?: return
+        start(this, item.id, item.name)
+    }
+
+    override fun onCardFocus(card: Card, shelf: Shelf?, shelfIndex: Int, cardIndex: Int) {}
 
     private fun play(startMs: Long) {
         PlayerActivity.start(this, type = "vod", id = vodId, name = name, ext = ext, startMs = startMs)

@@ -620,6 +620,9 @@ def version_15(ta, tb, pa, pb):
     errs = [f for f in diag["diagnosis"]["findings"] if f["title"].startswith(f"Uppspelningsfel på {bname}")]
     check("fel anger boxen och slås ihop", len(errs) == 1 and "2 gånger" in errs[0]["title"], [f["title"] for f in diag["diagnosis"]["findings"]])
     check("fel förklaras på svenska", errs and "trasig ström" in errs[0]["detail"], errs)
+    s, home = call("GET", f"{D}/device/home", token=ta)
+    check("hemskärmens rader: nya serier och topprankat", "recent_series" in home and "top_vod" in home
+          and all(i.get("rating_num", 0) >= 7.5 for i in home["top_vod"]), (home.get("recent_series"), home.get("top_vod")))
     check("ordet hackar används inte", not any("hack" in f["title"].lower() for f in diag["diagnosis"]["findings"]), diag["diagnosis"]["findings"])
 
 
