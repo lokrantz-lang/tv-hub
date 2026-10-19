@@ -569,7 +569,7 @@ class MainActivity : Activity() {
         // Behåll vald sortering och filter när man byter kategori.
         val params = listing?.takeIf { it.type == type }?.params ?: mutableMapOf()
         listing = if (categoryId == "new") {
-            Listing("Nytt tillagt: ${row.title.lowercase()}", type, null, mutableMapOf("sort" to "added"))
+            Listing("Nytt tillagt: ${row.title.lowercase()}", type, null, mutableMapOf("sort" to "added", "new_only" to "1"))
         } else {
             Listing(row.title, type, if (categoryId == "all") null else categoryId, params)
         }
@@ -596,7 +596,11 @@ class MainActivity : Activity() {
                 val items = Item.list(data.optJSONArray("items"))
                 total = data.optInt("total")
                 if (reset) {
-                    showEntries(items, false, if (l.params.isEmpty()) "Inget innehåll här." else "Inget matchar filtret.")
+                    showEntries(items, false, when {
+                        l.params["new_only"] == "1" -> "Inget nytt ännu. Här visas det som dykt upp i listan sedan TV Hub började hålla koll, med datum. Listorna uppdateras var 12:e timme."
+                        l.params.isEmpty() -> "Inget innehåll här."
+                        else -> "Inget matchar filtret."
+                    })
                     if (focusFirst) Focus.first(itemsList)
                 } else {
                     entries = entries + items
@@ -631,7 +635,7 @@ class MainActivity : Activity() {
             section == "search" || section == "favorites" || section == "hits"
         val grid = isGrid()
         val title = if (item.type == "live" && item.num != null && !mixed) "${item.num}   ${item.name}" else item.name
-        val newLabel = if (section == "recent" && listing?.params?.get("sort") == "added") item.added?.let { Format.addedLabel(it) } else null
+        val newLabel = if (section == "recent" && listing?.params?.get("new_only") == "1") item.added?.let { Format.addedLabel(it) } else null
         val subtitle = when {
             newLabel != null -> listOfNotNull(newLabel, if (item.type == "live") item.categoryName else item.facts.ifEmpty { null }).joinToString(" · ")
             item.type == "live" -> epgNow[item.id]?.ifEmpty { null } ?: if (mixed) item.typeLabel else item.categoryName

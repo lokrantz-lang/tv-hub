@@ -685,7 +685,12 @@ class HomeActivity : Activity(), CardListener {
                 chipKey = row.key
                 chipAdapter.select(row.key)
                 categoryId = row.payload as? String
-                if (row.key == "new") params["sort"] = "added"
+                if (row.key == "new") {
+                    params["sort"] = "added"
+                    params["new_only"] = "1"
+                } else {
+                    params.remove("new_only")
+                }
                 load(reset = true, focusFirst = focusGrid)
             } else if (focusGrid) {
                 focusEntry()
@@ -710,7 +715,9 @@ class HomeActivity : Activity(), CardListener {
                         gridAdapter.submit(cards)
                         grid.scrollToPosition(0)
                         info.text = if (cards.isEmpty()) {
-                            if (params.keys.any { it != "sort" }) "Inget matchar filtret." else "Inget innehåll här."
+                            if (params["new_only"] == "1") {
+                                "Inget nytt ännu. Här visas det som dykt upp i listan sedan TV Hub började hålla koll. Listorna uppdateras var 12:e timme."
+                            } else if (params.keys.any { it != "sort" }) "Inget matchar filtret." else "Inget innehåll här."
                         } else {
                             "${total} titlar"
                         }
@@ -729,7 +736,7 @@ class HomeActivity : Activity(), CardListener {
 
         override fun onCardFocus(card: Card, shelf: Shelf?, shelfIndex: Int, cardIndex: Int) {
             val item = card.payload as? Item ?: return
-            val added = if (params["sort"] == "added") item.added?.let { Format.addedLabel(it) } else null
+            val added = if (params["new_only"] == "1") item.added?.let { Format.addedLabel(it) } else null
             info.text = listOfNotNull(item.name, added, item.facts.ifEmpty { null }, item.genre, if (item.watched) "✓ Sedd" else null)
                 .joinToString("   ·   ")
             if (!loading && gridAdapter.itemCount < total && cardIndex >= gridAdapter.itemCount - 24) load(reset = false)

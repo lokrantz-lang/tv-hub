@@ -594,6 +594,13 @@ def version_15(ta, tb, pa, pb):
     s, b = call("GET", f"{D}/device/browse?type=vod&sort=added&limit=3", token=ta)
     first = b["items"][0]
     check("nytt tillagt: nyaste först med dagens datum", first["id"] == "520" and abs(first["added"] - time.time()) < 3600, b["items"][:2])
+    s, nb = call("GET", f"{D}/device/browse?type=vod&sort=added&new_only=1", token=ta)
+    check("nytt tillagt visar bara titlar med TV Hubs eget datum", [i["id"] for i in nb["items"]] == ["520"]
+          and nb["items"][0]["first_seen"], nb)
+    s, home = call("GET", f"{D}/device/home", token=ta)
+    check("raden Nytt: filmer använder TV Hubs datum", [i["id"] for i in home["recent_vod"]] == ["520"], home["recent_vod"])
+    s, ab = call("GET", f"{A}/api/library/browse?type=vod&sort=added&new_only=1")
+    check("webbadminen: nytt tillagt med TV Hubs datum", [i["id"] for i in ab["items"]] == ["520"], ab)
     s, b2 = call("GET", f"{D}/device/browse?type=live&sort=added&limit=3", token=ta)
     check("nytt tillagt fungerar för kanaler", s == 200 and b2["items"], b2)
     fake_mode("ok", extra=0)

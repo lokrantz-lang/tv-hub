@@ -1,5 +1,11 @@
 # Ändringar
 
+## 1.6.1
+
+- "Nytt tillagt" och raderna Nytt: filmer/serier visar bara titlar som dykt upp i listan sedan
+  TV Hub började hålla koll, med det datum de dök upp. Källans egna datum används inte längre där.
+- Webbadminen: sorteringen "Nytt tillagt (TV Hubs datum)" i Biblioteket.
+
 ## 1.6.0
 
 - Nytt modernt utseende i boxarna, inspirerat av Apple TV, Netflix och Google TV:

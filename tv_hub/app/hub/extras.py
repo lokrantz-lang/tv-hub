@@ -122,7 +122,7 @@ def recent_channels(device_id, scope, limit=20):
 # ====================================================================
 # Sparade filter
 # ====================================================================
-FILTER_KEYS = ("sort", "min_rating", "min_year", "max_year", "min_duration", "max_duration", "genre", "category_id")
+FILTER_KEYS = ("sort", "min_rating", "min_year", "max_year", "min_duration", "max_duration", "genre", "category_id", "new_only")
 
 
 def clean_params(params):

@@ -756,7 +756,7 @@ def dev_home(h):
     }
 
 
-BROWSE_KEYS = ("sort", "min_rating", "min_year", "max_year", "min_duration", "max_duration", "genre", "q")
+BROWSE_KEYS = ("sort", "min_rating", "min_year", "max_year", "min_duration", "max_duration", "genre", "q", "new_only")
 
 
 @route(DEVICE, "GET", r"/device/browse")

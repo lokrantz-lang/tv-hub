@@ -557,8 +557,8 @@ $("sync-btn").addEventListener("click", (e) => guarded(async () => {
 /* ---------- bibliotek ---------- */
 const LIB_SORTS = {
   live: [["num", "Kanalnummer"], ["name", "Namn"], ["added", "Senast tillagda"]],
-  vod: [["added", "Senast tillagda"], ["rating", "Betyg"], ["year", "Årtal"], ["duration", "Längd, kortast först"], ["duration_desc", "Längd, längst först"], ["name", "Namn"]],
-  series: [["added", "Senast tillagda"], ["rating", "Betyg"], ["year", "Årtal"], ["name", "Namn"]],
+  vod: [["added", "Senast tillagda (källans datum)"], ["new", "Nytt tillagt (TV Hubs datum)"], ["rating", "Betyg"], ["year", "Årtal"], ["duration", "Längd, kortast först"], ["duration_desc", "Längd, längst först"], ["name", "Namn"]],
+  series: [["added", "Senast tillagda (källans datum)"], ["new", "Nytt tillagt (TV Hubs datum)"], ["rating", "Betyg"], ["year", "Årtal"], ["name", "Namn"]],
 };
 const LIB_PAGE = 120;
 const lib = { type: "live", view: "list", items: [], total: 0, loading: false, token: 0 };
@@ -597,7 +597,9 @@ async function libTypeChanged(reset = true) {
   runLibrary();
 }
 function libParams() {
-  const p = new URLSearchParams({ type: lib.type, sort: $("lib-sort").value, adult: $("f-adult").value });
+  const sortValue = $("lib-sort").value;
+  const p = new URLSearchParams({ type: lib.type, sort: sortValue === "new" ? "added" : sortValue, adult: $("f-adult").value });
+  if (sortValue === "new") p.set("new_only", "1");
   const q = $("lib-q").value.trim(); if (q) p.set("q", q);
   const cat = $("lib-cat").value; if (cat) p.set("category_id", cat);
   if (lib.type !== "live") {
@@ -647,7 +649,7 @@ const fmtMin = (m) => m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? `
 function cardHtml(it) {
   const art = it.icon ? `<img class="art" src="${img(it.icon)}" alt="" loading="lazy" onerror="this.removeAttribute('src')">` : `<span class="art"></span>`;
   let sub = it.type === "live" ? (it.category_name || "") : (facts(it) || it.category_name || "");
-  if ($("lib-sort").value === "added" && it.added) sub = `${addedLabel(it.added)} · ${sub}`;
+  if (["added", "new"].includes($("lib-sort").value) && it.first_seen) sub = `${addedLabel(it.first_seen)} · ${sub}`;
   return `<div class="card ${it.type}" data-type="${it.type}" data-id="${esc(it.id)}" data-name="${esc(it.name)}" tabindex="0">${art}
     ${it.watched ? '<span class="seen">✓ Sedd</span>' : ""}
     <div class="meta" style="min-width:0"><div class="title" title="${esc(it.name)}">${it.adult ? '<span class="pill warn">18+</span> ' : ""}${it.type === "live" && it.num ? `<span class="muted">${it.num}</span> ` : ""}${esc(it.name)}</div>
