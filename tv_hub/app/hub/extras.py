@@ -238,7 +238,8 @@ def recent_hits(scope, days=14, limit=40):
 
 def notify_home_assistant(hits):
     """Skapar en notis i Home Assistant och skickar händelsen tv_hub_watch_hit (för egna automationer)."""
-    token = os.environ.get("SUPERVISOR_TOKEN")
+    from .remote import supervisor_token
+    token = supervisor_token()
     if not token:
         return
     titles = [item["name"] for _, item in hits]

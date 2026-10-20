@@ -39,6 +39,24 @@ _ingress = {"entry": None, "at": 0.0}
 _last_remote = {}
 
 
+def supervisor_token():
+    """Nyckeln till Supervisor. Basavbildningen (s6-overlay) lägger den i en fil i stället för i
+    miljön när programmet inte startas via with-contenv, så båda ställena läses."""
+    for name in ("SUPERVISOR_TOKEN", "HASSIO_TOKEN"):
+        value = os.environ.get(name)
+        if value:
+            return value.strip()
+        for folder in ("/run/s6/container_environment", "/var/run/s6/container_environment"):
+            try:
+                with open(os.path.join(folder, name), encoding="utf-8") as fh:
+                    value = fh.read().strip()
+                if value:
+                    return value
+            except OSError:
+                pass
+    return None
+
+
 class WsError(Exception):
     pass
 
@@ -193,7 +211,7 @@ def ha_session(url, token, commands, timeout=10, context=None):
 # Vem får använda webbadminen
 # ====================================================================
 def _load_users():
-    token = os.environ.get("SUPERVISOR_TOKEN")
+    token = supervisor_token()
     if not token:
         raise WsError("Ingen Supervisor-nyckel (körs utanför Home Assistant)")
     users = ha_session(SUPERVISOR_WS, token, [{"type": "config/auth/list"}])[0] or []
@@ -267,7 +285,7 @@ def ingress_entry():
     with _lock:
         if _ingress["entry"] and time.time() - _ingress["at"] < 3600:
             return _ingress["entry"]
-    token = os.environ.get("SUPERVISOR_TOKEN")
+    token = supervisor_token()
     if not token:
         return None
     try:

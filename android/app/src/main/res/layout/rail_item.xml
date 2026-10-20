@@ -17,6 +17,7 @@
         android:contentDescription="@null" />
 
     <TextView
+            android:duplicateParentState="true"
         android:id="@+id/title"
         android:layout_width="150dp"
         android:layout_height="wrap_content"

@@ -1169,7 +1169,9 @@ class HomeActivity : Activity(), CardListener {
         private val hint: TextView = view.findViewById(R.id.hint)
         private val shelves: RecyclerView = view.findViewById(R.id.shelves)
         private val shelfAdapter = ShelfAdapter(this@HomeActivity)
-        private val keyAdapter = RowAdapter(onClick = { row, _ -> press(row.key) })
+        private val keyAdapter = RowAdapter(onClick = { row, _ -> press(row.key) }, onKey = { _, p, code -> keyEdge(p, code) })
+        private val keyColumns = 6
+        private val keyManager = GridLayoutManager(this@HomeActivity, keyColumns)
         private var query = ""
         private var task: Runnable? = null
         private var token = 0
@@ -1177,12 +1179,11 @@ class HomeActivity : Activity(), CardListener {
         init {
             val letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ1234567890".map { it.toString() }
             val rows = letters.map { Row(it, key = it) } + listOf(Row("Mellanslag", key = " "), Row("⌫", key = "back"), Row("Rensa", key = "clear"))
-            val manager = GridLayoutManager(this@HomeActivity, 6)
-            manager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+            keyManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
                 override fun getSpanSize(position: Int): Int = if (position >= letters.size) 2 else 1
             }
             keyAdapter.edgeLock = false
-            keys.layoutManager = manager
+            keys.layoutManager = keyManager
             keys.adapter = KeyAdapter(keyAdapter)
             keyAdapter.submit(rows)
             shelves.layoutManager = LinearLayoutManager(this@HomeActivity)
@@ -1198,6 +1199,35 @@ class HomeActivity : Activity(), CardListener {
 
         fun onFocus(shelfIndex: Int) {
             (shelves.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(shelfIndex, 0)
+        }
+
+        /**
+         * Kanterna på tangentbordet: vänster i första kolumnen går till menyn, höger i sista
+         * kolumnen till träffarna. Utan det här hoppar fokus runt inne i tangentbordet.
+         */
+        private fun keyEdge(position: Int, keyCode: Int): Boolean {
+            val lookup = keyManager.spanSizeLookup
+            val column = lookup.getSpanIndex(position, keyColumns)
+            return when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> if (column == 0) {
+                    focusRail()
+                    true
+                } else {
+                    false
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> if (column + lookup.getSpanSize(position) >= keyColumns) {
+                    focusResults()
+                    true  // inga träffar: stanna kvar i stället för att hoppa runt
+                } else {
+                    false
+                }
+                else -> false
+            }
+        }
+
+        private fun focusResults() {
+            val holder = shelves.findViewHolderForAdapterPosition(0) as? ShelfAdapter.Holder ?: return
+            (holder.cards.getChildAt(0) ?: holder.cards).requestFocus()
         }
 
         private fun press(key: String) {
@@ -1219,7 +1249,7 @@ class HomeActivity : Activity(), CardListener {
             queryView.setTextColor(if (query.isEmpty()) 0xFF6E6E78.toInt() else 0xFFF5F5F7.toInt())
             val recent = prefs.recentSearches
             hint.text = if (query.isEmpty() && recent.isNotEmpty()) "Senaste: " + recent.joinToString(", ") else
-                "Välj bokstäver med fjärrkontrollen. Träffarna visas till höger."
+                "Välj bokstäver med fjärrkontrollen. Träffarna visas till höger.\nVänster eller Tillbaka: till menyn."
         }
 
         private fun search() {
@@ -1238,7 +1268,7 @@ class HomeActivity : Activity(), CardListener {
                     items.filter { it.type == "vod" }.takeIf { it.isNotEmpty() }?.let { list.add(Shelf("s_vod", "Filmer", it.map { i -> Card.poster(i) })) }
                     items.filter { it.type == "series" }.takeIf { it.isNotEmpty() }?.let { list.add(Shelf("s_series", "Serier", it.map { i -> Card.poster(i) })) }
                     shelfAdapter.submit(list)
-                    hint.text = if (list.isEmpty()) "Inga träffar på \"$q\"." else "Höger för att gå till träffarna."
+                    hint.text = if (list.isEmpty()) "Inga träffar på \"$q\"." else "Höger för att gå till träffarna. Vänster eller Tillbaka: till menyn."
                     if (list.isNotEmpty()) prefs.recentSearches = listOf(q) + prefs.recentSearches.filter { it != q }
                 }.onFailure { hint.text = Api.friendly(it) }
             }

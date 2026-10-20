@@ -1,5 +1,13 @@
 # Ändringar
 
+## 1.8.1
+
+- Rättat: tillägget fick inte sin nyckel till Home Assistant. Därför fungerade inte "Testa vägen"
+  (ingress-adressen saknades) och inte heller notiserna från Bevakningar.
+- Appen: markerade menyval och rader visar nu mörk text på den vita markeringen (var vitt på vitt).
+- Appen: i sökens tangentbord går vänster i första kolumnen till menyn och höger i sista kolumnen
+  till träffarna.
+
 ## 1.8.0
 
 - Appen fungerar på telefonen (Android), i samma app som på boxarna:
