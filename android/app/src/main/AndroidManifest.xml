@@ -46,6 +46,11 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".FilmNightActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation"
+            android:exported="false" />
+
+        <activity
             android:name=".SetupActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

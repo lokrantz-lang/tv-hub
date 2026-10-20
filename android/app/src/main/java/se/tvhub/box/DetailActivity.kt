@@ -16,8 +16,9 @@ import org.json.JSONObject
 /** Detaljsida för en film: affisch, handling, betyg, längd, skådespelare. Fortsätt eller börja om. */
 class DetailActivity : Activity(), CardListener {
     companion object {
-        fun start(context: Context, vodId: String, name: String) {
-            context.startActivity(Intent(context, DetailActivity::class.java).putExtra("id", vodId).putExtra("name", name))
+        fun start(context: Context, vodId: String, name: String, autoPlay: Boolean = false) {
+            context.startActivity(Intent(context, DetailActivity::class.java).putExtra("id", vodId).putExtra("name", name)
+                .putExtra("auto_play", autoPlay))
         }
     }
 
@@ -34,6 +35,10 @@ class DetailActivity : Activity(), CardListener {
     private var resumeMs = 0L
     private var modern = false
     private var moreLoaded = false
+    private var autoPlay = false
+    private var myRating = 0
+    private var wish = false
+    private var versions: List<Triple<String, String, String>> = emptyList()  // id, namn, kategori
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,6 +50,7 @@ class DetailActivity : Activity(), CardListener {
         setContentView(if (modern) R.layout.activity_detail_modern else R.layout.activity_detail)
         Api.init(prefs)
         vodId = intent.getStringExtra("id") ?: return finish()
+        autoPlay = intent.getBooleanExtra("auto_play", false)
         name = intent.getStringExtra("name") ?: ""
         findViewById<TextView>(R.id.title).text = name
         resumeButton = findViewById(R.id.play_resume)
@@ -62,12 +68,43 @@ class DetailActivity : Activity(), CardListener {
             if (modern) Look.focusGrow(button, 1.05f)
         }
         if (modern) listOf(resumeButton, playButton, favoriteButton).forEach { Look.focusGrow(it, 1.05f) }
+        findViewById<Button?>(R.id.rate)?.let { button ->
+            button.setOnClickListener { Taste.rate(this, "vod", vodId, name, askWho = true) { load() } }
+            Look.focusGrow(button, 1.05f)
+        }
+        findViewById<Button?>(R.id.wish)?.let { button ->
+            button.setOnClickListener {
+                val on = !wish
+                Taste.send(this, "vod", vodId, if (on) "wish" else "unwish",
+                    toast = if (on) "Tillagd på Vill se" else "Borttagen från Vill se") { load() }
+            }
+            Look.focusGrow(button, 1.05f)
+        }
+        findViewById<Button?>(R.id.versions)?.let { button ->
+            button.setOnClickListener { chooseVersion() }
+            Look.focusGrow(button, 1.05f)
+        }
         playButton.requestFocus()
     }
 
     override fun onResume() {
         super.onResume()
         load()
+        Taste.promptPending(this)
+    }
+
+    /** Samma film i flera versioner (t.ex. 4K, svensk text). */
+    private fun chooseVersion() {
+        if (versions.size < 2) return
+        val current = versions.indexOfFirst { it.first == vodId }
+        val labels = versions.map { v -> v.second + (v.third.takeIf { it.isNotEmpty() }?.let { "  ·  $it" } ?: "") }
+        Look.choose(this, "Välj version", labels, current) { which ->
+            val v = versions[which]
+            if (v.first != vodId) {
+                start(this, v.first, v.second)
+                finish()
+            }
+        }
     }
 
     private fun load() {
@@ -118,6 +155,34 @@ class DetailActivity : Activity(), CardListener {
         }
         favoriteButton.visibility = View.VISIBLE
         favoriteButton.text = if (favorite) "★  Favorit" else "☆  Favorit"
+
+        // Filmkväll (finns inte i vuxenläget: då saknas fälten).
+        val tasteOn = data.has("my_rating")
+        myRating = data.optInt("my_rating")
+        wish = data.optBoolean("wish")
+        val arr = data.optJSONArray("versions")
+        val list = ArrayList<Triple<String, String, String>>()
+        if (arr != null) for (i in 0 until arr.length()) {
+            val v = arr.optJSONObject(i) ?: continue
+            list.add(Triple(v.optString("id"), v.optString("name"), v.optString("category_name")))
+        }
+        versions = list
+        findViewById<Button?>(R.id.rate)?.let {
+            it.text = if (myRating == 0) "Betygsätt" else Taste.label(myRating)
+            it.visibility = if (tasteOn) View.VISIBLE else View.GONE
+        }
+        findViewById<Button?>(R.id.wish)?.let {
+            it.text = if (wish) "★  Vill se" else "☆  Vill se"
+            it.visibility = if (tasteOn) View.VISIBLE else View.GONE
+        }
+        findViewById<Button?>(R.id.versions)?.let {
+            it.text = "Versioner (${versions.size})"
+            it.visibility = if (versions.size > 1) View.VISIBLE else View.GONE
+        }
+        if (autoPlay) {
+            autoPlay = false
+            play(resumeMs)
+        }
     }
 
     /** "Mer som detta": högst betygsatta i samma genre. */

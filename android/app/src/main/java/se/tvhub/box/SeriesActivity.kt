@@ -48,6 +48,8 @@ class SeriesActivity : Activity() {
     private var modern = false
     private var mobile = false  // telefonen: inga inspelningar (de görs på TV-boxarna)
     private val favoriteEpisodes = HashSet<String>()
+    private var myRating = 0
+    private var wish = false
     private val seasonAdapter = RowAdapter(onClick = { row, _ -> jumpToSeason(row.key) })
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,6 +104,7 @@ class SeriesActivity : Activity() {
     override fun onResume() {
         super.onResume()
         reload()
+        Taste.promptPending(this)
     }
 
     private fun reload() {
@@ -186,6 +189,13 @@ class SeriesActivity : Activity() {
             )
         }
         rows.add(Row(if (favorite) "★  Favorit" else "☆  Lägg till i favoriter", key = "action:favorite", payload = "favorite"))
+        if (data.has("my_rating")) {
+            // Filmkväll: tummar och Vill se för serien (inte i vuxenläget).
+            myRating = data.optInt("my_rating")
+            wish = data.optBoolean("wish")
+            rows.add(Row(if (myRating == 0) "Betygsätt serien" else "Betyg: ${Taste.label(myRating)}", key = "action:rate", payload = "rate"))
+            rows.add(Row(if (wish) "★  På Vill se" else "☆  Vill se", key = "action:wish", payload = "wish"))
+        }
         if (!mobile) {
             rows.add(Row("⬇  Spela in hela serien till USB-minnet", subtitle = "Håll in OK på ett avsnitt: favorit, spela in avsnittet eller säsongen",
                 key = "action:record", payload = "record"))
@@ -208,6 +218,9 @@ class SeriesActivity : Activity() {
                 play(episode, if (payload.first == "resume") episode.positionMs else 0L)
             }
             "favorite" -> toggleFavorite()
+            "rate" -> Taste.rate(this, "series", seriesId, seriesName, askWho = true) { reload() }
+            "wish" -> Taste.send(this, "series", seriesId, if (wish) "unwish" else "wish",
+                toast = if (wish) "Borttagen från Vill se" else "Tillagd på Vill se") { reload() }
             "record" -> RecordMedia.series(this, seriesId)
             is Episode -> {
                 if (payload.positionMs > 0) {

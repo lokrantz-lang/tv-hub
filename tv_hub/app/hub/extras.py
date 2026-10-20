@@ -29,14 +29,18 @@ def update_progress(session, position_ms, duration_ms):
     key = (adult, session["type"], session["item_id"])
     finished = duration_ms > 0 and (position_ms >= duration_ms * FINISHED_RATIO
                                     or duration_ms - position_ms <= FINISHED_LEFT_MS)
-    with db.tx() as conn:
-        if finished:
+    if finished:
+        with db.tx() as conn:
             conn.execute("DELETE FROM progress WHERE adult = ? AND type = ? AND item_id = ?", key)
             conn.execute(
                 "INSERT OR REPLACE INTO watched (adult, type, item_id, series_id, at) VALUES (?,?,?,?,?)",
                 (*key, session["series_id"], db.iso()),
             )
-            return
+        # Filmkväll: loggas utanför transaktionen ovan (loggen öppnar egna anrop mot databasen).
+        from . import taste
+        taste.on_finished(session)
+        return
+    with db.tx() as conn:
         if session["type"] == "episode" and session["series_id"]:
             # Bara senaste avsnittet per serie i "Fortsätt titta".
             conn.execute(

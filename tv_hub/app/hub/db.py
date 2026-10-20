@@ -275,6 +275,69 @@ SCHEMA = [
         PRIMARY KEY (adult, episode_id)
     )
     """,
+    # version 8: Filmkväll. Tittarlägen, tummar, logg över sett, Vill se, dolda förslag, AI-förslag.
+    # Allt gäller bara vanligt läge (aldrig vuxeninnehåll). work_key slår ihop olika versioner av samma titel.
+    """
+    CREATE TABLE viewers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        taste TEXT,
+        rules TEXT NOT NULL DEFAULT '{}',
+        created TEXT NOT NULL
+    );
+    INSERT INTO viewers (name, position, rules, created) VALUES ('Själv', 1, '{}', datetime('now'));
+    INSERT INTO viewers (name, position, rules, created)
+        VALUES ('Med döttrarna', 2, '{"kids": true, "rewatch_days": 90}', datetime('now'));
+    INSERT INTO viewers (name, position, rules, created) VALUES ('Med vuxen', 3, '{}', datetime('now'));
+    CREATE TABLE ratings (
+        viewer_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        work_key TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        title TEXT,
+        value INTEGER NOT NULL,
+        at TEXT NOT NULL,
+        PRIMARY KEY (viewer_id, type, work_key)
+    );
+    CREATE TABLE seen_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        viewer_id INTEGER,
+        type TEXT NOT NULL,
+        work_key TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        title TEXT,
+        at TEXT NOT NULL,
+        source TEXT NOT NULL,
+        device_id INTEGER
+    );
+    CREATE INDEX idx_seen_work ON seen_log(type, work_key);
+    CREATE TABLE wishlist (
+        type TEXT NOT NULL,
+        work_key TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        title TEXT,
+        viewer_id INTEGER,
+        added TEXT NOT NULL,
+        PRIMARY KEY (type, work_key)
+    );
+    CREATE TABLE hidden_picks (
+        viewer_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        work_key TEXT NOT NULL,
+        until INTEGER,
+        PRIMARY KEY (viewer_id, type, work_key)
+    );
+    CREATE TABLE ai_picks (
+        viewer_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        picks TEXT NOT NULL,
+        PRIMARY KEY (viewer_id, type)
+    );
+    ALTER TABLE sessions ADD COLUMN viewer_id INTEGER
+    """,
 ]
 
 

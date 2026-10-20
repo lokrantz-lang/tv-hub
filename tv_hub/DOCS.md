@@ -70,6 +70,17 @@ ungefär lika lång tid som Toucan och din uppkoppling tillåter. Den räknas so
 - **Kanaler med arkiv hos Toucan** kan spolas så långt bakåt som arkivet räcker. Det gäller de flesta svenska huvudkanalerna.
 - **Kanaler utan arkiv** kan bara pausas, och bara så länge boxens minne räcker: ett par minuter på Z Alpha och några minuter på Z10 Pro.
 
+## Filmkväll
+
+Välj vem som tittar och få tio förslag. TV: *Filmkväll* i menyn. Telefon: knappen överst. Webbadmin: fliken *Filmkväll*.
+
+- **Tittarlägen** har egna tummar, egen logg och egna regler (barnvänligt, högsta längd, genrer att undvika, titta igen efter X dagar). Ändras i webbadminen. Valt läge gäller till kl 05 nästa morgon.
+- **Tummar:** 👍👍 Älskade, 👍 Bra, 👎 Inte för oss. Håll in OK på en film eller serie, använd knappen på detaljsidan, eller svara när appen frågar efter filmen.
+- **Förslagen** räknas i tillägget utifrån betyg, genre, regissör, skådespelare, årtionde, längd och om den är animerad, jämfört med det ni gillat. Sedda, nekade och "Inte i kväll" tas bort. Vill se kommer först.
+- **Barnvänligt** bygger på genre och kategori (Animerat, Familj, Barn) och är en bedömning, inte en garanti.
+- **Import:** IMDb (*Your Ratings → Export*) eller Letterboxd (*Settings → Data → Export*). Matchas på titel och årtal.
+- **AI (valfritt):** OpenAI, Anthropic eller egen server som följer OpenAI:s standard (t.ex. Ollama: adress `http://<dator>:11434/v1`, ingen nyckel). Tjänsten får tittarlägets namn och smaktext, titlar ni betygsatt och sett, och ett urval kandidater. Utan tjänst: *Kopiera underlag* och klistra in svaret.
+
 ## Telefonen och utanför hemmet
 
 Samma app fungerar på en Android-telefon. På telefonen väljs mobilläget automatiskt.

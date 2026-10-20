@@ -104,7 +104,7 @@ Se `homeassistant/tv_hub_package.yaml`. Ger status, svarstid, vem som tittar, n√
 ## Utveckling
 
 ```
-python3 tests/test_e2e.py     # 231 kontroller mot en simulerad Xtream-server
+python3 tests/test_e2e.py     # 291 kontroller mot en simulerad Xtream-server
 python3 tests/demo.py         # demodata: admin p√• http://127.0.0.1:28080
 ```
 

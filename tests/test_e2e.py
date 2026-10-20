@@ -69,7 +69,7 @@ def main():
                CHECK_INTERVAL="2", NET_CHECK_INTERVAL="2", TIMEOUT="3", SYNC_TIMEOUT="2",
                REFERENCE_HOSTS=f"127.0.0.1:{FAKE_PORT}", OPTIONS_PATH="/nonexistent",
                ADMIN_ALLOWED_IPS="127.0.0.1", NO_PROXY="*", no_proxy="*",
-               INFO_START_DELAY="1", INFO_PAUSE="0.05", APP_RELEASE_BASE=f"http://127.0.0.1:{FAKE_PORT}/release")
+               INFO_START_DELAY="1", INFO_PAUSE="0.05", TASTE_CACHE_MIN_AGE="0", APP_RELEASE_BASE=f"http://127.0.0.1:{FAKE_PORT}/release")
     env.pop("HTTPS_PROXY", None); env.pop("https_proxy", None)
     cert, key = os.path.join(CERT_DIR, "cert.pem"), os.path.join(CERT_DIR, "key.pem")
     subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert,
@@ -265,6 +265,7 @@ def main():
         version_15(ta, tb, pa, pb)
         media_recordings(ta, tb, pa, pb)
         episode_favorites(ta)
+        film_night(ta, pa)
         remote_access(ta, pa, cert)
 
         s, res = call("GET", f"{A}/", raw=True)
@@ -701,6 +702,208 @@ def episode_favorites(ta):
     call("POST", f"{D}/device/favorites", {"type": "episode", "id": "9002", "on": False}, token=ta)
     s, home = call("GET", f"{D}/device/home", token=ta)
     check("ta bort favoritavsnitt", not any(f["type"] == "episode" for f in home["favorites"]), home["favorites"])
+
+
+def dev(method, path, body=None, token=None, viewer=None, mode=None):
+    """Som call() men med tittarläge (X-TVHub-Viewer)."""
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(D + path, data=data, method=method, headers={"Content-Type": "application/json"})
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    if viewer:
+        req.add_header("X-TVHub-Viewer", str(viewer))
+    if mode:
+        req.add_header("X-TVHub-Mode", mode)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as res:
+            return res.status, json.loads(res.read() or b"null")
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read() or b"null")
+
+
+def film_night(ta, pa):
+    """1.9: Filmkväll med tittarlägen, tummar, logg, Vill se, dubbletter, import och AI."""
+    print("Filmkväll")
+    fake_mode("ok", dupes=1)
+    call("POST", f"{A}/api/catalog/sync"); time.sleep(1); wait_for(lambda: _sync_done(), timeout=30)
+    ok = wait_for(lambda: all((call("GET", f"{D}/device/vod/{i}", token=ta)[1] or {}).get("genre")
+                              for i in ("506", "507", "508", "509")), timeout=30)
+    check("nya filmer har fått info", ok, ok)
+    s, viewers = call("GET", f"{D}/device/viewers", token=ta)
+    names = [v["name"] for v in viewers]
+    check("tre tittarlägen från start", names == ["Själv", "Med döttrarna", "Med vuxen"], names)
+    self_id, kids_id, adult_id = [v["id"] for v in viewers]
+    check("Med döttrarna är barnvänligt från start", viewers[1]["rules"]["kids"] is True, viewers[1])
+
+    s, night = call("GET", f"{D}/device/night?viewer={self_id}&limit=20", token=ta)
+    ids = [i["id"] for i in night["items"]]
+    check("filmkväll ger förslag", s == 200 and len(ids) >= 5, night)
+    check("samma film bara en gång", len({"501", "506"} & set(ids)) == 1, ids)
+    check("svensk version föredras", "506" in ids, ids)
+    dune = next(i for i in night["items"] if i["id"] == "506")
+    check("antal versioner visas", dune["versions"] == 2, dune)
+    check("vuxeninnehåll föreslås aldrig", "599" not in ids, ids)
+    check("motivering och fakta finns", all(i["reason"] and i["facts"] for i in night["items"]), night["items"][:2])
+    s, kids = call("GET", f"{D}/device/night?viewer={kids_id}&limit=20", token=ta)
+    kid_ids = {i["id"] for i in kids["items"]}
+    check("barnvänligt: bara barnfilmer", kid_ids and kid_ids <= {"505", "507", "509"}, kid_ids)
+    check("barnvänligt: ingen skräck", "508" not in kid_ids, kid_ids)
+    s, kids_off = call("GET", f"{D}/device/night?viewer={kids_id}&kids=0&limit=20", token=ta)
+    check("barnvänligt går att slå av", "502" in {i["id"] for i in kids_off["items"]}, kids_off["items"])
+    s, noanim = call("GET", f"{D}/device/night?viewer={self_id}&anim=none&limit=20", token=ta)
+    check("animerat ut", not ({"505", "507", "509"} & {i["id"] for i in noanim["items"]}), noanim["items"])
+    s, onlyanim = call("GET", f"{D}/device/night?viewer={self_id}&anim=only&limit=20", token=ta)
+    check("bara animerat", {i["id"] for i in onlyanim["items"]} <= {"505", "507", "509"} and onlyanim["items"], onlyanim["items"])
+    s, short = call("GET", f"{D}/device/night?viewer={self_id}&max=120&limit=20", token=ta)
+    check("kortare än 2 h", not ({"501", "502", "506"} & {i["id"] for i in short["items"]}), short["items"])
+    s, swe = call("GET", f"{D}/device/night?viewer={self_id}&swe=1&limit=20", token=ta)
+    check("svenskt", {i["id"] for i in swe["items"]} <= {"503", "504", "505", "506"} and swe["items"], swe["items"])
+
+    # Snabbval på ett förslag
+    s, _ = call("POST", f"{D}/device/taste", {"action": "seen", "type": "vod", "id": "502", "viewer": self_id}, token=ta)
+    s, _ = call("POST", f"{D}/device/taste", {"action": "tonight", "type": "vod", "id": "503", "viewer": self_id}, token=ta)
+    s, _ = call("POST", f"{D}/device/taste", {"action": "never", "type": "vod", "id": "504", "viewer": self_id}, token=ta)
+    s, n2 = call("GET", f"{D}/device/night?viewer={self_id}&limit=20", token=ta)
+    ids2 = {i["id"] for i in n2["items"]}
+    check("redan sett, inte i kväll och aldrig tas bort", not ({"502", "503", "504"} & ids2), ids2)
+    s, n3 = call("GET", f"{D}/device/night?viewer={adult_id}&limit=20", token=ta)
+    check("gäller bara det tittarläget", {"502", "503", "504"} <= {i["id"] for i in n3["items"]}, n3["items"])
+    s, n4 = call("GET", f"{D}/device/night?viewer={self_id}&exclude=505,509&limit=20", token=ta)
+    check("exclude (lista som fylls på)", not ({"505", "509"} & {i["id"] for i in n4["items"]}), n4["items"])
+
+    # Tummar och motivering
+    s, r = call("POST", f"{D}/device/taste", {"action": "rate", "type": "vod", "id": "509", "value": 2, "seen": True,
+                                              "viewer": kids_id}, token=ta)
+    check("tumme upp sparas", s == 200 and r["value"] == 2, r)
+    s, k2 = call("GET", f"{D}/device/night?viewer={kids_id}&limit=20", token=ta)
+    k2_ids = [i["id"] for i in k2["items"]]
+    check("sedd och älskad föreslås inte igen direkt", "509" not in k2_ids, k2_ids)
+    frost = next((i for i in k2["items"] if i["id"] == "507"), None)
+    check("motivering bygger på det ni gillat", frost and "Fantastiska Mr Räv" in frost["reason"], frost)
+    s, bad = call("POST", f"{D}/device/taste", {"action": "rate", "type": "vod", "id": "507", "value": 5}, token=ta)
+    check("ogiltigt betyg nekas", s == 400, bad)
+    s, vd = dev("GET", "/device/vod/501", token=ta, viewer=kids_id)
+    check("detaljsidan: versioner", len(vd["versions"]) == 2 and vd["versions"][0]["quality"] == 3, vd.get("versions"))
+    s, vd = dev("GET", "/device/vod/509", token=ta, viewer=kids_id)
+    check("detaljsidan: tummen för tittarläget", vd["my_rating"] == 2, vd.get("my_rating"))
+    s, _ = call("POST", f"{D}/device/taste", {"action": "wish", "type": "vod", "id": "508"}, token=ta)
+    s, n5 = call("GET", f"{D}/device/night?viewer={adult_id}&limit=20", token=ta)
+    check("Vill se kommer först", n5["items"][0]["id"] == "508" and "Vill se" in n5["items"][0]["reason"], n5["items"][:2])
+    s, vd = dev("GET", "/device/vod/508", token=ta)
+    check("detaljsidan: Vill se", vd["wish"] is True, vd.get("wish"))
+    s, _ = call("POST", f"{D}/device/taste", {"action": "unwish", "type": "vod", "id": "508"}, token=ta)
+
+    # Sett klart loggas automatiskt, med tittarläge
+    s, p = dev("POST", "/device/play", {"type": "vod", "id": "507"}, token=ta, viewer=adult_id)
+    call("POST", f"{D}/device/heartbeat", {"session_id": p["session_id"],
+                                           "metrics": {"position_ms": 6000000, "duration_ms": 6120000}}, token=ta)
+    call("POST", f"{D}/device/stop", {"session_id": p["session_id"], "metrics": {"position_ms": 6100000, "duration_ms": 6120000}}, token=ta)
+    s, log = call("GET", f"{A}/api/seen")
+    auto = [r for r in log if r["item_id"] == "507" and r["source"] == "auto"]
+    check("sett klart loggas en gång med tittarläge", len(auto) == 1 and auto[0]["viewer_id"] == adult_id, auto)
+    s, p = dev("POST", "/device/play", {"type": "vod", "id": "505"}, token=ta)
+    call("POST", f"{D}/device/stop", {"session_id": p["session_id"], "metrics": {"position_ms": 4450000, "duration_ms": 4500000}}, token=ta)
+    s, log = call("GET", f"{A}/api/seen")
+    unknown = [r for r in log if r["item_id"] == "505"]
+    check("utan tittarläge loggas som okänd", unknown and unknown[0]["viewer_id"] is None, unknown)
+    call("POST", f"{D}/device/taste", {"action": "rate", "type": "vod", "id": "505", "value": 1, "seen": True,
+                                       "viewer": kids_id}, token=ta)
+    s, log = call("GET", f"{A}/api/seen")
+    claimed = [r for r in log if r["item_id"] == "505"]
+    check("Vem tittade? flyttar loggen till rätt tittarläge", len(claimed) == 1 and claimed[0]["viewer_id"] == kids_id, claimed)
+    s, p = call("POST", f"{D}/device/play", {"type": "vod", "id": "599"}, token=ta, mode="adult")
+    call("POST", f"{D}/device/stop", {"session_id": p["session_id"], "metrics": {"position_ms": 4100000, "duration_ms": 4200000}}, token=ta)
+    s, log = call("GET", f"{A}/api/seen")
+    check("vuxeninnehåll loggas aldrig", not [r for r in log if r["item_id"] == "599"], log[:3])
+    s, err = call("GET", f"{D}/device/night", token=ta, mode="adult")
+    check("ingen filmkväll i vuxenläget", s == 400, err)
+    s, err = call("POST", f"{D}/device/taste", {"action": "rate", "type": "vod", "id": "599", "value": 2}, token=ta)
+    check("vuxeninnehåll kan inte betygsättas", s == 400, err)
+
+    # Webbadminen: tittarlägen, inställningar, import
+    s, v = call("POST", f"{A}/api/viewers", {"name": "Med vänner", "taste": "Gillar komedier",
+                                             "rules": {"max_minutes": 110, "exclude_genres": "skräck, krig", "animated": "none"}})
+    check("skapa tittarläge", s == 201 and v["rules"]["exclude_genres"] == ["skräck", "krig"] and v["rules"]["max_minutes"] == 110, v)
+    s, nv = call("GET", f"{A}/api/night?viewer={v['id']}&limit=20")
+    nv_ids = {i["id"] for i in nv["items"]}
+    check("tittarlägets regler används", nv_ids and not ({"501", "502", "506", "508", "505", "507", "509"} & nv_ids), nv_ids)
+    s, _ = call("PUT", f"{A}/api/viewers/{v['id']}", {"name": "Vänner", "rules": {}})
+    s, vs = call("GET", f"{A}/api/viewers")
+    check("byt namn på tittarläge", any(x["name"] == "Vänner" for x in vs), vs)
+    s, _ = call("DELETE", f"{A}/api/viewers/{v['id']}")
+    s, vs = call("GET", f"{A}/api/viewers")
+    check("ta bort tittarläge", len(vs) == 3, vs)
+    imdb = ("Const,Your Rating,Date Rated,Title,URL,Title Type,IMDb Rating,Runtime (mins),Year,Genres\n"
+            "tt1,9,2024-05-01,Oppenheimer,u,movie,8.3,180,2023,Drama\n"
+            "tt2,4,2024-05-02,Skräcknatten,u,movie,6,90,2019,Horror\n"
+            "tt3,7,2024-05-03,En film som inte finns,u,movie,6,90,2001,Drama\n")
+    s, res = call("POST", f"{A}/api/taste/import", {"viewer": adult_id, "text": imdb})
+    check("import från IMDb", s == 200 and res["format"] == "imdb" and res["matched"] == 2 and res["rated"] == 2
+          and res["unmatched"] == ["En film som inte finns (2001)"], res)
+    s, rl = call("GET", f"{A}/api/ratings?viewer={adult_id}")
+    vals = {r["item_id"]: r["value"] for r in rl}
+    check("IMDb-betyg blir tummar", vals.get("502") == 2 and vals.get("508") == -1, vals)
+    lb = "Date,Name,Year,Letterboxd URI,Rating\n2024-06-01,Frost,2013,https://boxd.it/x,4.5\n"
+    s, res = call("POST", f"{A}/api/taste/import", {"viewer": kids_id, "text": lb})
+    check("import från Letterboxd", res.get("format") == "letterboxd" and res["matched"] == 1, res)
+    s, res = call("POST", f"{A}/api/taste/import", {"viewer": kids_id, "text": "a;b\n1;2"})
+    check("okänt format förklaras", s == 400, res)
+    s, ti = call("GET", f"{A}/api/taste/item?type=vod&id=507")
+    check("biblioteket: tummar och sett per tittarläge", ti["available"] and len(ti["viewers"]) == 3
+          and any(x["seen"] for x in ti["viewers"]), ti)
+    s, res = call("POST", f"{A}/api/rate", {"viewer": self_id, "type": "vod", "id": "501", "action": "seen"})
+    s, n6 = call("GET", f"{D}/device/night?viewer={self_id}&limit=20", token=ta)
+    check("markera sedd i webbadminen gäller alla versioner", not ({"501", "506"} & {i["id"] for i in n6["items"]}), n6["items"])
+    s, res = call("PUT", f"{A}/api/night/settings", {"version_pref": "quality"})
+    check("versionsval sparas", res.get("version_pref") == "quality", res)
+    call("PUT", f"{A}/api/night/settings", {"version_pref": "swedish"})
+
+    # AI: valfri tjänst
+    s, ai = call("GET", f"{A}/api/ai")
+    check("AI är av från start", ai["provider"] == "off" and not ai["enabled"], ai)
+    s, res = call("POST", f"{A}/api/ai/run")
+    check("AI utan tjänst nekas", s == 400, res)
+    call("PUT", f"{A}/api/ai", {"provider": "custom", "url": f"http://127.0.0.1:{FAKE_PORT}/ai/v1", "model": "testmodell"})
+    s, t = call("POST", f"{A}/api/ai/test")
+    check("egen server (OpenAI-standard) utan nyckel", t["ok"] and t["reply"] == "OK", t)
+    call("PUT", f"{A}/api/ai", {"key": "fel-nyckel"})
+    s, t = call("POST", f"{A}/api/ai/test")
+    check("fel nyckel förklaras", not t["ok"] and "401" in t["error"], t)
+    call("PUT", f"{A}/api/ai", {"key": "test-key"})
+    s, res = call("POST", f"{A}/api/ai/run")
+    done = wait_for(lambda: (call("GET", f"{A}/api/ai")[1].get("last_run") or {}).get("results"), timeout=30)
+    s, ai = call("GET", f"{A}/api/ai")
+    check("AI-förslag räknas för alla tittarlägen", ai["last_run"]["ok"] and len(ai["last_run"]["results"]) == 6
+          and "key" not in ai and ai["key_hint"] == "…-key", ai.get("last_run"))
+    s, n7 = call("GET", f"{D}/device/night?viewer={adult_id}&limit=10", token=ta)
+    check("AI-förslagen kommer först", n7["ai"] and n7["items"][0]["source"] == "ai"
+          and n7["items"][0]["reason"].startswith("AI tycker om"), n7["items"][:2])
+    call("POST", f"{D}/device/taste", {"action": "never", "type": "vod", "id": n7["items"][0]["id"], "viewer": adult_id}, token=ta)
+    s, n8 = call("GET", f"{D}/device/night?viewer={adult_id}&limit=10", token=ta)
+    check("AI-förslag följer Aldrig", n7["items"][0]["id"] not in {i["id"] for i in n8["items"]}, n8["items"][:2])
+    s, k3 = call("GET", f"{D}/device/night?viewer={kids_id}&limit=20", token=ta)
+    check("AI-förslag följer barnvänligt", {i["id"] for i in k3["items"]} <= {"505", "507", "509"}, k3["items"])
+    s, ask = call("POST", f"{A}/api/ai/ask", {"viewer": self_id, "type": "vod", "question": "Något spännande?"})
+    check("fråga AI:n", s == 200 and ask["answer"].startswith("Här är") and ask["items"] and ask["items"][0]["reason"], ask)
+    s, res = call("POST", f"{A}/api/ai/use", {"viewer": self_id, "type": "vod", "picks": ask["picks"][:2]})
+    s, n9 = call("GET", f"{D}/device/night?viewer={self_id}&limit=10", token=ta)
+    check("chattens förslag blir kvällens lista", [i["id"] for i in n9["items"][:2]] == [p["id"] for p in ask["picks"][:2]], n9["items"][:2])
+    s, ex = call("GET", f"{A}/api/ai/export?viewer={kids_id}&type=vod")
+    check("kopiera till valfri AI", "Tittarläge: Med döttrarna" in ex["text"] and "| Frost" not in ex["text"] or "Kandidater" in ex["text"], ex["text"][:200])
+    s, res = call("POST", f"{A}/api/ai/paste", {"viewer": adult_id, "type": "vod", "text": 'Svar:\n```json\n{"picks":[{"id":"503","reason":"Klassiker"}]}\n```'})
+    check("klistra in svar från valfri AI", s == 200 and res["count"] == 1, res)
+    s, res = call("POST", f"{A}/api/ai/paste", {"viewer": adult_id, "type": "vod", "text": "Jag föreslår Jönssonligan och Oppenheimer."})
+    check("svar utan JSON förklaras", s == 400, res)
+    call("PUT", f"{A}/api/ai", {"provider": "anthropic", "url": f"http://127.0.0.1:{FAKE_PORT}/ai/anthropic", "key": "ant-key", "model": "claude-test"})
+    s, t = call("POST", f"{A}/api/ai/test")
+    check("Anthropic fungerar", t["ok"] and t["reply"] == "OK", t)
+    call("PUT", f"{A}/api/ai", {"provider": "openai", "url": "http://127.0.0.1:1/v1", "key": "x", "model": "m"})
+    s, t = call("POST", f"{A}/api/ai/test")
+    check("tjänst som inte svarar förklaras", not t["ok"] and "Når inte" in t["error"], t)
+    call("PUT", f"{A}/api/ai", {"provider": "off"})
+    s, n10 = call("GET", f"{D}/device/night?viewer={adult_id}&limit=10", token=ta)
+    check("utan AI fungerar filmkväll ändå", s == 200 and n10["items"], n10)
+    fake_mode("ok", dupes=0)
 
 
 def remote_access(ta, pa, cert):

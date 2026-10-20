@@ -137,6 +137,55 @@
                 android:textSize="17sp" />
         </LinearLayout>
 
+        <!-- Filmkväll: tummar, Vill se och versioner -->
+        <LinearLayout
+            android:id="@+id/buttons2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:clipChildren="false"
+            android:orientation="horizontal">
+            <Button
+                android:id="@+id/rate"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/m_button"
+                android:paddingStart="22dp"
+                android:paddingEnd="22dp"
+                android:text="Betygsätt"
+                android:textAllCaps="false"
+                android:textColor="@color/m_on_focus"
+                android:textSize="16sp"
+                android:visibility="gone" />
+            <Button
+                android:id="@+id/wish"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/m_button"
+                android:paddingStart="22dp"
+                android:paddingEnd="22dp"
+                android:text="☆  Vill se"
+                android:textAllCaps="false"
+                android:textColor="@color/m_on_focus"
+                android:textSize="16sp"
+                android:visibility="gone" />
+            <Button
+                android:id="@+id/versions"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/m_button"
+                android:paddingStart="22dp"
+                android:paddingEnd="22dp"
+                android:text="Versioner"
+                android:textAllCaps="false"
+                android:textColor="@color/m_on_focus"
+                android:textSize="16sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
         <TextView
             android:id="@+id/status"
             android:layout_width="match_parent"

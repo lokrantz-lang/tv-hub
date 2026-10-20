@@ -103,6 +103,49 @@
                     android:textSize="16sp" />
             </LinearLayout>
 
+            <LinearLayout
+                android:id="@+id/buttons2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+                <Button
+                    android:id="@+id/rate"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/m_button"
+                    android:text="Betygsätt"
+                    android:textAllCaps="false"
+                    android:textColor="@color/m_on_focus"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
+                <Button
+                    android:id="@+id/wish"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/m_button"
+                    android:text="☆  Vill se"
+                    android:textAllCaps="false"
+                    android:textColor="@color/m_on_focus"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
+                <Button
+                    android:id="@+id/versions"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/m_button"
+                    android:text="Versioner"
+                    android:textAllCaps="false"
+                    android:textColor="@color/m_on_focus"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/status"
                 android:layout_width="match_parent"

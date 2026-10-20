@@ -5,6 +5,7 @@ Styr felbeteenden med GET /__mode?mode=ok|down_api|auth_fail|slow|vod_timeout|vo
 """
 import base64
 import json
+import re
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -61,6 +62,36 @@ VOD_INFO = {  # längd i sekunder och genre per film
     "505": (4500, "Animation, Barn", "1990-01-01", "5.9"),
     "599": (4200, "Vuxen", "2020-01-01", ""),
 }
+# Filmkväll (dupes=1): en dubblett av Dune, barnfilmer och en skräckfilm.
+DUPES_CATS = [{"category_id": "13", "category_name": "Barnfilm"}]
+DUPES = [
+    {"stream_id": 506, "name": "SE - Dune: Part Two (2024) [4K]", "stream_icon": "", "rating": "8.1",
+     "added": "1700000006", "category_id": "11", "container_extension": "mkv"},
+    {"stream_id": 507, "name": "Frost (2013)", "stream_icon": "", "rating": "7.4", "added": "1700000007",
+     "category_id": "13", "container_extension": "mp4"},
+    {"stream_id": 508, "name": "Skräcknatten (2019)", "stream_icon": "", "rating": "6.5", "added": "1700000008",
+     "category_id": "10", "container_extension": "mp4"},
+    {"stream_id": 509, "name": "Fantastiska Mr Räv (2009)", "stream_icon": "", "rating": "7.9",
+     "added": "1700000009", "category_id": "13", "container_extension": "mp4"},
+]
+VOD_INFO.update({
+    "506": (9960, "Science Fiction, Äventyr", "2024-02-27", "8.1"),
+    "507": (6120, "Animation, Familj", "2013-11-27", "7.4"),
+    "508": (5400, "Skräck, Thriller", "2019-10-01", "6.5"),
+    "509": (5220, "Animation, Komedi", "2009-11-13", "7.9"),
+})
+
+
+def fake_ai_reply(user):
+    """Simulerad AI: väljer kandidaterna i omvänd ordning, så att testet ser att AI:ns ordning används."""
+    if "Svara bara med ordet OK" in user:
+        return "OK"
+    ids = re.findall(r"^(\d+) \| ", user, re.M)
+    picks = [{"id": i, "reason": f"AI tycker om {i}"} for i in reversed(ids)][:15]
+    prefix = "Här är mina förslag för kvällen.\n" if "Fråga:" in user else ""
+    return prefix + json.dumps({"picks": picks})
+
+
 APK = b"PK" + b"\x00" * 200_000
 SERIES_INFO = {
     "info": {"name": "Bonusfamiljen", "plot": "Familjedrama.", "cover": "", "backdrop_path": ["__BASE__/img/bs900.png"]},
@@ -92,6 +123,23 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def do_POST(self):
+        """Simulerade AI-tjänster: OpenAI-standard (/ai/v1/chat/completions) och Anthropic (/ai/anthropic/messages)."""
+        length = int(self.headers.get("Content-Length") or 0)
+        body = json.loads(self.rfile.read(length) or b"{}")
+        STATE["ai_calls"] = STATE.get("ai_calls", 0) + 1
+        if self.path == "/ai/v1/chat/completions":
+            if self.headers.get("Authorization") not in (None, "Bearer test-key"):
+                return self.send(401, {"error": {"message": "Incorrect API key"}})
+            user = next((m["content"] for m in body.get("messages", []) if m.get("role") == "user"), "")
+            return self.send(200, {"choices": [{"message": {"role": "assistant", "content": fake_ai_reply(user)}}]})
+        if self.path == "/ai/anthropic/messages":
+            if self.headers.get("x-api-key") != "ant-key" or not self.headers.get("anthropic-version"):
+                return self.send(401, {"error": {"type": "authentication_error", "message": "invalid x-api-key"}})
+            user = body["messages"][0]["content"]
+            return self.send(200, {"content": [{"type": "text", "text": fake_ai_reply(user)}]})
+        return self.send(404, {"error": "not found"})
+
     def do_GET(self):
         url = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
@@ -103,6 +151,8 @@ class Handler(BaseHTTPRequestHandler):
             STATE["mode"] = q.get("mode", "ok")
             if "extra" in q:
                 STATE["extra"] = q["extra"] == "1"
+            if "dupes" in q:
+                STATE["dupes"] = q["dupes"] == "1"
             if "active_cons" in q:
                 STATE["active_cons"] = int(q["active_cons"])
             return self.send(200, {"mode": STATE["mode"]})
@@ -133,7 +183,7 @@ class Handler(BaseHTTPRequestHandler):
             if action == "get_live_streams":
                 return self.send(200, LIVE)
             if action == "get_vod_categories":
-                return self.send(200, VOD_CATS)
+                return self.send(200, VOD_CATS + (DUPES_CATS if STATE.get("dupes") else []))
             if action == "get_vod_streams":
                 if mode == "vod_timeout":
                     time.sleep(5)
@@ -143,7 +193,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, VOD + [{"stream_id": 520, "name": "Dune: Part Three (2026)",
                                                   "stream_icon": "", "rating": "", "added": "1800000000",
                                                   "category_id": "10", "container_extension": "mkv"}])
-                return self.send(200, VOD)
+                return self.send(200, VOD + (DUPES if STATE.get("dupes") else []))
             if action == "get_series_categories":
                 return self.send(200, SERIES_CATS)
             if action == "get_series":

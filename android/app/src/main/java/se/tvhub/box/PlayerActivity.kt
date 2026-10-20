@@ -449,6 +449,14 @@ class PlayerActivity : Activity() {
         if (closing) return
         closing = true
         conflictDialog?.dismiss()
+        // Filmkväll: en film som setts (nästan) klart ger frågan "Vad tyckte ni?" när man kommer tillbaka.
+        player?.let { p ->
+            val duration = p.duration
+            if (type == "vod" && !prefs.adultMode && duration > 0 &&
+                (p.currentPosition >= duration * 0.9 || duration - p.currentPosition < 3 * 60_000)) {
+                Session.pendingRating = Triple("vod", itemId, itemName)
+            }
+        }
         stopSession(reason)
         releasePlayer()
         handler.removeCallbacksAndMessages(null)

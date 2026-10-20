@@ -175,7 +175,8 @@ def _timeshift_start(portal, start_ts):
 
 
 def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(), name=None,
-                 scope=None, series_id=None, start=None, duration=None, icon=None, recording_id=None):
+                 scope=None, series_id=None, start=None, duration=None, icon=None, recording_id=None,
+                 viewer_id=None):
     """recording_id: strömmen är en inspelning. Den räknas inte av anslutningsvakten
     (man kan titta på en kanal och spela in en annan) och avslutar inte boxens tittande.
 
@@ -301,9 +302,9 @@ def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(
         {"live": "record", "catchup": "record_archive"}.get(kind, "record_vod")
     db.x(
         """INSERT INTO sessions (id, device_id, type, item_id, item_name, portal_id, started, last_heartbeat,
-           adult, series_id, ext, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           adult, series_id, ext, icon, viewer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (session_id, device["id"], session_type, item_id, display, portal["id"], db.iso(), db.iso(),
-         adult, series_id, ext_final, str(icon)[:500] if icon else None),
+         adult, series_id, ext_final, str(icon)[:500] if icon else None, None if adult else viewer_id),
     )
     if recording is not None:
         recordings.attach_session(device, recording["id"], item_id, session_id)

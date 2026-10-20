@@ -154,6 +154,27 @@ tbody tr:last-child td { border-bottom: 0; }
 .detail-body h3 { margin: 0 0 4px; font-size: 20px; }
 .detail-body .plot { font-size: 14px; line-height: 1.5; margin: 10px 0; }
 .detail-body .close { position: absolute; top: 10px; right: 12px; }
+/* filmkväll */
+.night-controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.night-controls label.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; color: var(--text); }
+.night-controls label.chk input { width: auto; min-height: 0; }
+.night-list { display: grid; gap: 12px; margin-top: 14px; }
+.night-item { display: grid; grid-template-columns: 64px 1fr; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.night-item:first-child { border-top: 0; padding-top: 0; }
+.night-item img, .night-item .art { width: 64px; aspect-ratio: 2 / 3; border-radius: 8px; object-fit: cover; background: var(--panel-2); }
+.night-item .why { font-size: 13px; color: var(--accent); margin-top: 2px; }
+.night-item .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.thumbs { display: inline-flex; gap: 4px; }
+.thumbs button { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 4px 8px; cursor: pointer; font-size: 14px; }
+.thumbs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.viewer-card { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 10px; }
+.viewer-card:first-child { border-top: 0; }
+.viewer-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+textarea { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 8px; padding: 8px 10px; width: 100%; font: inherit; min-height: 70px; box-sizing: border-box; }
+.answer { white-space: pre-wrap; font-size: 14px; line-height: 1.5; background: var(--panel-2); border-radius: 10px; padding: 12px; }
+.taste-box { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.taste-box .vrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0; }
+.taste-box .vname { min-width: 120px; font-size: 14px; }
 @media (max-width: 640px) {
   .lib-row, .lib-filters { grid-template-columns: 1fr 1fr; }
   .lib-row:not(.lib-filters) .f:first-child { grid-column: 1 / -1; }
@@ -173,6 +194,7 @@ tbody tr:last-child td { border-bottom: 0; }
     </div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="overview" aria-selected="true">Översikt</button>
+      <button role="tab" data-tab="night">Filmkväll</button>
       <button role="tab" data-tab="library">Bibliotek</button>
       <button role="tab" data-tab="collections">Favoriter och grupper</button>
       <button role="tab" data-tab="categories">Kategorier</button>
@@ -218,6 +240,84 @@ tbody tr:last-child td { border-bottom: 0; }
   </section>
 
   <!-- BIBLIOTEK -->
+  <section class="tabpanel" id="tab-night" hidden>
+    <div class="panel">
+      <div class="hd"><h2>Kvällens förslag</h2><span id="night-ai" class="small muted"></span></div>
+      <div class="bd">
+        <div class="night-controls">
+          <div class="seg" id="night-viewers"></div>
+          <div class="seg" id="night-kind"><button data-kind="vod" aria-pressed="true">Filmer</button><button data-kind="series" aria-pressed="false">Serier</button></div>
+        </div>
+        <div class="night-controls" style="margin-top:10px">
+          <label class="chk">Animerat <select id="nf-anim" style="width:auto; min-height:32px"><option value="">Som tittarläget</option><option value="any">Med</option><option value="only">Bara animerat</option><option value="none">Inget animerat</option></select></label>
+          <label class="chk"><input type="checkbox" id="nf-max"> Kortare än 2 h</label>
+          <label class="chk"><input type="checkbox" id="nf-new"> Bara nytt</label>
+          <label class="chk"><input type="checkbox" id="nf-high"> Högt betyg</label>
+          <label class="chk"><input type="checkbox" id="nf-swe"> Svenskt</label>
+          <label class="chk"><input type="checkbox" id="nf-kids"> Barnvänligt</label>
+        </div>
+        <div class="night-list" id="night-list"></div>
+        <p class="small muted" id="night-basis" style="margin-bottom:0"></p>
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="panel">
+        <div class="hd"><h2>Tittarlägen</h2><button class="btn" id="viewer-add">Lägg till</button></div>
+        <div class="bd">
+          <p class="small muted" style="margin-top:0">Varje tittarläge har egna tummar, egen logg och egna regler. Smaktexten används av AI-tjänsten om du har valt en.</p>
+          <div id="viewer-list"></div>
+          <label class="f" style="margin-top:8px">När samma film finns i flera versioner, visa
+            <select id="version-pref"><option value="swedish">den med svensk text först</option><option value="quality">högsta kvaliteten först</option></select></label>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="hd"><h2>Vill se</h2></div>
+        <div class="bd"><ul class="list" id="wish-list"></ul>
+          <p class="small muted" style="margin-bottom:0">Lägg till från appen (håll in OK) eller i Biblioteket. Vill se kommer först i Filmkväll.</p></div>
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="panel">
+        <div class="hd"><h2>Det här har ni sett</h2><select id="seen-viewer" style="width:auto"></select></div>
+        <div class="bd"><div style="max-height:420px; overflow:auto"><table><tbody id="seen-list"></tbody></table></div>
+          <p class="small muted" style="margin-bottom:0">Filmer som setts klart loggas automatiskt med tittarläget som valts i Filmkväll. Utan valt läge räknas de som det första tittarläget.</p></div>
+      </div>
+      <div class="panel">
+        <div class="hd"><h2>Importera från IMDb eller Letterboxd</h2></div>
+        <div class="bd">
+          <p class="small muted" style="margin-top:0">IMDb: <em>Your Ratings → Export</em>. Letterboxd: <em>Settings → Data → Export</em>, välj <span class="mono">ratings.csv</span> eller <span class="mono">watched.csv</span>. Filmerna matchas mot Toucans lista på titel och årtal och räknas som sedda; betygen blir tummar.</p>
+          <div class="row"><select id="imp-viewer" style="width:auto"></select><input type="file" id="imp-file" accept=".csv,text/csv" style="width:auto"><button class="btn primary" id="imp-go">Importera</button></div>
+          <div id="imp-result" class="small" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>AI (valfritt)</h2><span id="ai-pill"></span></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Filmkväll fungerar utan AI. Med en AI-tjänst räknas förslagen om varje natt kl 04, och du kan fråga här nedan. Tjänsten får tittarlägets namn och smaktext, titlar ni betygsatt och sett, och ett urval kandidater. Byt tjänst när du vill.</p>
+        <form id="ai-form" class="viewer-grid" style="align-items:end">
+          <label class="f">Tjänst<select id="ai-provider"><option value="off">Av</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic (Claude)</option><option value="custom">Egen server (OpenAI-standard, t.ex. Ollama)</option></select></label>
+          <label class="f">Modell<input id="ai-model" placeholder="t.ex. gpt-4o-mini, claude-haiku-5-5, llama3.1"></label>
+          <label class="f">Adress (bara egen server, annars tom)<input id="ai-url" placeholder="http://192.168.86.20:11434/v1"></label>
+          <label class="f">Nyckel<input id="ai-key" type="password" autocomplete="off"></label>
+          <label class="f" style="display:flex; gap:6px; align-items:center; color:var(--text)"><input type="checkbox" id="ai-nightly" style="width:auto; min-height:0"> Räkna om varje natt</label>
+          <div class="row"><button class="btn primary" type="submit">Spara</button><button class="btn" type="button" id="ai-test">Testa</button><button class="btn" type="button" id="ai-run">Räkna förslag nu</button></div>
+        </form>
+        <div id="ai-status" class="small muted" style="margin-top:8px"></div>
+        <h3 style="font-size:14px; margin:18px 0 8px">Fråga</h3>
+        <div class="row"><select id="ask-viewer" style="width:auto"></select><select id="ask-kind" style="width:auto"><option value="vod">Filmer</option><option value="series">Serier</option></select></div>
+        <textarea id="ask-q" style="margin-top:8px" placeholder="t.ex. Något mysigt och inte för långt, vi har sett mycket action i veckan"></textarea>
+        <div class="row" style="margin-top:8px"><button class="btn primary" id="ask-go">Fråga</button><button class="btn" id="ask-use" hidden>Använd som kvällens lista</button></div>
+        <div id="ask-answer" style="margin-top:10px"></div>
+        <h3 style="font-size:14px; margin:18px 0 8px">Utan egen AI-tjänst</h3>
+        <p class="small muted" style="margin-top:0">Kopiera underlaget och klistra in i valfri AI-chatt. Klistra sedan tillbaka hela svaret här, så blir det kvällens lista för tittarläget i ett dygn.</p>
+        <div class="row"><button class="btn" id="exp-copy">Kopiera underlag för valt tittarläge</button></div>
+        <textarea id="paste-text" style="margin-top:8px" placeholder="Klistra in svaret från AI-chatten här"></textarea>
+        <div class="row" style="margin-top:8px"><button class="btn primary" id="paste-go">Spara som kvällens lista</button></div>
+      </div>
+    </div>
+  </section>
+
   <section class="tabpanel" id="tab-library" hidden>
     <div class="panel">
       <div class="bd lib-controls">
@@ -717,6 +817,8 @@ async function toggleFav(type, id, btn) {
     toast(on ? "Lagd till i favoriter" : "Borttagen ur favoriter");
   });
 }
+// Detaljrutan används även från Filmkväll. Den ligger i Bibliotekets flik, som kan vara dold.
+document.body.appendChild($("lib-detail"));
 async function openDetail(type, id) {
   const base = lib.items.find((x) => x.type === type && String(x.id) === String(id)) || { type, id, name: "" };
   const dlg = $("lib-detail");
@@ -748,9 +850,33 @@ function renderDetail(it, series) {
         ${it.type === "live" ? `<button class="btn" data-act="record">Spela in från guiden…</button>` : ""}
         ${it.type !== "live" && boxesCache.length ? `<select data-act="recbox" style="width:auto"><option value="">⬇ ${it.type === "series" ? "Spela in hela serien" : "Spela in"} på box…</option>${boxesCache.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}</select>` : ""}
       </div>
+      ${(it.type === "vod" || it.type === "series") && !it.adult ? `<div class="taste-box" id="taste-box" data-type="${it.type}" data-id="${esc(it.id)}"></div>` : ""}
       ${series === null && it.type === "series" ? '<div class="empty">Hämtar avsnitt…</div>' : seasons}
     </div>`;
+  if ((it.type === "vod" || it.type === "series") && !it.adult) loadTasteBox(it.type, it.id);
 }
+async function loadTasteBox(type, id) {
+  const r = await api(`taste/item?type=${type}&id=${encodeURIComponent(id)}`).catch(() => null);
+  const box = $("taste-box"); if (!box || !r || !r.available) return;
+  box.innerHTML = `<div class="small muted" style="margin-bottom:4px">Filmkväll</div>` +
+    r.viewers.map((v) => `<div class="vrow" data-viewer="${v.id}"><span class="vname">${esc(v.name)}</span>${thumbsHtml(v.rating)}
+      <button class="btn small" data-act="tseen">${v.seen ? "✓ Sedd " + fmtTime(v.seen).split(" ")[0] : "Markera sedd"}</button></div>`).join("") +
+    `<div class="vrow"><button class="btn small" data-act="twish" aria-pressed="${r.wish}">${r.wish ? "★ På Vill se" : "☆ Vill se"}</button></div>` +
+    (r.versions.length > 1 ? `<div class="small muted">Finns i ${r.versions.length} versioner: ${r.versions.map((x) => esc(x.name)).join(" · ")}</div>` : "");
+}
+document.addEventListener("click", (e) => {
+  const box = e.target.closest("#taste-box"); if (!box) return;
+  const row = e.target.closest("[data-viewer]");
+  const body = { type: box.dataset.type, id: box.dataset.id };
+  const thumb = e.target.closest("[data-thumb]");
+  if (thumb && row) return guarded(async () => {
+    const value = thumb.getAttribute("aria-pressed") === "true" ? 0 : Number(thumb.dataset.thumb);
+    await api("rate", { method: "POST", body: Object.assign(body, { viewer: Number(row.dataset.viewer), value }) }); loadTasteBox(body.type, body.id);
+  });
+  const act = e.target.closest("[data-act]"); if (!act) return;
+  if (act.dataset.act === "tseen" && row) guarded(async () => { await api("rate", { method: "POST", body: Object.assign(body, { viewer: Number(row.dataset.viewer), action: "seen" }) }); loadTasteBox(body.type, body.id); });
+  if (act.dataset.act === "twish") guarded(async () => { await api("wishlist", { method: "POST", body: Object.assign(body, { on: act.getAttribute("aria-pressed") !== "true" }) }); loadTasteBox(body.type, body.id); });
+});
 $("lib-detail").addEventListener("click", (e) => {
   const dlg = $("lib-detail");
   if (e.target === dlg) return dlg.close();  // klick utanför rutan
@@ -791,6 +917,192 @@ $("lib-detail").addEventListener("change", (e) => {
   guarded(async () => { await api(`groups/${sel.value}/items`, { method: "POST", body: { type: favBtn.dataset.type, id: favBtn.dataset.id } }); toast(`Lagd i ${g ? g.name : "gruppen"}`); });
   sel.value = "";
 });
+
+/* ---------- filmkväll ---------- */
+const night = { viewers: [], viewer: null, kind: "vod", shown: [] };
+const THUMBS = [[2, "👍👍"], [1, "👍"], [-1, "👎"]];
+function viewerOptions(selected) { return night.viewers.map((v) => `<option value="${v.id}" ${String(v.id) === String(selected) ? "selected" : ""}>${esc(v.name)}</option>`).join(""); }
+function thumbsHtml(value, extra) { return `<span class="thumbs">${THUMBS.map(([v, t]) => `<button type="button" data-thumb="${v}" ${extra || ""} aria-pressed="${value === v}" title="${{ 2: "Älskade", 1: "Bra", "-1": "Inte för oss" }[v]}">${t}</button>`).join("")}</span>`; }
+async function loadViewers() {
+  night.viewers = await api("viewers");
+  if (!night.viewer || !night.viewers.some((v) => v.id === night.viewer)) night.viewer = night.viewers[0] && night.viewers[0].id;
+  $("night-viewers").innerHTML = night.viewers.map((v) => `<button data-viewer="${v.id}" aria-pressed="${v.id === night.viewer}">${esc(v.name)}</button>`).join("");
+  for (const id of ["seen-viewer", "imp-viewer", "ask-viewer"]) {
+    const keep = $(id).value || night.viewer;
+    $(id).innerHTML = (id === "seen-viewer" ? '<option value="">Alla</option>' : "") + viewerOptions(id === "seen-viewer" ? $(id).value : keep);
+  }
+  const v = night.viewers.find((x) => x.id === night.viewer);
+  $("nf-kids").checked = !!(v && v.rules.kids);
+}
+function nightQuery() {
+  const q = new URLSearchParams({ viewer: night.viewer, kind: night.kind, limit: 10 });
+  if ($("nf-anim").value) q.set("anim", $("nf-anim").value);
+  if ($("nf-max").checked) q.set("max", 120);
+  for (const [id, key] of [["nf-new", "new"], ["nf-high", "high"], ["nf-swe", "swe"]]) if ($(id).checked) q.set(key, 1);
+  q.set("kids", $("nf-kids").checked ? 1 : 0);
+  return q;
+}
+async function loadNight() {
+  if (!night.viewer) return;
+  $("night-list").innerHTML = '<div class="empty">Räknar…</div>';
+  const r = await api("night?" + nightQuery()).catch((e) => (toast(e.message), null));
+  if (!r) return;
+  night.shown = r.items;
+  $("night-list").innerHTML = r.items.map((it) => `<div class="night-item" data-type="${it.type}" data-id="${esc(it.id)}">
+      ${it.icon ? `<img src="${img(it.icon)}" alt="" onerror="this.removeAttribute('src')">` : '<div class="art"></div>'}
+      <div style="min-width:0"><div><strong>${esc(it.name)}</strong> ${it.source === "ai" ? '<span class="pill accent">AI</span>' : ""} ${it.versions > 1 ? `<span class="pill">${it.versions} versioner</span>` : ""}</div>
+        <div class="small muted">${esc(it.facts)}</div><div class="why">${esc(it.reason)}</div>
+        <div class="acts">${thumbsHtml(it.my_rating)}<button class="btn small" data-act="seen">Redan sett</button><button class="btn small" data-act="tonight">Inte i kväll</button><button class="btn small" data-act="never">Aldrig</button><button class="btn small ghost" data-act="open">Detaljer</button></div></div></div>`).join("")
+    || `<div class="empty">Inga förslag med de här valen (${r.candidates} kandidater).</div>`;
+  $("night-basis").textContent = r.basis < 20
+    ? `Bygger på ${r.basis} tummar och sedda titlar för ${r.viewer.name}. Förslagen blir bättre efter ett tjugotal.`
+    : `Bygger på ${r.basis} tummar och sedda titlar för ${r.viewer.name}.`;
+  const ai = r.ai_picks;
+  $("night-ai").textContent = ai && ai.fresh ? `AI-förslag från ${new Date(ai.created * 1000).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" })}` : "";
+}
+loaders.night = async () => {
+  await loadViewers().catch((e) => toast(e.message));
+  loadNight(); renderViewerList(); loadWishes(); loadSeen(); loadAi();
+  api("night/settings").then((r) => { $("version-pref").value = r.version_pref; }).catch(() => {});
+};
+$("night-viewers").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-viewer]"); if (!b) return;
+  night.viewer = Number(b.dataset.viewer);
+  document.querySelectorAll("#night-viewers button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  const v = night.viewers.find((x) => x.id === night.viewer); $("nf-kids").checked = !!(v && v.rules.kids);
+  loadNight();
+});
+$("night-kind").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-kind]"); if (!b) return;
+  night.kind = b.dataset.kind;
+  document.querySelectorAll("#night-kind button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  loadNight();
+});
+for (const id of ["nf-anim", "nf-max", "nf-new", "nf-high", "nf-swe", "nf-kids"]) $(id).addEventListener("change", loadNight);
+$("night-list").addEventListener("click", (e) => {
+  const row = e.target.closest(".night-item"); if (!row) return;
+  const body = { type: row.dataset.type, id: row.dataset.id, viewer: night.viewer };
+  const thumb = e.target.closest("[data-thumb]");
+  if (thumb) return guarded(async () => {
+    const value = thumb.getAttribute("aria-pressed") === "true" ? 0 : Number(thumb.dataset.thumb);
+    await api("rate", { method: "POST", body: Object.assign(body, { value }) });
+    row.querySelectorAll("[data-thumb]").forEach((b) => b.setAttribute("aria-pressed", Number(b.dataset.thumb) === value));
+    toast(value ? "Sparat" : "Tummen borttagen");
+  });
+  const act = e.target.closest("[data-act]"); if (!act) return;
+  if (act.dataset.act === "open") return openDetail(row.dataset.type, row.dataset.id);
+  if (act.dataset.act === "seen") return guarded(async () => { await api("rate", { method: "POST", body: Object.assign(body, { action: "seen" }) }); toast("Markerad som sedd"); loadNight(); });
+  guarded(async () => {
+    await api(`night-action`, { method: "POST", body: Object.assign(body, { action: act.dataset.act }) });
+    toast(act.dataset.act === "never" ? "Föreslås aldrig mer" : "Döljs i kväll"); loadNight();
+  });
+});
+function renderViewerList() {
+  $("viewer-list").innerHTML = night.viewers.map((v) => `<div class="viewer-card" data-id="${v.id}">
+      <div class="viewer-grid">
+        <label class="f">Namn<input data-f="name" value="${esc(v.name)}"></label>
+        <label class="f">Högsta längd (min, 0 = ingen)<input data-f="max_minutes" type="number" min="0" value="${v.rules.max_minutes || 0}"></label>
+        <label class="f">Animerat<select data-f="animated"><option value="any" ${v.rules.animated === "any" ? "selected" : ""}>Med</option><option value="only" ${v.rules.animated === "only" ? "selected" : ""}>Bara animerat</option><option value="none" ${v.rules.animated === "none" ? "selected" : ""}>Inget animerat</option></select></label>
+        <label class="f">Föreslå älskade igen efter (dagar, 0 = aldrig)<input data-f="rewatch_days" type="number" min="0" value="${v.rules.rewatch_days || 0}"></label>
+        <label class="f">Inte dessa genrer<input data-f="exclude_genres" value="${esc((v.rules.exclude_genres || []).join(", "))}" placeholder="t.ex. skräck, krig"></label>
+        <label class="f" style="display:flex; gap:6px; align-items:center; color:var(--text)"><input data-f="kids" type="checkbox" style="width:auto; min-height:0" ${v.rules.kids ? "checked" : ""}> Barnvänligt som standard</label>
+      </div>
+      <label class="f">Det här uppskattar vi (för AI-tjänsten)<textarea data-f="taste" placeholder="t.ex. Smarta thrillers med vändningar. Inte för långsamma. Gärna verklighetsbaserat.">${esc(v.taste || "")}</textarea></label>
+      <div class="row"><button class="btn primary small" data-act="save">Spara</button><button class="btn ghost small danger" data-act="del">Ta bort</button></div></div>`).join("");
+}
+$("viewer-list").addEventListener("click", (e) => {
+  const card = e.target.closest(".viewer-card"); const act = e.target.closest("[data-act]"); if (!card || !act) return;
+  const id = card.dataset.id;
+  if (act.dataset.act === "del") {
+    if (confirm("Ta bort tittarläget? Dess tummar tas bort.")) guarded(async () => { await api(`viewers/${id}`, { method: "DELETE" }); await loadViewers(); renderViewerList(); loadNight(); });
+    return;
+  }
+  const f = (k) => card.querySelector(`[data-f=${k}]`);
+  const body = { name: f("name").value, taste: f("taste").value, rules: {
+    max_minutes: Number(f("max_minutes").value) || 0, animated: f("animated").value, rewatch_days: Number(f("rewatch_days").value) || 0,
+    exclude_genres: f("exclude_genres").value, kids: f("kids").checked } };
+  guarded(async () => { await api(`viewers/${id}`, { method: "PUT", body }); toast("Sparat"); await loadViewers(); loadNight(); }, act);
+});
+$("viewer-add").addEventListener("click", () => {
+  const name = prompt("Namn på tittarläget, t.ex. Med vänner"); if (!name) return;
+  guarded(async () => { await api("viewers", { method: "POST", body: { name } }); await loadViewers(); renderViewerList(); });
+});
+$("version-pref").addEventListener("change", () => guarded(async () => { await api("night/settings", { method: "PUT", body: { version_pref: $("version-pref").value } }); toast("Sparat"); loadNight(); }));
+async function loadWishes() {
+  const list = await api("wishlist").catch(() => []);
+  $("wish-list").innerHTML = list.map((w) => `<li data-type="${w.type}" data-id="${esc(w.item_id)}"><div class="grow"><div class="ellipsis">${esc(w.title)}</div><div class="small muted">${TYPE_LABEL[w.type]} · ${fmtAgo(w.added)}${w.item ? "" : " · finns inte längre i listan"}</div></div><button class="btn ghost small danger" data-act="unwish">Ta bort</button></li>`).join("") || '<li class="empty">Listan är tom.</li>';
+}
+$("wish-list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act=unwish]"); if (!b) return; const li = b.closest("li");
+  guarded(async () => { await api("wishlist", { method: "POST", body: { type: li.dataset.type, id: li.dataset.id, on: false } }); loadWishes(); loadNight(); });
+});
+const SOURCE_LABEL = { auto: "sett klart", manual: "markerad", rating: "betygsatt", import: "importerad" };
+async function loadSeen() {
+  const v = $("seen-viewer").value;
+  const rows = await api("seen" + (v ? `?viewer=${v}` : "")).catch(() => []);
+  $("seen-list").innerHTML = rows.map((r) => `<tr data-id="${r.id}"><td class="small">${fmtTime(r.at)}</td><td>${esc(r.title)}</td><td class="small muted">${esc(r.viewer_name || "okänt")}</td><td class="small muted">${SOURCE_LABEL[r.source] || r.source}</td><td><button class="btn ghost small danger" data-act="del">✕</button></td></tr>`).join("") || '<tr><td class="empty">Inget loggat ännu.</td></tr>';
+}
+$("seen-viewer").addEventListener("change", loadSeen);
+$("seen-list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act=del]"); if (!b) return;
+  guarded(async () => { await api(`seen/${b.closest("tr").dataset.id}`, { method: "DELETE" }); loadSeen(); loadNight(); });
+});
+$("imp-go").addEventListener("click", (e) => guarded(async () => {
+  const file = $("imp-file").files[0]; if (!file) throw new Error("Välj en CSV-fil först.");
+  const r = await api("taste/import", { method: "POST", body: { viewer: Number($("imp-viewer").value), text: await file.text() } });
+  $("imp-result").innerHTML = `<strong>${r.matched} titlar hittades</strong>, ${r.rated} med betyg (${r.format === "imdb" ? "IMDb" : "Letterboxd"}).` +
+    (r.unmatched.length ? `<div class="muted" style="margin-top:4px">Fanns inte hos Toucan, till exempel: ${r.unmatched.slice(0, 8).map(esc).join("; ")}</div>` : "");
+  loadSeen(); loadNight();
+}, e.currentTarget));
+async function loadAi() {
+  const a = await api("ai").catch(() => null); if (!a) return;
+  $("ai-provider").value = a.provider; $("ai-model").value = a.model; $("ai-url").value = a.url; $("ai-key").value = "";
+  $("ai-key").placeholder = a.has_key ? `sparad (${a.key_hint})` : (a.provider === "custom" ? "behövs oftast inte" : "klistra in nyckeln");
+  $("ai-nightly").checked = !!a.nightly;
+  $("ai-pill").innerHTML = a.enabled ? '<span class="pill ok">på</span>' : '<span class="pill">av</span>';
+  const last = a.last_run;
+  $("ai-status").textContent = last ? `Senast: ${fmtTime(last.at)}, ${last.ok ? "OK" : "med fel"}${last.errors && last.errors.length ? ": " + last.errors.join("; ") : ""}` : "";
+}
+$("ai-form").addEventListener("submit", (e) => { e.preventDefault(); guarded(async () => {
+  const body = { provider: $("ai-provider").value, model: $("ai-model").value, url: $("ai-url").value, nightly: $("ai-nightly").checked };
+  if ($("ai-key").value.trim()) body.key = $("ai-key").value.trim();
+  await api("ai", { method: "PUT", body }); toast("Sparat. Tryck Testa."); loadAi();
+}); });
+$("ai-test").addEventListener("click", (e) => guarded(async () => {
+  const r = await api("ai/test", { method: "POST" });
+  $("ai-status").textContent = r.ok ? `Fungerar. Svar: "${r.reply}" på ${(r.ms / 1000).toFixed(1)} s.` : `Fungerar inte: ${r.error}`;
+}, e.currentTarget));
+$("ai-run").addEventListener("click", (e) => guarded(async () => {
+  await api("ai/run", { method: "POST" }); $("ai-status").textContent = "Räknar AI-förslag för alla tittarlägen… (kan ta någon minut)";
+  const started = Date.now();
+  const poll = setInterval(async () => {
+    const a = await api("ai").catch(() => null);
+    if (a && a.last_run && new Date(a.last_run.at).getTime() > started - 5000) { clearInterval(poll); loadAi(); loadNight(); toast("AI-förslagen är klara"); }
+    if (Date.now() - started > 600000) clearInterval(poll);
+  }, 4000);
+}, e.currentTarget));
+let lastAsk = null;
+$("ask-go").addEventListener("click", (e) => guarded(async () => {
+  $("ask-answer").innerHTML = '<div class="empty">Frågar…</div>'; $("ask-use").hidden = true;
+  const r = await api("ai/ask", { method: "POST", body: { viewer: Number($("ask-viewer").value), type: $("ask-kind").value, question: $("ask-q").value } });
+  lastAsk = { viewer: Number($("ask-viewer").value), type: $("ask-kind").value, picks: r.picks };
+  $("ask-answer").innerHTML = (r.answer ? `<div class="answer">${esc(r.answer)}</div>` : "") +
+    (r.items.length ? `<ul class="list" style="margin-top:8px">${r.items.map((it) => `<li class="card" data-type="${it.type}" data-id="${esc(it.id)}" style="cursor:pointer">${it.icon ? `<img class="thumb poster" src="${img(it.icon)}" alt="">` : ""}<div class="grow"><div>${esc(it.name)}</div><div class="small muted">${esc(it.reason || "")}</div></div></li>`).join("")}</ul>` : "");
+  $("ask-use").hidden = !r.picks.length;
+}, e.currentTarget));
+$("ask-answer").addEventListener("click", (e) => { const c = e.target.closest("[data-id]"); if (c) openDetail(c.dataset.type, c.dataset.id); });
+$("ask-use").addEventListener("click", (e) => guarded(async () => {
+  if (!lastAsk) return; await api("ai/use", { method: "POST", body: lastAsk }); toast("Kvällens lista uppdaterad i appen"); loadNight();
+}, e.currentTarget));
+$("exp-copy").addEventListener("click", (e) => guarded(async () => {
+  const r = await api(`ai/export?viewer=${$("ask-viewer").value}&type=${$("ask-kind").value}`);
+  try { await navigator.clipboard.writeText(r.text); toast("Kopierat. Klistra in i valfri AI-chatt."); }
+  catch (_) { $("paste-text").value = r.text; $("paste-text").select(); toast("Markerat: kopiera med Ctrl+C. Ersätt sedan med svaret."); }
+}, e.currentTarget));
+$("paste-go").addEventListener("click", (e) => guarded(async () => {
+  const r = await api("ai/paste", { method: "POST", body: { viewer: Number($("ask-viewer").value), type: $("ask-kind").value, text: $("paste-text").value } });
+  toast(`${r.count} förslag sparade som kvällens lista`); $("paste-text").value = ""; loadNight();
+}, e.currentTarget));
 
 /* ---------- favoriter och grupper ---------- */
 loaders.collections = async () => {

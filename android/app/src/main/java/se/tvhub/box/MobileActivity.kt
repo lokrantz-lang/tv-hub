@@ -102,6 +102,10 @@ class MobileActivity : Activity(), CardListener {
         routeView = findViewById(R.id.m_route)
         buildTabs()
         findViewById<View>(R.id.m_settings).setOnClickListener { showSettings() }
+        findViewById<View>(R.id.m_night).setOnClickListener {
+            if (prefs.adultMode) Toast.makeText(this, "Filmkväll finns bara i vanligt läge.", Toast.LENGTH_SHORT).show()
+            else FilmNightActivity.start(this)
+        }
         val title = findViewById<TextView>(R.id.m_title)
         title.setOnClickListener { onTitleTap() }
         title.setOnLongClickListener {
@@ -123,6 +127,7 @@ class MobileActivity : Activity(), CardListener {
             return
         }
         loadHome()
+        Taste.promptPending(this)
     }
 
     override fun onDestroy() {
@@ -338,6 +343,7 @@ class MobileActivity : Activity(), CardListener {
         if (!privateMode()) {
             options.add((if (item.favorite) "Ta bort från favoriter" else "Lägg till i favoriter") to { toggleFavorite(item) })
         }
+        options.addAll(Taste.options(this, item) { loadHome() })
         Look.choose(this, item.name, options.map { it.first }) { options[it].second() }
     }
 

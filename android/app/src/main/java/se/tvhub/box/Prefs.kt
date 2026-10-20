@@ -154,6 +154,32 @@ class Prefs(context: Context) {
     val remoteReady: Boolean
         get() = remoteUrl.startsWith("https://") && remoteIngress.startsWith("/") && remoteHaToken.isNotEmpty()
 
+    /**
+     * Filmkväll: vem som tittar. Gäller till kl 05 nästa morgon, sedan måste det väljas igen.
+     * Skickas med i anropen så att tummar och "sett klart" hamnar på rätt tittarläge.
+     */
+    val activeViewer: Int?
+        get() {
+            val id = sp.getInt("viewer_id", 0)
+            return if (id > 0 && System.currentTimeMillis() < sp.getLong("viewer_until", 0L)) id else null
+        }
+
+    val activeViewerName: String
+        get() = if (activeViewer != null) sp.getString("viewer_name", "") ?: "" else ""
+
+    fun setActiveViewer(id: Int?, name: String = "") {
+        if (id == null) {
+            sp.edit().remove("viewer_id").remove("viewer_until").apply()
+            return
+        }
+        val cal = java.util.Calendar.getInstance()
+        if (cal.get(java.util.Calendar.HOUR_OF_DAY) >= 5) cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 5)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        sp.edit().putInt("viewer_id", id).putString("viewer_name", name).putLong("viewer_until", cal.timeInMillis).apply()
+    }
+
     val paired: Boolean
         get() = server.isNotEmpty() && token.isNotEmpty()
 
@@ -176,4 +202,7 @@ object Session {
 
     /** Inspelningsschemat hämtas när appen startar. */
     var recordingsSynced = false
+
+    /** En film har setts klart: fråga "Vad tyckte ni?" när man kommer tillbaka från spelaren. */
+    var pendingRating: Triple<String, String, String>? = null
 }

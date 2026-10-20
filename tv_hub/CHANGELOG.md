@@ -1,5 +1,25 @@
 # Ändringar
 
+## 1.9.0
+
+- Filmkväll: välj vem som tittar (Själv, Med döttrarna, Med vuxen eller egna) och få tio förslag
+  med en kort motivering. Finns i menyn på TV:n, överst i telefonen och i webbadminen.
+  - Snabbval: Film/Serie, Barnvänligt, Animerat (med/bara/inget), Kortare än 2 h, Bara nytt,
+    Högt betyg och Svenskt.
+  - På varje förslag: Spela, Detaljer, Redan sett, Inte i kväll, Aldrig och Vill se. Listan fylls på direkt.
+- Tummar (👍👍 Älskade, 👍 Bra, 👎 Inte för oss) per tittarläge. Efter en film frågar appen
+  "Vad tyckte ni?" (och "Vem tittade?" om inget tittarläge är valt).
+- Logg över vad ni sett, med datum och tittarläge. Filmer som setts klart loggas automatiskt.
+- Vill se-lista. Titlarna kommer först i Filmkväll.
+- Samma film i flera versioner (4K, svensk text, olika kategorier) visas bara en gång. Detaljsidan
+  har knappen Versioner. Webbadminen: välj om svensk text eller högsta kvalitet ska visas först.
+- Titta igen: per tittarläge kan älskade titlar föreslås igen efter ett antal dagar (Med döttrarna: 90).
+- Import från IMDb och Letterboxd (CSV) i webbadminen.
+- AI (valfritt, utbytbart): OpenAI, Anthropic (Claude) eller egen server som Ollama. Räknar om
+  förslagen varje natt kl 04 och svarar på frågor i webbadminen. Utan AI-tjänst kan underlaget
+  kopieras till valfri AI-chatt och svaret klistras tillbaka.
+- Vuxeninnehåll loggas, betygsätts och föreslås aldrig i Filmkväll.
+
 ## 1.8.1
 
 - Rättat: tillägget fick inte sin nyckel till Home Assistant. Därför fungerade inte "Testa vägen"

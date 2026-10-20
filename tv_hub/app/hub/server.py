@@ -16,12 +16,12 @@ from urllib.parse import parse_qs, urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import VERSION, catalog, db, devices, diagnostics, extras, info, portals, recordings, remote, updates
+from . import VERSION, ai, catalog, db, devices, diagnostics, extras, info, portals, recordings, remote, taste, updates
 from .config import CFG
 from .xtream import XtreamError
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
-MAX_BODY = 256 * 1024
+MAX_BODY = 4 * 1024 * 1024  # import av IMDb/Letterboxd kan vara några hundra kB
 
 
 class HttpError(Exception):
@@ -752,6 +752,10 @@ class DeviceHandler(BaseHandler):
         dev = self.device()
         return dev, devices.scope_for(dev, self.wants_adult(), self.wants_history())
 
+    def viewer_id(self):
+        """Tittarläget som valts i Filmkväll (X-TVHub-Viewer). None = inget valt."""
+        return taste.resolve_viewer((self.headers.get("X-TVHub-Viewer") or "").strip())
+
 
 @route(DEVICE, "GET", r"/device/ping")
 def dev_ping(h):
@@ -857,6 +861,8 @@ def dev_vod(h, vod_id):
     item["watched"] = False if scope.private else extras.is_watched(adult, "vod", vod_id)
     if scope.private:
         item["favorite"] = False
+    if not scope.adult:
+        item.update(taste.detail_extras("vod", vod_id, h.viewer_id()))
     return 200, item
 
 
@@ -877,6 +883,8 @@ def dev_series(h, sid):
     detail["favorite_episodes"] = [] if scope.private else extras.episode_favorite_ids(scope.adult, sid)
     if scope.private:
         detail["favorite"] = False
+    if not scope.adult:
+        detail.update(taste.detail_extras("series", sid, h.viewer_id()))
     return 200, detail
 
 
@@ -989,7 +997,7 @@ def dev_play(h):
         dev, data.get("type"), data.get("id"), ext=data.get("ext"), force=bool(data.get("force")),
         exclude_portals=data.get("exclude_portals") or [], name=data.get("name"), scope=scope,
         series_id=data.get("series_id"), start=data.get("start"), duration=data.get("duration"),
-        icon=data.get("icon"), recording_id=data.get("recording_id"),
+        icon=data.get("icon"), recording_id=data.get("recording_id"), viewer_id=h.viewer_id(),
     )
     if data.get("failover_from") and result.get("status") == "ok":
         db.log_event("failover", {"from_portal": data.get("failover_from"), "to": result["portal_name"],
@@ -1140,6 +1148,265 @@ def dev_summary(h):
         "active_cons": account["active_cons"] if account else None,
         "max_connections": account["max_connections"] if account else None,
     }
+
+
+# ----- Filmkväll -----
+NIGHT_PARAMS = ("anim", "max", "new", "high", "swe", "kids")
+
+
+def _night_query(h):
+    params = {k: h.query[k][0] for k in NIGHT_PARAMS if h.query.get(k)}
+    kind = (h.query.get("kind") or ["vod"])[0]
+    exclude = [x for x in (h.query.get("exclude") or [""])[0].split(",") if x][:200]
+    limit = _int_arg(h.query, "limit", 10, 1, 30)
+    return params, kind, exclude, limit
+
+
+def _viewers_public():
+    return [{"id": v["id"], "name": v["name"], "rules": v["rules"]} for v in taste.viewers()]
+
+
+@route(DEVICE, "GET", r"/device/night")
+def dev_night(h):
+    dev, scope = h.context()
+    if scope.adult:
+        raise HttpError(400, "Filmkväll finns bara i vanligt läge.")
+    params, kind, exclude, limit = _night_query(h)
+    viewer = taste.resolve_viewer((h.query.get("viewer") or [""])[0]) or h.viewer_id() or taste.default_viewer_id()
+    result = taste.suggest(viewer, kind, params, limit, exclude)
+    result["viewers"] = _viewers_public()
+    return 200, result
+
+
+@route(DEVICE, "POST", r"/device/taste")
+def dev_taste(h):
+    """Tummar och snabbval från appen: rate, seen, tonight, never, wish, unwish."""
+    dev, scope = h.context()
+    if scope.adult:
+        raise HttpError(400, "Finns bara i vanligt läge.")
+    data = h.read_json()
+    kind, item_id, action = data.get("type") or "vod", str(data.get("id") or ""), data.get("action")
+    viewer = taste.resolve_viewer(data.get("viewer")) or h.viewer_id() or taste.default_viewer_id()
+    if action == "rate":
+        return 200, taste.rate(viewer, kind, item_id, data.get("value"), bool(data.get("seen")), dev["id"])
+    if action == "seen":
+        taste.log_seen(viewer, kind, item_id, "manual", dev["id"], claim=True)
+    elif action in ("tonight", "never"):
+        taste.hide(viewer, kind, item_id, forever=action == "never")
+    elif action in ("wish", "unwish"):
+        taste.set_wish(kind, item_id, action == "wish", None)
+    else:
+        raise HttpError(400, "Okänt val.")
+    return 200, {"ok": True}
+
+
+@route(DEVICE, "GET", r"/device/viewers")
+def dev_viewers(h):
+    h.device()
+    return 200, _viewers_public()
+
+
+@route(ADMIN, "GET", r"/api/viewers")
+def admin_viewers(h):
+    return 200, taste.viewers()
+
+
+@route(ADMIN, "POST", r"/api/viewers")
+def admin_viewer_create(h):
+    return 201, taste.save_viewer(h.read_json())
+
+
+@route(ADMIN, "PUT", r"/api/viewers/(\d+)")
+def admin_viewer_update(h, vid):
+    return 200, taste.save_viewer(h.read_json(), int(vid))
+
+
+@route(ADMIN, "DELETE", r"/api/viewers/(\d+)")
+def admin_viewer_delete(h, vid):
+    taste.delete_viewer(int(vid))
+    return 200, {"ok": True}
+
+
+@route(ADMIN, "GET", r"/api/night")
+def admin_night(h):
+    params, kind, exclude, limit = _night_query(h)
+    viewer = taste.resolve_viewer((h.query.get("viewer") or [""])[0]) or taste.default_viewer_id()
+    result = taste.suggest(viewer, kind, params, limit, exclude)
+    result["ai_picks"] = ai.picks_info(viewer, kind)
+    return 200, result
+
+
+@route(ADMIN, "GET", r"/api/night/settings")
+def admin_night_settings(h):
+    return 200, {"version_pref": taste.version_pref()}
+
+
+@route(ADMIN, "PUT", r"/api/night/settings")
+def admin_night_settings_save(h):
+    data = h.read_json()
+    pref = data.get("version_pref")
+    if pref not in ("swedish", "quality"):
+        raise HttpError(400, "Okänt val.")
+    db.set_setting("version_pref", pref)
+    taste.invalidate_catalog()
+    return 200, {"version_pref": pref}
+
+
+@route(ADMIN, "GET", r"/api/seen")
+def admin_seen(h):
+    viewer = taste.resolve_viewer((h.query.get("viewer") or [""])[0])
+    return 200, taste.seen_log(_int_arg(h.query, "limit", 200, 1, 2000), viewer)
+
+
+@route(ADMIN, "DELETE", r"/api/seen/(\d+)")
+def admin_seen_delete(h, rid):
+    taste.delete_seen(int(rid))
+    return 200, {"ok": True}
+
+
+@route(ADMIN, "GET", r"/api/wishlist")
+def admin_wishlist(h):
+    return 200, taste.wishlist()
+
+
+@route(ADMIN, "POST", r"/api/wishlist")
+def admin_wishlist_set(h):
+    data = h.read_json()
+    return 200, {"on": taste.set_wish(data.get("type") or "vod", str(data.get("id") or ""), bool(data.get("on")),
+                                      taste.resolve_viewer(data.get("viewer")))}
+
+
+@route(ADMIN, "GET", r"/api/ratings")
+def admin_ratings(h):
+    return 200, taste.ratings_list(taste.resolve_viewer((h.query.get("viewer") or [""])[0]))
+
+
+@route(ADMIN, "POST", r"/api/rate")
+def admin_rate(h):
+    data = h.read_json()
+    viewer = taste.resolve_viewer(data.get("viewer"))
+    if not viewer:
+        raise HttpError(400, "Välj tittarläge.")
+    kind, item_id = data.get("type") or "vod", str(data.get("id") or "")
+    if data.get("action") == "seen":
+        taste.log_seen(viewer, kind, item_id, "manual")
+        return 200, {"ok": True}
+    return 200, taste.rate(viewer, kind, item_id, data.get("value"), bool(data.get("seen")))
+
+
+@route(ADMIN, "POST", r"/api/night-action")
+def admin_night_action(h):
+    data = h.read_json()
+    viewer = taste.resolve_viewer(data.get("viewer"))
+    if not viewer or data.get("action") not in ("tonight", "never"):
+        raise HttpError(400, "Ogiltigt val.")
+    taste.hide(viewer, data.get("type") or "vod", str(data.get("id") or ""), forever=data.get("action") == "never")
+    return 200, {"ok": True}
+
+
+@route(ADMIN, "GET", r"/api/taste/item")
+def admin_taste_item(h):
+    kind = (h.query.get("type") or ["vod"])[0]
+    item_id = (h.query.get("id") or [""])[0]
+    key = taste.key_for(kind, item_id)
+    if not key:
+        return 200, {"available": False}
+    per = []
+    for v in taste.viewers():
+        seen = db.q1("SELECT MAX(at) AS at FROM seen_log WHERE viewer_id = ? AND type = ? AND work_key = ?",
+                     (v["id"], kind, key))["at"]
+        per.append({"id": v["id"], "name": v["name"], "rating": taste.rating_of(v["id"], kind, key), "seen": seen})
+    return 200, {"available": True, "viewers": per, "wish": taste.in_wishlist(kind, key),
+                 "versions": taste.versions_of(kind, item_id) if kind == "vod" else []}
+
+
+@route(ADMIN, "POST", r"/api/taste/import")
+def admin_taste_import(h):
+    data = h.read_json()
+    viewer = taste.resolve_viewer(data.get("viewer"))
+    if not viewer:
+        raise HttpError(400, "Välj tittarläge.")
+    return 200, taste.import_csv(data.get("text"), viewer)
+
+
+@route(ADMIN, "GET", r"/api/ai")
+def admin_ai(h):
+    return 200, ai.settings()
+
+
+@route(ADMIN, "PUT", r"/api/ai")
+def admin_ai_save(h):
+    return 200, ai.save_settings(h.read_json())
+
+
+@route(ADMIN, "POST", r"/api/ai/test")
+def admin_ai_test(h):
+    return 200, ai.test()
+
+
+@route(ADMIN, "POST", r"/api/ai/run")
+def admin_ai_run(h):
+    if not ai.settings()["enabled"]:
+        raise HttpError(400, "Välj en AI-tjänst först.")
+    threading.Thread(target=lambda: _safe(ai.run_all, "manual"), daemon=True).start()
+    return 200, {"started": True}
+
+
+def _safe(fn, *args):
+    try:
+        fn(*args)
+    except Exception as exc:
+        print(f"[fel] {fn.__name__}: {exc!r}", flush=True)
+
+
+def _ai_viewer(data):
+    viewer = taste.resolve_viewer(data.get("viewer"))
+    if not viewer:
+        raise HttpError(400, "Välj tittarläge.")
+    kind = data.get("type") or "vod"
+    return viewer, kind if kind in taste.KINDS else "vod"
+
+
+@route(ADMIN, "POST", r"/api/ai/ask")
+def admin_ai_ask(h):
+    data = h.read_json()
+    viewer, kind = _ai_viewer(data)
+    try:
+        return 200, ai.ask(viewer, kind, data.get("question"))
+    except ai.AiError as exc:
+        raise HttpError(502, str(exc))
+
+
+@route(ADMIN, "GET", r"/api/ai/export")
+def admin_ai_export(h):
+    viewer, kind = _ai_viewer({"viewer": (h.query.get("viewer") or [""])[0], "type": (h.query.get("type") or ["vod"])[0]})
+    return 200, {"text": ai.export_text(viewer, kind)}
+
+
+@route(ADMIN, "POST", r"/api/ai/paste")
+def admin_ai_paste(h):
+    data = h.read_json()
+    viewer, kind = _ai_viewer(data)
+    return 200, ai.paste(viewer, kind, data.get("text"))
+
+
+@route(ADMIN, "POST", r"/api/ai/use")
+def admin_ai_use(h):
+    """Chattens förslag blir Filmkvällens lista i ett dygn."""
+    data = h.read_json()
+    viewer, kind = _ai_viewer(data)
+    picks = [p for p in (data.get("picks") or []) if isinstance(p, dict) and p.get("id")][:30]
+    if not picks:
+        raise HttpError(400, "Inga förslag.")
+    ai.store(viewer, kind, [{"id": str(p["id"]), "reason": str(p.get("reason") or "")[:120]} for p in picks], "chat")
+    return 200, {"count": len(picks)}
+
+
+@route(ADMIN, "DELETE", r"/api/ai/picks")
+def admin_ai_clear(h):
+    viewer, kind = _ai_viewer({"viewer": (h.query.get("viewer") or [""])[0], "type": (h.query.get("type") or ["vod"])[0]})
+    ai.clear(viewer, kind)
+    return 200, {"ok": True}
 
 
 @route(DEVICE, "GET", r"/device/remote")

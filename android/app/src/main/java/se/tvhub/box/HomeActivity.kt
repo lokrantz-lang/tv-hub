@@ -49,6 +49,7 @@ class HomeActivity : Activity(), CardListener {
 
     private val navs = listOf(
         Nav("home", "Hem", R.drawable.ic_m_home),
+        Nav("night", "Filmkväll", R.drawable.ic_m_night),
         Nav("search", "Sök", R.drawable.ic_m_search),
         Nav("live", "Live-TV", R.drawable.ic_m_live),
         Nav("vod", "Filmer", R.drawable.ic_m_movie),
@@ -126,6 +127,7 @@ class HomeActivity : Activity(), CardListener {
             return
         }
         loadHome()
+        Taste.promptPending(this)
     }
 
     override fun onDestroy() {
@@ -148,7 +150,7 @@ class HomeActivity : Activity(), CardListener {
                 if (hasFocus) onRailFocus(nav.key)
             }
             item.setOnKeyListener { _, keyCode, event ->
-                if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && nav.key != "settings") {
+                if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && nav.key != "settings" && nav.key != "night") {
                     navTask?.let { handler.removeCallbacks(it) }
                     if (current != nav.key) showPage(nav.key)
                     focusPage()
@@ -194,7 +196,7 @@ class HomeActivity : Activity(), CardListener {
 
     private fun onRailFocus(key: String) {
         navTask?.let { handler.removeCallbacks(it) }
-        if (key == "settings" || key == current) return
+        if (key == "settings" || key == "night" || key == current) return
         val task = Runnable { showPage(key) }
         navTask = task
         handler.postDelayed(task, 350)
@@ -204,6 +206,10 @@ class HomeActivity : Activity(), CardListener {
         navTask?.let { handler.removeCallbacks(it) }
         if (key == "settings") {
             showSettings()
+            return
+        }
+        if (key == "night") {
+            FilmNightActivity.start(this)
             return
         }
         if (key != current) showPage(key)
@@ -388,6 +394,7 @@ class HomeActivity : Activity(), CardListener {
         if (!privateMode()) {
             options.add((if (item.favorite) "Ta bort från favoriter" else "Lägg till i favoriter") to { toggleFavorite(item) })
         }
+        options.addAll(Taste.options(this, item) { loadHome() })
         Look.choose(this, item.name, options.map { it.first }) { options[it].second() }
     }
 
