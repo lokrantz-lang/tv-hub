@@ -118,6 +118,13 @@ class Prefs(context: Context) {
             sp.edit().putBoolean("modern_ui", value).apply()
         }
 
+    /** Telefonen: Filmer och Serier som lista i stället för rutnät. */
+    var mobileList: Boolean
+        get() = sp.getBoolean("mobile_list", false)
+        set(value) {
+            sp.edit().putBoolean("mobile_list", value).apply()
+        }
+
     /** Senaste sökningar i det moderna utseendet. */
     var recentSearches: List<String>
         get() = (sp.getString("recent_searches", "") ?: "").split("\n").filter { it.isNotBlank() }

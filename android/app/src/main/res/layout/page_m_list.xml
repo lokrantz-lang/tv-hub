@@ -57,6 +57,20 @@
             android:textSize="13sp" />
 
         <TextView
+            android:id="@+id/view_toggle"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/m_button"
+            android:gravity="center"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:text="Lista"
+            android:textColor="@color/m_on_focus"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/sort"
             android:layout_width="wrap_content"
             android:layout_height="34dp"

@@ -204,6 +204,8 @@ class MobileActivity : Activity(), CardListener {
             if (child !== status) pages.removeView(child)
         }
         pages.addView(page.view, 0)
+        // Meddelandet i mitten (välkomsttext) hör bara till Hem; fel visas av loadHome.
+        if (home != null) status.visibility = View.GONE
         page.onShow()
     }
 
@@ -425,16 +427,30 @@ class MobileActivity : Activity(), CardListener {
 
         override fun onReselect() = list.smoothScrollToPosition(0)
 
+        override fun onShow() = showWelcome()
+
         override fun onHomeData(data: JSONObject) {
             val key = data.toString().hashCode().toString()
             if (key == loadedKey) return
             loadedKey = key
-            val shelves = homeShelves(data)
-            adapter.submit(shelves)
-            if (shelves.isEmpty()) {
-                status.text = "Välkommen till TV Hub.\nVälj Live, Filmer eller Serier nedan."
-                status.visibility = View.VISIBLE
+            adapter.submit(homeShelves(data))
+            showWelcome()
+        }
+
+        /** Tom Hem-sida: förklara varför (bara när Hem visas). */
+        private fun showWelcome() {
+            if (current != "home" || home == null) return
+            if (adapter.itemCount > 0) {
+                status.visibility = View.GONE
+                return
             }
+            status.text = if (privateMode()) {
+                "Favoriter och historik är dolda i det här läget.\nHåll in \"TV Hub\" överst för att visa dem, eller välj Live, Filmer eller Serier nedan."
+            } else {
+                "Välkommen till TV Hub.\nVälj Live, Filmer eller Serier nedan."
+            }
+            status.visibility = View.VISIBLE
+            status.bringToFront()
         }
     }
 
@@ -518,9 +534,12 @@ class MobileActivity : Activity(), CardListener {
         private val chips: RecyclerView = view.findViewById(R.id.chips)
         private val info: TextView = view.findViewById(R.id.info)
         private val sort: TextView = view.findViewById(R.id.sort)
+        private val viewToggle: TextView = view.findViewById(R.id.view_toggle)
         private val grid: RecyclerView = view.findViewById(R.id.list)
         private val chipAdapter = Chips { selectChip(it) }
         private val gridAdapter = CardAdapter(this)
+        private val rowsAdapter = ItemRows(live = false)
+        private val items = ArrayList<Item>()
         private val columns = 3
         private var categoryId: String? = null
         private var chipKey = "all"
@@ -533,40 +552,69 @@ class MobileActivity : Activity(), CardListener {
         init {
             chips.visibility = View.VISIBLE
             view.findViewById<View>(R.id.bar).visibility = View.VISIBLE
+            viewToggle.visibility = View.VISIBLE
             chips.layoutManager = LinearLayoutManager(this@MobileActivity, LinearLayoutManager.HORIZONTAL, false)
             chips.adapter = chipAdapter
             chips.itemAnimator = null
             val gap = Look.dp(this@MobileActivity, 4)
             val width = resources.displayMetrics.widthPixels - Look.dp(this@MobileActivity, 16)
             val cardWidth = width / columns - 2 * gap
-            gridAdapter.itemSize = cardWidth to (cardWidth * 3 / 2)
-            grid.layoutManager = GridLayoutManager(this@MobileActivity, columns)
+            // Affischen 2:3 och namnet under (38 dp).
+            gridAdapter.itemSize = cardWidth to (cardWidth * 3 / 2 + Look.dp(this@MobileActivity, 38))
             grid.addItemDecoration(object : RecyclerView.ItemDecoration() {
                 override fun getItemOffsets(outRect: Rect, view: View, parent: RecyclerView, state: RecyclerView.State) {
-                    outRect.set(gap, gap, gap, gap)
+                    if (parent.adapter === gridAdapter) outRect.set(gap, gap, gap, gap) else outRect.set(0, 0, 0, 0)
                 }
             })
-            grid.adapter = gridAdapter
             grid.itemAnimator = null
             grid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                    val lm = grid.layoutManager as GridLayoutManager
-                    if (!loading && gridAdapter.itemCount < total && lm.findLastVisibleItemPosition() >= gridAdapter.itemCount - 18) {
+                    val lm = grid.layoutManager as? LinearLayoutManager ?: return
+                    if (!loading && chipKey != "fav" && items.size < total && lm.findLastVisibleItemPosition() >= items.size - 18) {
                         load(reset = false)
                     }
                 }
             })
             sort.setOnClickListener { showSort() }
+            viewToggle.setOnClickListener {
+                prefs.mobileList = !prefs.mobileList
+                applyView()
+            }
+            applyView()
             updateSort()
+        }
+
+        /** Rutnät med affischer eller lista med namn och fakta. Valet sparas. */
+        private fun applyView() {
+            val list = prefs.mobileList
+            viewToggle.text = if (list) "Rutnät" else "Lista"
+            grid.layoutManager = if (list) LinearLayoutManager(this@MobileActivity) else GridLayoutManager(this@MobileActivity, columns)
+            grid.adapter = if (list) rowsAdapter else gridAdapter
+            grid.invalidateItemDecorations()
+        }
+
+        private fun show(reset: Boolean, more: List<Item>) {
+            if (reset) items.clear()
+            items.addAll(more)
+            if (reset) {
+                gridAdapter.submit(items.map { Card.poster(it) })
+                rowsAdapter.submit(items.toList())
+                grid.scrollToPosition(0)
+            } else {
+                gridAdapter.append(more.map { Card.poster(it) })
+                rowsAdapter.append(more)
+            }
         }
 
         override fun onReselect() = grid.smoothScrollToPosition(0)
 
         override fun onHomeData(data: JSONObject) {
+            if (chipKey == "fav") showFavorites()
             if (built) return
             built = true
             val rows = ArrayList<Row>()
             rows.add(Row("Alla", key = "all"))
+            rows.add(Row("Favoriter", key = "fav"))
             rows.add(Row("Nytt tillagt", key = "new"))
             val cats = data.optJSONObject("categories")?.optJSONArray(type) ?: JSONArray()
             for (i in 0 until cats.length()) {
@@ -593,9 +641,26 @@ class MobileActivity : Activity(), CardListener {
             load(reset = true)
         }
 
+        /** Favoriter: från Hem-datan (filmer, eller serier och favoritavsnitt). */
+        private fun showFavorites() {
+            val wanted = if (type == "vod") setOf("vod") else setOf("series", "episode")
+            val fav = Item.list(home?.optJSONArray("favorites")).filter { it.type in wanted }
+            total = fav.size
+            show(reset = true, more = fav)
+            info.text = when {
+                fav.isNotEmpty() -> "${fav.size} favoriter"
+                privateMode() -> "Favoriter är dolda i det här läget. Håll in \"TV Hub\" överst för att visa dem."
+                else -> "Inga favoriter ännu. Håll in en titel och välj Lägg till i favoriter."
+            }
+        }
+
         private fun load(reset: Boolean) {
+            if (chipKey == "fav") {
+                showFavorites()
+                return
+            }
             val t = if (reset) ++token else token
-            val offset = if (reset) 0 else gridAdapter.itemCount
+            val offset = if (reset) 0 else items.size
             loading = true
             val q = StringBuilder("type=$type&offset=$offset&limit=60")
             categoryId?.let { q.append("&category_id=").append(Api.enc(it)) }
@@ -606,17 +671,14 @@ class MobileActivity : Activity(), CardListener {
                 loading = false
                 result.onSuccess { data ->
                     total = data.optInt("total")
-                    val cards = Item.list(data.optJSONArray("items")).map { Card.poster(it) }
+                    val more = Item.list(data.optJSONArray("items"))
+                    show(reset, more)
                     if (reset) {
-                        gridAdapter.submit(cards)
-                        grid.scrollToPosition(0)
                         info.text = when {
-                            cards.isNotEmpty() -> "$total titlar"
+                            more.isNotEmpty() -> "$total titlar"
                             params["new_only"] == "1" -> "Inget nytt ännu."
                             else -> "Inget innehåll här."
                         }
-                    } else {
-                        gridAdapter.append(cards)
                     }
                 }.onFailure { info.text = Api.friendly(it) }
             }
