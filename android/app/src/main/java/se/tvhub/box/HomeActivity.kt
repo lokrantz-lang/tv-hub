@@ -150,7 +150,14 @@ class HomeActivity : Activity(), CardListener {
                 if (hasFocus) onRailFocus(nav.key)
             }
             item.setOnKeyListener { _, keyCode, event ->
-                if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && nav.key != "settings" && nav.key != "night") {
+                if (event.action == KeyEvent.ACTION_DOWN &&
+                    (keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_UP)) {
+                    // Upp/ner i menyn går alltid till nästa menyval. Annars kan Android välja något på
+                    // sidan bakom den utfällda menyn (t.ex. sökens tangentbord, som ligger precis där).
+                    val index = navs.indexOf(nav) + if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) 1 else -1
+                    navs.getOrNull(index)?.let { railViews[it.key]?.requestFocus() }
+                    true
+                } else if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && nav.key != "settings" && nav.key != "night") {
                     navTask?.let { handler.removeCallbacks(it) }
                     if (current != nav.key) showPage(nav.key)
                     focusPage()
