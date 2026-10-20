@@ -122,7 +122,8 @@ def remove(device_id):
 
 
 # ---------- sessioner ----------
-RECORD_TYPES = ("record", "record_archive")
+RECORD_TYPES = ("record", "record_archive", "record_vod")
+RECORD_KIND = {"live": "live", "archive": "catchup", "vod": "vod", "episode": "episode"}  # källa → strömtyp
 
 
 def _active_rows(exclude_device=None, watching_only=False):
@@ -130,7 +131,7 @@ def _active_rows(exclude_device=None, watching_only=False):
              WHERE s.ended IS NULL AND s.last_heartbeat >= ?"""
     args = [db.ago(seconds=ACTIVE_WINDOW_S)]
     if watching_only:
-        sql += " AND s.type NOT IN ('record', 'record_archive')"
+        sql += " AND s.type NOT IN ('record', 'record_archive', 'record_vod')"
     if exclude_device is not None:
         sql += " AND s.device_id != ?"
         args.append(exclude_device)
@@ -196,8 +197,11 @@ def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(
     recording = None
     if recording_id is not None:
         recording = recordings.lookup_for_play(device, recording_id)
-        if recording is None or str(recording["stream_id"]) != item_id or kind not in ("live", "catchup"):
+        if recording is None or str(recording["stream_id"]) != item_id or RECORD_KIND.get(recording["source"]) != kind:
             return {"status": "error", "error": "Inspelningen finns inte längre."}
+        if kind in ("vod", "episode"):
+            ext = ext or recording.get("ext")
+            series_id = series_id or recording.get("series_id")
 
     # Boxens läge och profil. En inspelning prövades mot läget när den planerades.
     if scope is not None and recording is None:
@@ -286,14 +290,15 @@ def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(
     # Inspelningar påverkar inte tittandet och tvärtom.
     if recording is None:
         for row in db.q("SELECT id FROM sessions WHERE device_id = ? AND ended IS NULL "
-                        "AND type NOT IN ('record', 'record_archive')", (device["id"],)):
+                        "AND type NOT IN ('record', 'record_archive', 'record_vod')", (device["id"],)):
             _end(row["id"], "replaced")
         adult = 1 if scope is not None and scope.adult else 0
     else:
         adult = recording["adult"]
         display = f"Inspelning: {recording['title']}"[:120]
     session_id = secrets.token_hex(12)
-    session_type = kind if recording is None else ("record" if kind == "live" else "record_archive")
+    session_type = kind if recording is None else \
+        {"live": "record", "catchup": "record_archive"}.get(kind, "record_vod")
     db.x(
         """INSERT INTO sessions (id, device_id, type, item_id, item_name, portal_id, started, last_heartbeat,
            adult, series_id, ext, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",

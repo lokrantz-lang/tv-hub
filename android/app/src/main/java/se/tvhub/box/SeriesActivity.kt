@@ -27,6 +27,7 @@ class SeriesActivity : Activity() {
     }
 
     private data class Episode(
+        val season: String,
         val id: String,
         val title: String,
         val ext: String,
@@ -45,12 +46,16 @@ class SeriesActivity : Activity() {
     private var favorite = false
     private var firstLoad = true
     private var modern = false
+    private var mobile = false  // telefonen: inga inspelningar (de görs på TV-boxarna)
+    private val favoriteEpisodes = HashSet<String>()
     private val seasonAdapter = RowAdapter(onClick = { row, _ -> jumpToSeason(row.key) })
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = Prefs(this)
         Look.init(this)
+        FormFactor.portraitIfMobile(this)
+        mobile = FormFactor.isMobile(this)
         modern = prefs.modern
         if (modern) Fonts.install(this)
         setContentView(if (modern) R.layout.activity_series_modern else R.layout.activity_series)
@@ -60,7 +65,7 @@ class SeriesActivity : Activity() {
         findViewById<TextView>(R.id.title).text = seriesName
         status = findViewById(R.id.status)
         list = findViewById(R.id.episodes)
-        adapter = RowAdapter(onClick = { row, _ -> onClick(row) })
+        adapter = RowAdapter(onClick = { row, _ -> onClick(row) }, onLongClick = { row, _ -> onLongClick(row) })
         adapter.modern = modern
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
@@ -96,6 +101,10 @@ class SeriesActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        reload()
+    }
+
+    private fun reload() {
         // Ladda om efter uppspelning så att "Fortsätt" och sedda avsnitt stämmer.
         Api.obj("GET", "/device/series/${Api.enc(seriesId)}") { result ->
             result.onSuccess { show(it) }.onFailure { status.text = Api.friendly(it) }
@@ -111,6 +120,8 @@ class SeriesActivity : Activity() {
             if (it.drawable == null) ImageLoader.load(it, data.optStringOrNull("backdrop") ?: cover, ImageLoader.BACKDROP, fade = true)
         }
         favorite = data.optBoolean("favorite")
+        favoriteEpisodes.clear()
+        data.optJSONArray("favorite_episodes")?.let { arr -> for (i in 0 until arr.length()) favoriteEpisodes.add(arr.optString(i)) }
         val progress = data.optJSONObject("progress") ?: JSONObject()
         val watchedArray = data.optJSONArray("watched")
         val watched = HashSet<String>()
@@ -133,6 +144,7 @@ class SeriesActivity : Activity() {
                     val id = ep.optString("id")
                     val p = progress.optJSONObject(id)
                     val episode = Episode(
+                        season = seasonNo,
                         id = id,
                         title = "$seriesName S${seasonNo}E$num",
                         ext = ep.optStringOrNull("ext") ?: "mp4",
@@ -147,7 +159,7 @@ class SeriesActivity : Activity() {
                         else -> null
                     }
                     val sub = listOfNotNull(state, ep.optStringOrNull("duration"), ep.optStringOrNull("plot")).joinToString(" · ")
-                    episodeRows.add(Row("$num. $title", subtitle = sub, key = "ep:$id", payload = episode,
+                    episodeRows.add(Row("$num. $title", subtitle = sub, key = "ep:$id", payload = episode, star = id in favoriteEpisodes,
                         icon = if (modern) ep.optStringOrNull("image") ?: cover else null, iconSpace = modern))
                 }
             }
@@ -174,6 +186,10 @@ class SeriesActivity : Activity() {
             )
         }
         rows.add(Row(if (favorite) "★  Favorit" else "☆  Lägg till i favoriter", key = "action:favorite", payload = "favorite"))
+        if (!mobile) {
+            rows.add(Row("⬇  Spela in hela serien till USB-minnet", subtitle = "Håll in OK på ett avsnitt: favorit, spela in avsnittet eller säsongen",
+                key = "action:record", payload = "record"))
+        }
         rows.addAll(episodeRows)
         adapter.submit(rows)
         seasonAdapter.submit(episodeRows.filter { it.header }.map { Row(it.title, key = it.key) })
@@ -192,6 +208,7 @@ class SeriesActivity : Activity() {
                 play(episode, if (payload.first == "resume") episode.positionMs else 0L)
             }
             "favorite" -> toggleFavorite()
+            "record" -> RecordMedia.series(this, seriesId)
             is Episode -> {
                 if (payload.positionMs > 0) {
                     Look.choose(this, payload.title, listOf("Fortsätt från ${Format.clock(payload.positionMs)}", "Börja om")) { which ->
@@ -201,6 +218,37 @@ class SeriesActivity : Activity() {
                     play(payload, 0L)
                 }
             }
+        }
+    }
+
+    private fun onLongClick(row: Row) {
+        val episode = row.payload as? Episode ?: return
+        val isFavorite = episode.id in favoriteEpisodes
+        val labels = listOf(
+            "▶  Spela",
+            if (isFavorite) "★  Ta bort från favoriter" else "☆  Lägg till i favoriter",
+            "⬇  Spela in avsnittet till USB-minnet",
+            "⬇  Spela in hela säsong ${episode.season}",
+        ).let { if (mobile) it.take(2) else it }
+        Look.choose(this, episode.title, labels) { which ->
+            when (which) {
+                0 -> play(episode, 0L)
+                1 -> toggleEpisodeFavorite(episode, !isFavorite)
+                2 -> RecordMedia.episode(this, episode.id, episode.title, episode.ext, seriesId)
+                3 -> RecordMedia.series(this, seriesId, episode.season)
+            }
+        }
+    }
+
+    private fun toggleEpisodeFavorite(episode: Episode, on: Boolean) {
+        val body = JSONObject().put("type", "episode").put("id", episode.id).put("series_id", seriesId)
+            .put("name", episode.title).put("ext", episode.ext).put("on", on)
+        cover?.let { body.put("icon", it) }
+        Api.obj("POST", "/device/favorites", body) { result ->
+            result.onSuccess {
+                Toast.makeText(this, if (on) "★ ${episode.title} är nu en favorit" else "${episode.title} borttagen ur favoriter", Toast.LENGTH_SHORT).show()
+                reload()
+            }.onFailure { Toast.makeText(this, Api.friendly(it), Toast.LENGTH_LONG).show() }
         }
     }
 

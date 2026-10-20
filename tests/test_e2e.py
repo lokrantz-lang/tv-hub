@@ -15,7 +15,10 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.join(ROOT, "tv_hub", "app", "main.py")
 FAKE = os.path.join(ROOT, "tests", "fake_xtream.py")
+FAKE_HA = os.path.join(ROOT, "tests", "fake_ha.py")
 FAKE_PORT, ADMIN, DEVICE = 18091, 18080, 18099
+HA_TLS, HA_WS = 18443, 18444
+CERT_DIR = tempfile.mkdtemp(prefix="tvhub-cert-")
 A = f"http://127.0.0.1:{ADMIN}"
 D = f"http://127.0.0.1:{DEVICE}"
 FAILS = []
@@ -68,6 +71,13 @@ def main():
                ADMIN_ALLOWED_IPS="127.0.0.1", NO_PROXY="*", no_proxy="*",
                INFO_START_DELAY="1", INFO_PAUSE="0.05", APP_RELEASE_BASE=f"http://127.0.0.1:{FAKE_PORT}/release")
     env.pop("HTTPS_PROXY", None); env.pop("https_proxy", None)
+    cert, key = os.path.join(CERT_DIR, "cert.pem"), os.path.join(CERT_DIR, "key.pem")
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert,
+                    "-days", "2", "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost"],
+                   check=True, capture_output=True)
+    env.update(HA_WS_URL=f"ws://127.0.0.1:{HA_WS}/core/websocket", SUPERVISOR_TOKEN="sup-token",
+               INGRESS_ENTRY="/api/hassio_ingress/INGRESSTOK", REMOTE_CA_FILE=cert)
+    fake_ha = subprocess.Popen([sys.executable, FAKE_HA, str(HA_TLS), str(HA_WS), str(ADMIN), cert, key])
     fake = subprocess.Popen([sys.executable, FAKE, str(FAKE_PORT)])
     hub = subprocess.Popen([sys.executable, APP], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     try:
@@ -253,6 +263,9 @@ def main():
         version_13(ta, tb, pa, pb)
         library_14()
         version_15(ta, tb, pa, pb)
+        media_recordings(ta, tb, pa, pb)
+        episode_favorites(ta)
+        remote_access(ta, pa, cert)
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -264,6 +277,7 @@ def main():
     finally:
         hub.terminate()
         fake.terminate()
+        fake_ha.terminate()
         try:
             out, _ = hub.communicate(timeout=5)
         except subprocess.TimeoutExpired:
@@ -631,6 +645,171 @@ def version_15(ta, tb, pa, pb):
     check("hemskärmens rader: nya serier och topprankat", "recent_series" in home and "top_vod" in home
           and all(i.get("rating_num", 0) >= 7.5 for i in home["top_vod"]), (home.get("recent_series"), home.get("top_vod")))
     check("ordet hackar används inte", not any("hack" in f["title"].lower() for f in diag["diagnosis"]["findings"]), diag["diagnosis"]["findings"])
+
+
+def media_recordings(ta, tb, pa, pb):
+    print("Spela in filmer och serier")
+    s, w = call("POST", f"{D}/device/play", {"type": "live", "id": "102"}, token=ta)
+    s, r = call("POST", f"{D}/device/recordings", {"kind": "vod", "id": "501"}, token=ta)
+    check("spela in film", s == 201 and r["source"] == "vod" and r["ext"] == "mkv" and r["title"].startswith("Dune"), r)
+    s, again = call("POST", f"{D}/device/recordings", {"kind": "vod", "id": "501"}, token=ta)
+    check("samma film två gånger blir en inspelning", s == 200 and again["id"] == r["id"], again)
+    s, bad = call("POST", f"{D}/device/recordings", {"kind": "vod", "id": "599"}, token=ta)
+    check("vuxenfilm kan inte spelas in i vanligt läge", s == 400, bad)
+    s, p = call("POST", f"{D}/device/play", {"type": "vod", "id": "501", "recording_id": r["id"]}, token=ta)
+    check("filmen hämtas trots att boxen tittar", p["status"] == "ok" and "/movie/" in p["url"] and p["url"].endswith(".mkv"), p)
+    s, hb = call("POST", f"{D}/device/heartbeat", {"session_id": w["session_id"], "metrics": {}}, token=ta)
+    check("tittandet fortsätter under nedladdningen", hb["stop"] is False, hb)
+    s, bad = call("POST", f"{D}/device/play", {"type": "live", "id": "501", "recording_id": r["id"]}, token=ta)
+    check("fel strömtyp för inspelningen nekas", bad["status"] == "error", bad)
+    call("POST", f"{D}/device/stop", {"session_id": p["session_id"]}, token=ta)
+    call("POST", f"{D}/device/stop", {"session_id": w["session_id"]}, token=ta)
+    s, sr = call("POST", f"{D}/device/recordings", {"kind": "series", "series_id": "900"}, token=ta)
+    check("spela in hela serien", s == 201 and sr["created"] == 2, sr)
+    s, sr2 = call("POST", f"{D}/device/recordings", {"kind": "series", "series_id": "900"}, token=ta)
+    check("serien igen: inga dubbletter", sr2["created"] == 0 and sr2["existing"] == 2, sr2)
+    s, mine = call("GET", f"{D}/device/recordings?all=1", token=ta)
+    eps = [x for x in mine if x["source"] == "episode"]
+    check("avsnitten har namn, serie och format", len(eps) == 2 and all(x["series_id"] == "900" and x["title"] in ("Bonusfamiljen S1E1", "Bonusfamiljen S2E1") for x in eps), eps)
+    s, p = call("POST", f"{D}/device/play", {"type": "episode", "id": eps[0]["stream_id"], "recording_id": eps[0]["id"]}, token=ta)
+    check("avsnittet hämtas", p["status"] == "ok" and "/series/" in p["url"], p)
+    call("POST", f"{D}/device/stop", {"session_id": p.get("session_id")}, token=ta)
+    s, ar = call("POST", f"{A}/api/recordings", {"device_id": pb["device_id"], "kind": "vod", "id": "502"})
+    check("spela in film från webbadminen", s == 201 and ar["source"] == "vod" and ar["device_id"] == pb["device_id"], ar)
+    s, asr = call("POST", f"{A}/api/recordings", {"device_id": pb["device_id"], "kind": "series", "id": "900", "season": "1"})
+    check("spela in en säsong från webbadminen", s == 201 and asr["created"] == 1, asr)
+    for x in call("GET", f"{A}/api/recordings")[1]:
+        if x["source"] in ("vod", "episode"):
+            call("DELETE", f"{A}/api/recordings/{x['id']}")
+
+
+def episode_favorites(ta):
+    print("Favoritavsnitt")
+    s, r = call("POST", f"{D}/device/favorites", {"type": "episode", "id": "9002", "series_id": "900",
+                                                  "name": "Bonusfamiljen S2E1", "ext": "mp4"}, token=ta)
+    check("lägg till avsnitt som favorit", s == 200 and r["favorite"] is True, r)
+    s, home = call("GET", f"{D}/device/home", token=ta)
+    eps = [f for f in home["favorites"] if f["type"] == "episode"]
+    check("avsnittet syns bland favoriterna", len(eps) == 1 and eps[0]["series_id"] == "900"
+          and eps[0]["name"] == "Bonusfamiljen S2E1" and eps[0]["category_name"] == "Bonusfamiljen", eps)
+    s, ser = call("GET", f"{D}/device/series/900", token=ta)
+    check("seriesidan vet vilka avsnitt som är favoriter", ser["favorite_episodes"] == ["9002"], ser.get("favorite_episodes"))
+    s, ha = call("GET", f"{D}/device/home", token=ta, mode="adult", history="show")
+    check("favoritavsnitt syns inte i vuxenläget", not any(f["type"] == "episode" for f in ha["favorites"]), ha["favorites"])
+    s, bad = call("POST", f"{D}/device/favorites", {"type": "episode", "id": "1", "series_id": "999999"}, token=ta)
+    check("avsnitt i okänd serie nekas", s == 400, bad)
+    call("POST", f"{D}/device/favorites", {"type": "episode", "id": "9002", "on": False}, token=ta)
+    s, home = call("GET", f"{D}/device/home", token=ta)
+    check("ta bort favoritavsnitt", not any(f["type"] == "episode" for f in home["favorites"]), home["favorites"])
+
+
+def remote_access(ta, pa, cert):
+    """1.8: telefonen utanför hemmet via Nabu Casa (Ingress)."""
+    import ssl
+    sys.path.insert(0, os.path.join(ROOT, "tv_hub", "app"))
+    from hub import remote as rm
+    print("Utanför hemmet (Nabu Casa)")
+    ctx = ssl.create_default_context(cafile=cert)
+    nabu = f"https://localhost:{HA_TLS}"
+    ingress = f"{nabu}/api/hassio_ingress/INGRESSTOK"
+
+    def as_user(method, path, uid, name, body=None):
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(A + path, data=data, method=method,
+                                     headers={"Content-Type": "application/json", "X-Remote-User-Id": uid,
+                                              "X-Remote-User-Name": name})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as res:
+                return res.status, res.read()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read()
+
+    s, _ = as_user("GET", "/api/overview", "u-admin", "admin")
+    check("admin i Home Assistant når webbadminen", s == 200, s)
+    s, body = as_user("GET", "/api/overview", "u-guest", "lisa")
+    check("vanlig användare nekas webbadminen", s == 403, s)
+    s, body = as_user("GET", "/", "u-guest", "lisa")
+    check("vanlig användare får en sida som förklarar", s == 403 and b"administrat" in body, s)
+    s, _ = as_user("GET", "/api/portals", "u-tvhub", "tvhub")
+    check("appens användare nekas webbadminen", s == 403, s)
+    s, _ = as_user("GET", "/api/overview", "u-okand", "okand")
+    check("okänd användare nekas", s == 403, s)
+
+    s, res = call("GET", f"{D}/device/remote", token=ta)
+    check("utan inställning: inte tillgängligt", s == 200 and res["available"] is False, res)
+    s, res = call("PUT", f"{A}/api/remote", {"url": "http://abc.ui.nabu.casa"})
+    check("http-adress nekas", s == 400, res)
+    s, res = call("PUT", f"{A}/api/remote", {"token": "kort"})
+    check("felaktig nyckel nekas", s == 400, res)
+    s, res = call("PUT", f"{A}/api/remote", {"url": f"localhost:{HA_TLS}/lovelace/0",
+                                            "token": "app-token-0123456789abcdef", "app_user": "tvhub"})
+    check("spara Nabu Casa-uppgifter", s == 200 and res["ready"] and res["url"] == nabu
+          and res["token_hint"] == "…cdef" and "token" not in res, res)
+    s, res = call("GET", f"{D}/device/remote", token=ta)
+    check("boxen får uppgifterna hemma", s == 200 and res["available"] and res["url"] == nabu
+          and res["ingress"] == "/api/hassio_ingress/INGRESSTOK" and res["ha_token"], res)
+    s, res = call("GET", f"{D}/device/remote")
+    check("uppgifterna kräver parad box", s == 401, s)
+
+    s, res = call("POST", f"{A}/api/remote/test")
+    check("testa vägen: fungerar", s == 200 and res["ok"], res)
+
+    # Som telefonen: logga in, ingress-session, anrop med boxens nyckel
+    me, session = rm.ha_session(f"wss://localhost:{HA_TLS}/api/websocket", "app-token-0123456789abcdef", [
+        {"type": "auth/current_user"}, {"type": "supervisor/api", "endpoint": "/ingress/session", "method": "post"}],
+        context=ctx)
+    sid = session["session"]
+
+    def phone(method, path, token=ta, body=None, sess=None):
+        headers = {"Cookie": f"ingress_session={sess or sid}", "Content-Type": "application/json"}
+        if token:
+            headers["X-TVHub-Token"] = token
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(ingress + path, data=data, method=method, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=20, context=ctx) as res:
+                return res.status, json.loads(res.read() or b"null")
+        except urllib.error.HTTPError as exc:
+            raw = exc.read()
+            try:
+                return exc.code, json.loads(raw or b"null")
+            except ValueError:
+                return exc.code, raw
+
+    s, home = phone("GET", "/device/home")
+    check("telefonen når TV Hub via Nabu Casa", s == 200 and "favorites" in home, (s, str(home)[:200]))
+    s, res = phone("GET", "/device/vod/501")
+    check("film via Nabu Casa", s == 200 and res.get("name"), (s, res))
+    s, res = phone("POST", "/device/play", body={"type": "vod", "id": "501"})
+    check("spela via Nabu Casa ger Toucans adress direkt", s == 200 and str(FAKE_PORT) in res.get("url", ""), (s, res))
+    if s == 200 and res.get("session_id"):
+        phone("POST", "/device/stop", body={"session_id": res["session_id"], "reason": "test"})
+    s, res = phone("GET", "/device/home", token=None)
+    check("utan boxens nyckel nekas", s == 401, s)
+    s, res = phone("GET", "/device/home", token="fel")
+    check("fel boxnyckel nekas", s == 401, s)
+    s, res = phone("POST", "/device/pair", token=None, body={"code": "123456"})
+    check("parning går inte via Nabu Casa", s == 404, s)
+    s, res = phone("GET", "/device/remote")
+    check("nyckeln lämnas inte ut via Nabu Casa", s == 404, s)
+    s, res = phone("GET", "/api/portals", token=None)
+    check("webbadminen nås inte med appens användare", s == 403, s)
+    s, res = phone("GET", "/device/home", sess="ogiltig")
+    check("ogiltig ingress-session nekas", s == 401, s)
+    s, devs = call("GET", f"{A}/api/devices")
+    z10 = next(d for d in devs if d["id"] == pa["device_id"])
+    check("boxlistan visar Nabu Casa", (z10["last_ip"] or "").startswith("Nabu Casa"), z10)
+    s, res = call("GET", f"{A}/api/remote")
+    check("senaste användning visas", res["last"] and res["last"]["user"] == "tvhub", res.get("last"))
+
+    s, res = call("PUT", f"{A}/api/remote", {"token": "admin-token-should-not-be-used-xx"})
+    s, res = call("PUT", f"{A}/api/remote", {"token": "guest-token-0123456789abc"})
+    s, res = call("POST", f"{A}/api/remote/test")
+    check("test med annan vanlig användare fungerar", res["ok"], res)
+    s, res = call("PUT", f"{A}/api/remote", {"token": "inte-en-riktig-nyckel-123"})
+    s, res = call("POST", f"{A}/api/remote/test")
+    check("test med ogiltig nyckel förklarar", not res["ok"] and "logga in" in res["summary"], res)
+    s, res = call("PUT", f"{A}/api/remote", {"token": "app-token-0123456789abcdef"})
 
 
 def _up(url):

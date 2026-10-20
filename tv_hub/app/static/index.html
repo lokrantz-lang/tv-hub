@@ -424,6 +424,20 @@ tbody tr:last-child td { border-bottom: 0; }
         <div id="ha-token" class="mono hidden" style="word-break:break-all; padding:10px; background:var(--panel-2); border-radius:8px"></div>
       </div>
     </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Telefon utanför hemmet (Nabu Casa)</h2><span id="rm-pill"></span></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Telefonen använder Nabu Casa när den inte är hemma. Den hämtar uppgifterna härifrån automatiskt när den är på hemmets wifi. Videon går direkt från Toucan till telefonen.</p>
+        <form id="rm-form" class="filters" style="align-items:flex-end">
+          <label class="f" style="min-width:280px">Nabu Casa-adress<input id="rm-url" placeholder="https://abc123.ui.nabu.casa" autocomplete="off"></label>
+          <label class="f" style="min-width:160px">Home Assistant-användare för appen<input id="rm-user" placeholder="tvhub" autocomplete="off"></label>
+          <label class="f" style="min-width:280px">Åtkomstnyckel för den användaren<input id="rm-token" type="password" autocomplete="off"></label>
+          <div class="row"><button class="btn primary" type="submit" id="rm-save">Spara</button><button class="btn" type="button" id="rm-test">Testa vägen</button></div>
+        </form>
+        <ul class="list" id="rm-steps" style="margin-top:12px"></ul>
+        <div class="small muted" id="rm-last"></div>
+      </div>
+    </div>
   </section>
 
   <!-- DIAGNOSTIK -->
@@ -562,7 +576,7 @@ const LIB_SORTS = {
 };
 const LIB_PAGE = 120;
 const lib = { type: "live", view: "list", items: [], total: 0, loading: false, token: 0 };
-let groupsCache = [];
+let groupsCache = [], boxesCache = [];
 try { const saved = JSON.parse(localStorage.getItem("tvhub-lib") || "{}"); if (saved.type) lib.type = saved.type; if (saved.view) lib.view = saved.view; } catch (_) {}
 const libSave = () => { try { localStorage.setItem("tvhub-lib", JSON.stringify({ type: lib.type, view: lib.view })); } catch (_) {} };
 const img = (u) => u ? "api/img?u=" + encodeURIComponent(u) : "";
@@ -571,6 +585,7 @@ async function loadGroupsCache() { groupsCache = await api("groups").catch(() =>
 loaders.library = async () => {
   setSeg("lib-type", "type", lib.type); setSeg("lib-view", "view", lib.view);
   await loadGroupsCache();
+  boxesCache = (await api("devices").catch(() => [])).filter((d) => d.model !== "integration");
   await libTypeChanged(false);
 };
 function setSeg(id, key, value) { $(id).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset[key] === value)); }
@@ -731,6 +746,7 @@ function renderDetail(it, series) {
         <button class="btn ${it.favorite ? "" : "primary"} star-btn" data-act="fav" aria-pressed="${!!it.favorite}" data-type="${it.type}" data-id="${esc(it.id)}">${it.favorite ? "★ Favorit" : "☆ Lägg till i favoriter"}</button>
         ${groupsCache.length ? `<select data-act="group" style="width:auto"><option value="">+ Lägg i grupp</option>${groupOpts}</select>` : ""}
         ${it.type === "live" ? `<button class="btn" data-act="record">Spela in från guiden…</button>` : ""}
+        ${it.type !== "live" && boxesCache.length ? `<select data-act="recbox" style="width:auto"><option value="">⬇ ${it.type === "series" ? "Spela in hela serien" : "Spela in"} på box…</option>${boxesCache.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}</select>` : ""}
       </div>
       ${series === null && it.type === "series" ? '<div class="empty">Hämtar avsnitt…</div>' : seasons}
     </div>`;
@@ -756,6 +772,19 @@ $("lib-detail").addEventListener("click", (e) => {
   }
 });
 $("lib-detail").addEventListener("change", (e) => {
+  const rec = e.target.closest("select[data-act=recbox]");
+  if (rec && rec.value) {
+    const favBtn = $("lib-detail").querySelector("[data-act=fav]");
+    const box = boxesCache.find((b) => String(b.id) === rec.value);
+    guarded(async () => {
+      const r = await api("recordings", { method: "POST", body: { device_id: rec.value, kind: favBtn.dataset.type, id: favBtn.dataset.id } });
+      toast(r.created !== undefined
+        ? `${r.created} avsnitt laddas ner till ${box ? box.name : "boxen"}${r.existing ? ` (${r.existing} fanns redan)` : ""}. Boxen hämtar schemat inom 20 minuter.`
+        : `Laddas ner till ${box ? box.name : "boxen"}. Boxen hämtar schemat inom 20 minuter.`);
+    });
+    rec.value = "";
+    return;
+  }
   const sel = e.target.closest("select[data-act=group]"); if (!sel || !sel.value) return;
   const favBtn = $("lib-detail").querySelector("[data-act=fav]");
   const g = groupsCache.find((x) => String(x.id) === sel.value);
@@ -921,7 +950,7 @@ $("watch-check").addEventListener("click", (e) => guarded(async () => {
 }, e.currentTarget));
 
 /* ---------- inspelningar ---------- */
-const REC_STATUS = { scheduled: ["Planerad", ""], recording: ["Spelar in", "bad"], done: ["Klar", "ok"], failed: ["Misslyckades", "warn"] };
+const REC_STATUS = { scheduled: ["Planerad", ""], recording: ["Spelar in / laddar ner", "bad"], done: ["Klar", "ok"], failed: ["Misslyckades", "warn"] };
 const fmtUnix = (t) => new Date(t * 1000).toLocaleString("sv-SE", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const fmtClock = (t) => new Date(t * 1000).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
 const fmtSize = (b) => b >= 1e9 ? `${(b / 1e9).toFixed(1).replace(".", ",")} GB` : b ? `${Math.round(b / 1e6)} MB` : "";
@@ -935,9 +964,9 @@ loaders.recordings = async () => {
   $("rec-count").textContent = list.length ? `${list.length} st` : "";
   $("rec-list").innerHTML = list.map((r) => {
     const [label, cls] = REC_STATUS[r.status] || [r.status, ""];
-    const src = r.source === "archive" ? " · från arkivet" : "";
+    const src = r.source === "archive" ? " · från arkivet" : (r.source === "vod" || r.source === "episode") ? " · nedladdning" : "";
     return `<li data-id="${r.id}" style="align-items:flex-start"><div class="grow"><div class="ellipsis"><strong>${esc(r.title)}</strong> ${r.adult ? '<span class="pill">18+</span>' : ""}</div>
-      <div class="small muted">${esc(r.channel || "")} · ${fmtUnix(r.start)}–${fmtClock(r.end)}${src} · ${esc(r.device_name || "borttagen box")}</div>
+      <div class="small muted">${esc(r.channel || "")} · ${(r.source === "vod" || r.source === "episode") ? "tillagd " + fmtUnix(r.start) : `${fmtUnix(r.start)}–${fmtClock(r.end)}`}${src} · ${esc(r.device_name || "borttagen box")}</div>
       <div class="small"><span class="pill ${cls}">${label}</span> ${fmtSize(r.size_bytes)} ${r.error ? `<span style="color:var(--bad)">${esc(r.error)}</span>` : ""}</div></div>
       <div class="row" style="flex-wrap:nowrap">${r.status === "recording" ? '<button class="btn ghost small" data-act="stop">Stoppa</button>' : ""}
       <button class="btn ghost small danger" data-act="del">Ta bort</button></div></li>`;
@@ -1081,6 +1110,7 @@ function sparkline(svg, points) {
 /* ---------- boxar ---------- */
 let pairTimer;
 loaders.devices = async () => {
+  loadRemote();
   const list = await api("devices").catch((e) => (toast(e.message), []));
   if (!groupList.length) groupList = (await api("groups").catch(() => [])).map((g) => ({ id: g.id, name: g.name }));
   $("device-list").innerHTML = list.map((d) => {
@@ -1122,6 +1152,45 @@ $("ha-token-btn").addEventListener("click", (e) => guarded(async () => {
   const r = await api("devices/token", { method: "POST", body: { name: "Home Assistant" } });
   $("ha-token").classList.remove("hidden"); $("ha-token").textContent = r.token;
   loaders.devices();
+}, e.currentTarget));
+
+/* ---------- telefon utanför hemmet ---------- */
+let rmDirty = false;
+function renderRemote(r) {
+  if (!rmDirty) {
+    $("rm-url").value = r.url || "";
+    $("rm-user").value = r.app_user || "tvhub";
+    $("rm-token").value = "";
+  }
+  $("rm-token").placeholder = r.has_token ? `sparad (${r.token_hint})` : "klistra in nyckeln";
+  const t = r.last_test;
+  $("rm-pill").innerHTML = !r.ready ? '<span class="pill">inte inställt</span>'
+    : t ? `<span class="pill ${t.ok ? "ok" : "warn"}">${t.ok ? "fungerar" : "fungerar inte"}</span>` : '<span class="pill">inte testat</span>';
+  const last = r.last;
+  $("rm-last").textContent = [
+    last ? `Senast använd via Nabu Casa: ${fmtAgo(last.at)} av ${last.device}${last.user ? ` (HA-användare ${last.user})` : ""}.` : "Ingen telefon har använt vägen ännu.",
+    r.ingress_entry ? "" : "Ingress-adressen saknas (körs tillägget i Home Assistant?).",
+    r.users_error ? `Kunde inte läsa Home Assistants användare: ${r.users_error}` : "",
+  ].filter(Boolean).join(" ");
+}
+function renderRemoteSteps(res) {
+  $("rm-steps").innerHTML = res.steps.map((s) => `<li><span class="lvl ${s.ok ? "ok" : "bad"}" style="margin:0"></span><div class="grow small">${esc(s.text)}</div></li>`).join("")
+    + `<li><div class="grow"><strong>${esc(res.summary)}</strong></div></li>`;
+}
+$("rm-form").addEventListener("input", () => { rmDirty = true; });
+const loadRemote = async () => { try { renderRemote(await api("remote")); } catch (e) { toast(e.message); } };
+$("rm-form").addEventListener("submit", (e) => { e.preventDefault(); guarded(async () => {
+  const body = { url: $("rm-url").value, app_user: $("rm-user").value };
+  if ($("rm-token").value.trim()) body.token = $("rm-token").value.trim();
+  const saved = await api("remote", { method: "PUT", body });
+  rmDirty = false;
+  renderRemote(saved);
+  toast("Sparat. Tryck Testa vägen.");
+}, $("rm-save")); });
+$("rm-test").addEventListener("click", (e) => guarded(async () => {
+  $("rm-steps").innerHTML = '<li class="empty">Testar via Nabu Casa…</li>';
+  renderRemoteSteps(await api("remote/test", { method: "POST" }));
+  loadRemote();
 }, e.currentTarget));
 
 /* ---------- diagnostik ---------- */

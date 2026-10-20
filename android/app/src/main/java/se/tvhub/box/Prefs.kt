@@ -4,7 +4,8 @@ import android.content.Context
 
 /** Sparade inställningar: serveradress, boxens nyckel, dolt läge och val av ljud/undertexter. */
 class Prefs(context: Context) {
-    private val sp = context.applicationContext.getSharedPreferences("tvhub", Context.MODE_PRIVATE)
+    val appContext: Context = context.applicationContext
+    private val sp = appContext.getSharedPreferences("tvhub", Context.MODE_PRIVATE)
 
     companion object {
         /** Vuxenläget stängs av efter så här lång tid utan knapptryck. */
@@ -110,9 +111,9 @@ class Prefs(context: Context) {
         sp.edit().putLong("pos:$path", positionMs).apply()
     }
 
-    /** Utseende: modernt (standard) eller klassiskt (tre kolumner som tidigare). */
+    /** Utseende: modernt (standard) eller klassiskt (tre kolumner som tidigare). Mobilen är alltid modern. */
     var modern: Boolean
-        get() = sp.getBoolean("modern_ui", true)
+        get() = sp.getBoolean("modern_ui", true) || FormFactor.isMobile(appContext)
         set(value) {
             sp.edit().putBoolean("modern_ui", value).apply()
         }
@@ -123,6 +124,35 @@ class Prefs(context: Context) {
         set(value) {
             sp.edit().putString("recent_searches", value.take(8).joinToString("\n")).apply()
         }
+
+    /** "auto" (standard), "mobile" eller "tv". Se [FormFactor]. */
+    var layoutMode: String
+        get() = sp.getString(FormFactor.KEY, "auto") ?: "auto"
+        set(value) {
+            sp.edit().putString(FormFactor.KEY, value).apply()
+        }
+
+    // Utanför hemmet (Nabu Casa). Hämtas från TV Hub när telefonen är hemma, se Remote.
+    var remoteUrl: String
+        get() = sp.getString("remote_url", "") ?: ""
+        set(value) {
+            sp.edit().putString("remote_url", value).apply()
+        }
+
+    var remoteIngress: String
+        get() = sp.getString("remote_ingress", "") ?: ""
+        set(value) {
+            sp.edit().putString("remote_ingress", value).apply()
+        }
+
+    var remoteHaToken: String
+        get() = sp.getString("remote_ha_token", "") ?: ""
+        set(value) {
+            sp.edit().putString("remote_ha_token", value).apply()
+        }
+
+    val remoteReady: Boolean
+        get() = remoteUrl.startsWith("https://") && remoteIngress.startsWith("/") && remoteHaToken.isNotEmpty()
 
     val paired: Boolean
         get() = server.isNotEmpty() && token.isNotEmpty()

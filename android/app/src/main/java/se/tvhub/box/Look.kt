@@ -105,15 +105,23 @@ object Look {
             if (first == null || index == checked) first = item
         }
         dialog.setContentView(root)
+        val mobile = FormFactor.isMobile(activity)
         dialog.window?.let { w ->
-            w.setGravity(Gravity.END)
-            w.setLayout(dp(activity, 440), ViewGroup.LayoutParams.MATCH_PARENT)
+            if (mobile) {
+                // Telefonen: panel nerifrån, hela bredden. Tryck utanför stänger.
+                w.setGravity(Gravity.BOTTOM)
+                w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                dialog.setCanceledOnTouchOutside(true)
+            } else {
+                w.setGravity(Gravity.END)
+                w.setLayout(dp(activity, 440), ViewGroup.LayoutParams.MATCH_PARENT)
+            }
             w.setBackgroundDrawableResource(android.R.color.transparent)
             w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             w.setDimAmount(0.55f)
         }
         dialog.show()
-        first?.requestFocus()
+        if (!mobile) first?.requestFocus()
     }
 
     /** Fråga med två eller tre svar (Ja/Avbryt). Första alternativet är standard. */

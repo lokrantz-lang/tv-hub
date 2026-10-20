@@ -39,6 +39,7 @@ class DetailActivity : Activity(), CardListener {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
         Look.init(this)
+        FormFactor.portraitIfMobile(this)
         modern = prefs.modern
         if (modern) Fonts.install(this)
         setContentView(if (modern) R.layout.activity_detail_modern else R.layout.activity_detail)
@@ -56,6 +57,10 @@ class DetailActivity : Activity(), CardListener {
         resumeButton.setOnClickListener { play(resumeMs) }
         playButton.setOnClickListener { play(0L) }
         favoriteButton.setOnClickListener { toggleFavorite() }
+        findViewById<Button?>(R.id.record)?.let { button ->
+            button.setOnClickListener { RecordMedia.film(this, vodId) }
+            if (modern) Look.focusGrow(button, 1.05f)
+        }
         if (modern) listOf(resumeButton, playButton, favoriteButton).forEach { Look.focusGrow(it, 1.05f) }
         playButton.requestFocus()
     }

@@ -97,13 +97,14 @@ Se `homeassistant/tv_hub_package.yaml`. Ger status, svarstid, vem som tittar, n�
 ## Säkerhet
 
 - Webbadminen svarar bara via Home Assistants Ingress (inloggning och tvåfaktor via Nabu Casa).
+- Telefonen utanför hemmet: via Nabu Casa och Home Assistants Ingress, med en vanlig (icke-admin) HA-användare plus telefonens egen nyckel. Webbadminen spärras för alla som inte är admin i HA.
 - Port 8099 används av boxarna i hemnätet och kräver en nyckel per box. Öppna inte porten i routern.
 - Toucan-lösenordet ligger i tilläggets databas i Home Assistant och ingår i HA:s säkerhetskopior.
 
 ## Utveckling
 
 ```
-python3 tests/test_e2e.py     # 185 kontroller mot en simulerad Xtream-server
+python3 tests/test_e2e.py     # 231 kontroller mot en simulerad Xtream-server
 python3 tests/demo.py         # demodata: admin på http://127.0.0.1:28080
 ```
 
@@ -111,6 +112,7 @@ Backenden använder bara Pythons standardbibliotek. Appen använder Kotlin, Medi
 
 ## Kända begränsningar
 
+- Mobilläget och vägen via Nabu Casa har provats mot en simulerad Home Assistant, inte på en riktig telefon.
 - Har inte provats mot Toucans riktiga server eller på boxarna. Xtream-API:t är standardiserat, men små avvikelser kan finnas.
 - Programguiden visas per kanal, inte som ett rutnät för alla kanaler samtidigt.
 - Catch-up använder Xtreams standardadress (/timeshift/). Om Toucan använder en annan variant behöver den justeras. Det påverkar också timeshift-spolning och inspelning av redan sända program.

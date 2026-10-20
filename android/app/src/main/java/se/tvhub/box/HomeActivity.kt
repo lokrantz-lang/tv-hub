@@ -99,6 +99,11 @@ class HomeActivity : Activity(), CardListener {
             finish()
             return
         }
+        if (FormFactor.isMobile(this)) {
+            startActivity(Intent(this, MobileActivity::class.java))
+            finish()
+            return
+        }
         Fonts.install(this)
         setContentView(R.layout.activity_home)
         rail = findViewById(R.id.rail)
@@ -348,6 +353,7 @@ class HomeActivity : Activity(), CardListener {
         when (item.type) {
             "series" -> SeriesActivity.start(this, item.id, item.name)
             "vod" -> DetailActivity.start(this, item.id, item.name)
+            "episode" -> playFavoriteEpisode(this, item)
             else -> {
                 val channels = siblings.filter { it.type == "live" }.ifEmpty { listOf(item) }
                 PlayerActivity.start(
@@ -366,8 +372,18 @@ class HomeActivity : Activity(), CardListener {
         val options = ArrayList<Pair<String, () -> Unit>>()
         when (item.type) {
             "live" -> options.add("Programguide, tidigare program och inspelning" to { GuideActivity.start(this, item.id, item.name) })
-            "vod" -> options.add("Detaljer" to { DetailActivity.start(this, item.id, item.name) })
-            "series" -> options.add("Avsnitt" to { SeriesActivity.start(this, item.id, item.name) })
+            "vod" -> {
+                options.add("Detaljer" to { DetailActivity.start(this, item.id, item.name) })
+                options.add("⬇ Spela in till USB-minnet" to { RecordMedia.film(this, item.id) })
+            }
+            "series" -> {
+                options.add("Avsnitt" to { SeriesActivity.start(this, item.id, item.name) })
+                options.add("⬇ Spela in hela serien till USB-minnet" to { RecordMedia.series(this, item.id) })
+            }
+            "episode" -> {
+                options.add("▶ Spela" to { playFavoriteEpisode(this, item) })
+                item.seriesId?.let { sid -> options.add("Visa serien" to { SeriesActivity.start(this, sid, item.categoryName ?: item.name, item.id) }) }
+            }
         }
         if (!privateMode()) {
             options.add((if (item.favorite) "Ta bort från favoriter" else "Lägg till i favoriter") to { toggleFavorite(item) })
@@ -1276,7 +1292,7 @@ class HomeActivity : Activity(), CardListener {
                     val rows = recs.map { rec ->
                         val state = when (rec.status) {
                             "scheduled" -> "Planerad"
-                            "recording" -> "● Spelar in"
+                            "recording" -> if (rec.media) "⬇ Laddar ner · ${Rec.size(rec.localFile?.length() ?: rec.sizeBytes)}" else "● Spelar in"
                             "done" -> if (rec.localFile != null) "Klar · ${Rec.size(rec.localFile?.length() ?: rec.sizeBytes)}" else "Klar, men filen finns inte på USB-minnet här"
                             "failed" -> "Misslyckades" + (rec.error?.let { ": $it" } ?: "")
                             else -> rec.status
@@ -1296,6 +1312,8 @@ class HomeActivity : Activity(), CardListener {
         private fun open(rec: Rec) {
             val file = rec.localFile
             when {
+                rec.media && rec.status == "recording" ->
+                    Toast.makeText(this@HomeActivity, "Laddas ner just nu. Den går att se när den är klar.", Toast.LENGTH_SHORT).show()
                 file != null && (rec.status == "done" || rec.status == "recording") ->
                     PlayerActivity.start(this@HomeActivity, type = "file", id = file.absolutePath, name = rec.title, ext = null)
                 rec.status == "scheduled" -> Toast.makeText(this@HomeActivity, "Planerad: ${rec.timeLabel}. Boxen måste vara påslagen eller i standby.", Toast.LENGTH_LONG).show()
@@ -1310,7 +1328,7 @@ class HomeActivity : Activity(), CardListener {
             val actions = ArrayList<() -> Unit>()
             if (rec.localFile != null) { labels.add("Spela"); actions.add { open(rec) } }
             if (rec.status == "recording") {
-                labels.add("Stoppa inspelningen (behåll det inspelade)")
+                labels.add(if (rec.media) "Avbryt nedladdningen" else "Stoppa inspelningen (behåll det inspelade)")
                 actions.add {
                     RecScheduler.send(this@HomeActivity, RecScheduler.ACTION_STOP, rec.id)
                     handler.postDelayed({ load() }, 2_500)
@@ -1339,6 +1357,7 @@ class HomeActivity : Activity(), CardListener {
             "Hämta listor igen",
             "Para om den här boxen",
             "Om TV Hub",
+            "Mobilläge (för telefon)",
         )
         Look.choose(this, "Inställningar", labels) { which ->
             when (which) {
@@ -1361,6 +1380,11 @@ class HomeActivity : Activity(), CardListener {
                         "Menyn till vänster: upp/ner väljer, höger går in. Håll in OK för fler val.\n" +
                         "Under uppspelning: upp/ner byter kanal, vänster/höger spolar i filmer, OK visar val.\n" +
                         "Tillbaka två gånger i menyn stänger appen.") {}
+                7 -> Look.confirm(this, "Byta till mobilläge?", "Mobilläget är gjort för touch på en telefon. På en TV-box behövs det inte.", "Byt") {
+                    prefs.layoutMode = "mobile"
+                    startActivity(Intent(this, MobileActivity::class.java))
+                    finish()
+                }
             }
         }
     }

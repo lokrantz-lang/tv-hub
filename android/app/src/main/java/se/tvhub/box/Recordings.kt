@@ -41,13 +41,24 @@ data class Rec(
     val sizeBytes: Long,
     val file: String?,
     val error: String?,
+    val ext: String? = null,
+    val seriesId: String? = null,
 ) {
+    /** Film eller avsnitt som laddas ner (inte en tv-sändning). */
+    val media: Boolean
+        get() = source == "vod" || source == "episode"
+
+    /** Inspelningar som har ett slut av sig själva (arkiv, film, avsnitt) och hämtas en i taget. */
+    val finite: Boolean
+        get() = source != "live"
+
     val localFile: File?
         get() = file?.let { File(it) }?.takeIf { it.isFile && it.length() > 0 }
 
     /** "lör 18 okt 20:00–20:30" */
     val timeLabel: String
         get() {
+            if (media) return "Tillagd " + SimpleDateFormat("d MMM", Locale("sv", "SE")).format(Date(start * 1000)).replace(".", "")
             val day = SimpleDateFormat("EEE d MMM HH:mm", Locale("sv", "SE")).format(Date(start * 1000))
             val endClock = SimpleDateFormat("HH:mm", Locale("sv", "SE")).format(Date(end * 1000))
             return "$day–$endClock"
@@ -66,6 +77,8 @@ data class Rec(
             sizeBytes = o.optLong("size_bytes", 0L),
             file = o.optStringOrNull("file"),
             error = o.optStringOrNull("error"),
+            ext = o.optStringOrNull("ext"),
+            seriesId = o.optStringOrNull("series_id"),
         )
 
         fun list(array: JSONArray?): List<Rec> {
@@ -118,6 +131,11 @@ object RecStorage {
     fun folder(volume: Volume): File = File(volume.dir, "Inspelningar").also { it.mkdirs() }
 
     fun fileFor(folder: File, rec: Rec): File {
+        if (rec.media) {
+            val ext = rec.ext?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,8}")) } ?: "mp4"
+            val name = rec.title.replace(Regex("[^\\p{L}\\p{N} ._()-]"), "_").replace(Regex("\\s+"), " ").trim().take(120)
+            return File(folder, "$name.$ext")
+        }
         val stamp = SimpleDateFormat("yyyy-MM-dd HHmm", Locale("sv", "SE")).format(Date(rec.start * 1000))
         val raw = "$stamp ${rec.channel} - ${rec.title}"
         val safe = raw.replace(Regex("[^\\p{L}\\p{N} ._()-]"), "_").replace(Regex("\\s+"), " ").trim().take(120)
@@ -281,7 +299,7 @@ class RecordService : Service() {
         when (rec.status) {
             "deleted" -> delete(rec.id, rec)
             "scheduled" -> when {
-                rec.source == "archive" -> startJob(rec)
+                rec.finite -> startJob(rec)
                 rec.start - RecScheduler.PRE_S <= now + 5 -> startJob(rec)
                 else -> {
                     RecScheduler.schedule(this, rec)
@@ -289,7 +307,7 @@ class RecordService : Service() {
                 }
             }
             "recording" -> if (!jobs.containsKey(rec.id)) {
-                if (rec.source == "archive" || rec.end + RecScheduler.POST_S > now) {
+                if (rec.finite || rec.end + RecScheduler.POST_S > now) {
                     startJob(rec)  // boxen startades om mitt i
                 } else {
                     val size = rec.localFile?.length() ?: 0L
@@ -303,7 +321,7 @@ class RecordService : Service() {
     private fun startJob(rec: Rec) {
         if (jobs.containsKey(rec.id)) return
         // Arkivhämtningar en i taget; nästa startar när den här är klar.
-        if (rec.source == "archive" && jobs.values.any { it.rec.source == "archive" }) return
+        if (rec.finite && jobs.values.any { it.rec.finite }) return
         val volume = RecStorage.chosen(this, prefs)
         if (volume == null) {
             report(rec.id, "failed", 0, null, "Inget USB-minne hittades i boxen.")
@@ -338,7 +356,7 @@ class RecordService : Service() {
         active.remove(job.file.absolutePath)
         main.post { refresh() }
         // En väntande arkivhämtning kan starta nu.
-        if (job.rec.source == "archive") RecScheduler.sync(this)
+        if (job.rec.finite) RecScheduler.sync(this)
     }
 
     fun report(id: Int, status: String, size: Long, file: String?, error: String?) {
@@ -395,12 +413,15 @@ class RecordService : Service() {
  */
 class RecordJob(private val service: RecordService, val rec: Rec, folder: File) : Thread("rec-${rec.id}") {
     private val archive = rec.source == "archive"
+    private val media = rec.media
+    private val finite = rec.finite
     val file: File = rec.file?.let { File(it) }?.takeIf { it.parentFile?.isDirectory == true } ?: RecStorage.fileFor(folder, rec)
     @Volatile private var stopRequested = false
     @Volatile private var deleteAfter = false
     @Volatile private var connection: HttpURLConnection? = null
     @Volatile private var sessionId: String? = null
     @Volatile private var fatal = false
+    @Volatile private var completed = false
     private var error: String? = null
 
     fun cancel(delete: Boolean) {
@@ -419,7 +440,7 @@ class RecordJob(private val service: RecordService, val rec: Rec, folder: File) 
         try {
             if (archive && file.exists()) file.delete()  // arkivet hämtas alltid från början
             while (!stopRequested) {
-                if (!archive && System.currentTimeMillis() >= endAtMs) break
+                if (!finite && System.currentTimeMillis() >= endAtMs) break
                 if (file.parentFile?.isDirectory != true) {
                     error = "USB-minnet togs bort."
                     break
@@ -429,7 +450,7 @@ class RecordJob(private val service: RecordService, val rec: Rec, folder: File) 
                     if (stopRequested || fatal) break
                     failures++
                     // Direktsändning: fortsätt försöka till sluttiden. Arkiv: ge upp efter några försök.
-                    if (archive && failures > 4) break
+                    if (finite && failures > (if (media) 8 else 4)) break
                     sleepQuietly(5_000)
                     continue
                 }
@@ -437,8 +458,8 @@ class RecordJob(private val service: RecordService, val rec: Rec, folder: File) 
                 endSession()
                 if (complete) break
                 failures++
-                if (archive && failures >= 4) {
-                    error = error ?: "Programmet gick inte att hämta från arkivet."
+                if (finite && failures >= (if (media) 8 else 4)) {
+                    error = error ?: if (media) "Filen gick inte att hämta från källan." else "Programmet gick inte att hämta från arkivet."
                     break
                 }
                 if (archive && file.exists()) file.delete()
@@ -455,7 +476,11 @@ class RecordJob(private val service: RecordService, val rec: Rec, folder: File) 
     /** Frågar TV Hub efter strömadress. Inspelningar räknas inte av anslutningsvakten. */
     private fun requestStream(): Pair<String, String>? {
         val body = JSONObject().put("id", rec.streamId).put("recording_id", rec.id).put("name", rec.title)
-        if (archive) {
+        if (media) {
+            body.put("type", rec.source)
+            rec.ext?.let { body.put("ext", it) }
+            rec.seriesId?.let { body.put("series_id", it) }
+        } else if (archive) {
             val start = rec.start - RecScheduler.PRE_S
             val now = System.currentTimeMillis() / 1000
             val stop = minOf(rec.end + RecScheduler.PRE_S, now)
@@ -498,29 +523,52 @@ class RecordJob(private val service: RecordService, val rec: Rec, folder: File) 
         var lastBeat = System.currentTimeMillis()
         var lastSpaceCheck = lastBeat
         var bytes = 0L
+        var lastReport = lastBeat
         try {
             conn.connectTimeout = 10_000
             conn.readTimeout = 20_000
             conn.instanceFollowRedirects = true
             conn.setRequestProperty("User-Agent", userAgent)
+            // Film och avsnitt: fortsätt där nedladdningen avbröts, om källan tillåter det.
+            val already = if (media && file.exists()) file.length() else 0L
+            if (already > 0) conn.setRequestProperty("Range", "bytes=$already-")
             val code = conn.responseCode
+            if (code == 416 && already > 0) {
+                completed = true  // redan helt nedladdad
+                return true
+            }
             if (code >= 400) {
                 error = "Källan svarade $code."
                 return false
             }
+            val append = !media || (already > 0 && code == 206)
+            if (media) {
+                val remaining = conn.getHeaderField("Content-Length")?.toLongOrNull() ?: -1L
+                if (remaining > 0 && (file.parentFile?.usableSpace ?: 0L) < remaining + 200L * 1024 * 1024) {
+                    error = "Filen får inte plats på USB-minnet (${Rec.size(remaining)} behövs)."
+                    fatal = true
+                    stopRequested = true
+                    return true
+                }
+            }
             conn.inputStream.use { input ->
-                FileOutputStream(file, true).use { output ->
+                FileOutputStream(file, append).use { output ->
                     val buffer = ByteArray(64 * 1024)
                     while (!stopRequested) {
                         val n = input.read(buffer)
                         if (n < 0) {
-                            // Arkivet är slut: klart om något kom. En liveström ska inte ta slut.
-                            return archive && bytes > 1_000_000
+                            // Arkiv, film och avsnitt är slut: klart om något kom. En liveström ska inte ta slut.
+                            completed = finite && file.length() > 1_000_000
+                            return completed
                         }
                         output.write(buffer, 0, n)
                         bytes += n
                         val now = System.currentTimeMillis()
-                        if (!archive && now >= endAtMs) return true
+                        if (!finite && now >= endAtMs) return true
+                        if (media && now - lastReport >= 30_000) {
+                            lastReport = now
+                            service.report(rec.id, "recording", file.length(), file.absolutePath, null)
+                        }
                         if (now - lastBeat >= 10_000) {
                             lastBeat = now
                             heartbeat(bytes)
@@ -578,7 +626,11 @@ class RecordJob(private val service: RecordService, val rec: Rec, folder: File) 
                 return
             }
             val size = if (file.exists()) file.length() else 0L
-            if (size > 1_000_000) {
+            if (media && !completed) {
+                // En halv film är inte till nytta: avbruten eller misslyckad nedladdning raderas.
+                if (file.exists()) file.delete()
+                service.report(rec.id, "failed", 0, null, error ?: "Nedladdningen avbröts.")
+            } else if (size > 1_000_000) {
                 // Stoppad i förtid eller med avbrott: filen sparas ändå, felet visas.
                 service.report(rec.id, "done", size, file.absolutePath, error)
             } else {
@@ -594,6 +646,45 @@ class RecordJob(private val service: RecordService, val rec: Rec, folder: File) 
         try {
             sleep(ms)
         } catch (_: InterruptedException) {
+        }
+    }
+}
+
+/** Spela in (ladda ner) filmer och avsnitt till USB-minnet. Används från detaljsidor och menyer. */
+object RecordMedia {
+    private fun post(activity: android.app.Activity, body: JSONObject, done: (JSONObject) -> String) {
+        Api.obj("POST", "/device/recordings", body) { result ->
+            result.onSuccess {
+                RecScheduler.sync(activity)
+                android.widget.Toast.makeText(activity, done(it), android.widget.Toast.LENGTH_LONG).show()
+            }.onFailure { android.widget.Toast.makeText(activity, Api.friendly(it), android.widget.Toast.LENGTH_LONG).show() }
+        }
+    }
+
+    fun film(activity: android.app.Activity, vodId: String) {
+        post(activity, JSONObject().put("kind", "vod").put("id", vodId)) { rec ->
+            if (rec.optString("status") == "done") "Filmen finns redan under Inspelningar." else
+                "⬇ Filmen laddas ner till USB-minnet. Följ den under Inspelningar."
+        }
+    }
+
+    fun episode(activity: android.app.Activity, episodeId: String, title: String, ext: String?, seriesId: String) {
+        val body = JSONObject().put("kind", "episode").put("id", episodeId).put("title", title).put("series_id", seriesId)
+        ext?.let { body.put("ext", it) }
+        post(activity, body) { "⬇ Avsnittet laddas ner till USB-minnet." }
+    }
+
+    fun series(activity: android.app.Activity, seriesId: String, season: String? = null) {
+        val body = JSONObject().put("kind", "series").put("series_id", seriesId)
+        season?.let { body.put("season", it) }
+        post(activity, body) { res ->
+            val created = res.optInt("created")
+            val existing = res.optInt("existing")
+            when {
+                created == 0 -> "Alla avsnitt finns redan under Inspelningar."
+                else -> "⬇ $created avsnitt laddas ner till USB-minnet, ett i taget." +
+                    if (existing > 0) " ($existing fanns redan.)" else ""
+            }
         }
     }
 }

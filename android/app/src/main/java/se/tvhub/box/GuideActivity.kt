@@ -31,6 +31,7 @@ class GuideActivity : Activity() {
     )
 
     private lateinit var adapter: RowAdapter
+    private var mobile = false  // telefonen: inga inspelningar
     private lateinit var list: RecyclerView
     private lateinit var status: TextView
     private var streamId = ""
@@ -41,6 +42,8 @@ class GuideActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Prefs(this).modern) Fonts.install(this)
+        FormFactor.portraitIfMobile(this)
+        mobile = FormFactor.isMobile(this)
         setContentView(R.layout.activity_guide)
         Api.init(Prefs(this))
         streamId = intent.getStringExtra("id") ?: return finish()
@@ -61,7 +64,10 @@ class GuideActivity : Activity() {
     private fun show(data: JSONObject) {
         val programs = data.optJSONArray("programs")
         val archiveDays = data.optInt("archive_days")
-        status.text = if (archiveDays > 0) {
+        status.text = if (mobile) {
+            if (archiveDays > 0) "Tryck på ett program för att se det (direkt eller i efterhand, $archiveDays dagar bakåt)."
+            else "Kanalen har inget arkiv. Tryck på programmet som sänds nu för att titta."
+        } else if (archiveDays > 0) {
             "Tidigare program kan ses i efterhand ($archiveDays dagar bakåt). OK spelar, kommande spelas in. Håll in OK för fler val."
         } else {
             "Kanalen har inget arkiv. OK på ett kommande program spelar in det. Håll in OK för fler val."
@@ -77,7 +83,7 @@ class GuideActivity : Activity() {
             val o = programs.optJSONObject(i) ?: continue
             val p = Program(
                 o.optString("title"), o.optLong("start"), o.optLong("end"), o.optBoolean("now"),
-                o.optBoolean("playable"), o.optBoolean("recordable"),
+                o.optBoolean("playable"), o.optBoolean("recordable") && !mobile,
             )
             val day = dayFormat.format(Date(p.start * 1000)).replaceFirstChar { it.uppercase() }
             if (day != lastDay) {
@@ -87,7 +93,7 @@ class GuideActivity : Activity() {
             if (p.now) nowIndex = rows.size
             val time = "${timeFormat.format(Date(p.start * 1000))}–${timeFormat.format(Date(p.end * 1000))}"
             val label = when {
-                p.now -> "●  Nu   ·   OK: titta live"
+                p.now -> if (mobile) "●  Nu   ·   tryck för att titta" else "●  Nu   ·   OK: titta live"
                 p.playable -> "▶  Se i efterhand"
                 p.end * 1000 < System.currentTimeMillis() -> "Har sänts"
                 p.recordable -> "OK: spela in"

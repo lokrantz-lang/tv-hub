@@ -109,6 +109,9 @@ class CardAdapter(
     /** Upp från första raden i ett rutnät får gå vidare (till kategorierna); annars false. */
     var onEdgeKey: ((Int, Int) -> Boolean)? = null
 
+    /** Telefonens rutnät: korten fyller kolumnen (bredd, höjd i px). Null = layoutens storlek. */
+    var itemSize: Pair<Int, Int>? = null
+
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
         val art: ImageView? = view.findViewById(R.id.art)
         val fallback: TextView? = view.findViewById(R.id.fallback)
@@ -146,7 +149,15 @@ class CardAdapter(
             Card.CHANNEL -> R.layout.card_channel_m
             else -> R.layout.card_poster_m
         }
-        return Holder(LayoutInflater.from(parent.context).inflate(layout, parent, false))
+        val view = LayoutInflater.from(parent.context).inflate(layout, parent, false)
+        itemSize?.let { (w, h) ->
+            val lp = view.layoutParams
+            lp.width = w
+            lp.height = h
+            (lp as? ViewGroup.MarginLayoutParams)?.let { it.marginEnd = 0; it.bottomMargin = 0 }
+            view.layoutParams = lp
+        }
+        return Holder(view)
     }
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
@@ -255,4 +266,13 @@ class ShelfAdapter(private val listener: CardListener) : RecyclerView.Adapter<Sh
         // Förhämta bilderna i raden så att de syns direkt när man bläddrar dit.
         shelf.cards.take(12).forEach { ImageLoader.prefetch(it.image, if (it.kind == Card.WIDE) 480 else 320) }
     }
+}
+
+
+/** Spelar ett favoritavsnitt direkt, där man slutade. */
+fun playFavoriteEpisode(activity: android.app.Activity, item: Item) {
+    PlayerActivity.start(
+        activity, type = "episode", id = item.id, name = item.name, ext = item.ext,
+        seriesId = item.seriesId, icon = item.icon, autoResume = true,
+    )
 }

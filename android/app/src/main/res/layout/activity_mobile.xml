@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mobilläget: rubrikrad, sidor och flikar längst ner. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/m_bg"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="6dp">
+
+        <TextView
+            android:id="@+id/m_title"
+            android:layout_width="wrap_content"
+            android:background="@drawable/m_tap"
+            android:focusable="true"
+            android:layout_height="match_parent"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center_vertical"
+            android:text="TV Hub"
+            android:textColor="@color/m_text"
+            android:textSize="22sp" />
+
+        <TextView
+            android:id="@+id/m_route"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/m_text3"
+            android:textSize="12sp" />
+
+        <ImageView
+            android:id="@+id/m_settings"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/m_tap"
+            android:contentDescription="Inställningar"
+            android:focusable="true"
+            android:padding="12dp"
+            android:src="@drawable/ic_m_settings" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/m_pages"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <TextView
+            android:id="@+id/m_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:padding="32dp"
+            android:textColor="@color/m_text2"
+            android:textSize="16sp"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/m_tabs"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:background="@color/m_surface"
+        android:orientation="horizontal" />
+</LinearLayout>

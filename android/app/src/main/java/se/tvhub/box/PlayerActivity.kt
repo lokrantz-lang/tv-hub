@@ -5,17 +5,25 @@ import android.app.ActivityManager
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format as MediaFormat
 import androidx.media3.common.MediaItem
@@ -70,6 +78,7 @@ class PlayerActivity : Activity() {
             icon: String? = null,
             catchupStart: Long = 0L,
             catchupMinutes: Int = 0,
+            autoResume: Boolean = false,
         ) {
             val intent = Intent(context, PlayerActivity::class.java)
                 .putExtra("type", type)
@@ -82,6 +91,7 @@ class PlayerActivity : Activity() {
                 .putExtra("icon", icon)
                 .putExtra("catchup_start", catchupStart)
                 .putExtra("catchup_minutes", catchupMinutes)
+                .putExtra("auto_resume", autoResume)
             if (queueIds != null) intent.putStringArrayListExtra("queue_ids", queueIds)
             if (queueNames != null) intent.putStringArrayListExtra("queue_names", queueNames)
             if (queueExts != null) intent.putStringArrayListExtra("queue_exts", queueExts)
@@ -116,6 +126,7 @@ class PlayerActivity : Activity() {
     private var startMs = 0L
     private var catchupStart = 0L
     private var catchupMinutes = 0
+    private var autoResume = false  // starta där man slutade (favoritavsnitt)
     private var queueIds: List<String> = emptyList()
     private var queueNames: List<String> = emptyList()
     private var queueExts: List<String> = emptyList()
@@ -178,7 +189,21 @@ class PlayerActivity : Activity() {
     }
     private lateinit var shiftView: TextView
 
-    private val hideOverlay = Runnable { overlay.visibility = View.GONE }
+    // Telefonen: knappar på skärmen, tryck på bilden visar/döljer dem
+    private var mobile = false
+    private var touchControls: View? = null
+    private var touchPlay: TextView? = null
+    private var touchSeek: SeekBar? = null
+    private var seeking = false
+    private val hideTouch = Runnable {
+        touchControls?.visibility = View.GONE
+        if (!seeking) overlay.visibility = View.GONE
+    }
+
+    private val hideOverlay = Runnable {
+        overlay.visibility = View.GONE
+        if (!seeking) touchControls?.visibility = View.GONE
+    }
 
     private val heartbeat = object : Runnable {
         override fun run() {
@@ -257,6 +282,7 @@ class PlayerActivity : Activity() {
         spinner = findViewById(R.id.spinner)
         shiftView = findViewById(R.id.shift)
         bandwidthMeter = DefaultBandwidthMeter.getSingletonInstance(this)
+        mobile = FormFactor.isMobile(this)
 
         type = intent.getStringExtra("type") ?: "live"
         itemId = intent.getStringExtra("id") ?: ""
@@ -267,6 +293,7 @@ class PlayerActivity : Activity() {
         startMs = intent.getLongExtra("start_ms", 0L)
         catchupStart = intent.getLongExtra("catchup_start", 0L)
         catchupMinutes = intent.getIntExtra("catchup_minutes", 0)
+        autoResume = intent.getBooleanExtra("auto_resume", false)
         queueIds = intent.getStringArrayListExtra("queue_ids") ?: emptyList()
         queueNames = intent.getStringArrayListExtra("queue_names") ?: emptyList()
         queueExts = intent.getStringArrayListExtra("queue_exts") ?: emptyList()
@@ -275,8 +302,134 @@ class PlayerActivity : Activity() {
             finish()
             return
         }
+        if (mobile) setupTouch()
         if (type == "file") playFile() else requestPlay()
         if (modern) handler.post(barTicker)
+    }
+
+    // ---------------------------------------------------------------- telefonen
+
+    /** Telefonen: vrid fritt, helskärm, knappar på skärmen och ett reglage för att spola. */
+    private fun setupTouch() {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        if (Build.VERSION.SDK_INT >= 28) {
+            window.attributes = window.attributes.also {
+                it.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+        hideSystemBars()
+        val dp = { v: Int -> Look.dp(this, v) }
+        // Texten i nederkanten: mindre än på TV:n.
+        overlay.setPadding(dp(16), dp(40), dp(16), dp(16))
+        titleView.textSize = 18f
+        epgView.textSize = 13f
+        logoView?.layoutParams?.let { it.width = dp(56); it.height = dp(32); logoView?.layoutParams = it }
+        nextCard?.setOnClickListener { playNextNow() }
+        statusView.setOnClickListener { if (fatalShown) retryAll() }
+
+        val root = playerView.parent as ViewGroup
+        val layer = LayoutInflater.from(this).inflate(R.layout.player_touch, root, false)
+        root.addView(layer, root.indexOfChild(playerView) + 1)
+        touchControls = layer.findViewById(R.id.touch_controls)
+        touchPlay = layer.findViewById(R.id.t_play)
+        val left = layer.findViewById<TextView>(R.id.t_left)
+        val right = layer.findViewById<TextView>(R.id.t_right)
+        layer.setOnClickListener {
+            if (touchControls?.visibility == View.VISIBLE) {
+                handler.removeCallbacks(hideTouch)
+                hideTouch.run()
+            } else {
+                showTouch()
+            }
+        }
+        layer.findViewById<View>(R.id.t_close).setOnClickListener { finish() }
+        layer.findViewById<View>(R.id.t_audio).setOnClickListener { showTrackDialog(C.TRACK_TYPE_AUDIO) }
+        layer.findViewById<View>(R.id.t_subs).setOnClickListener { showTrackDialog(C.TRACK_TYPE_TEXT) }
+        layer.findViewById<View>(R.id.t_more).setOnClickListener { showOptions() }
+        touchPlay?.setOnClickListener {
+            if (type == "live") togglePause() else toggleVod(null)
+            showTouch()
+        }
+        if (type == "live") {
+            // Som på TV:n: upp/ner byter kanal.
+            left.text = "▲"
+            left.contentDescription = "Nästa kanal"
+            right.text = "▼"
+            right.contentDescription = "Föregående kanal"
+            left.setOnClickListener { zap(1); showTouch() }
+            right.setOnClickListener { zap(-1); showTouch() }
+            if (queueIds.size < 2) {
+                left.visibility = View.INVISIBLE
+                right.visibility = View.INVISIBLE
+            }
+        } else {
+            left.text = "−10"
+            left.contentDescription = "10 sekunder bakåt"
+            right.text = "+30"
+            right.contentDescription = "30 sekunder framåt"
+            left.setOnClickListener { seekVod(-1, 0); showTouch() }
+            right.setOnClickListener { seekVod(1, 0); showTouch() }
+            // Reglage i stället för förloppsstapeln: dra för att spola.
+            val bar = seekProgress
+            val parent = bar?.parent as? LinearLayout
+            if (bar != null && parent != null) {
+                val seek = SeekBar(this)
+                seek.max = 1000
+                seek.progressDrawable = getDrawable(R.drawable.m_seek)
+                seek.thumb = getDrawable(R.drawable.m_seek_thumb)
+                seek.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(28)).also { it.topMargin = dp(8) }
+                seek.visibility = View.GONE
+                seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                        val duration = player?.duration ?: return
+                        if (fromUser && duration > 0) timePos?.text = Format.clock(duration * progress / 1000)
+                    }
+
+                    override fun onStartTrackingTouch(seekBar: SeekBar) {
+                        seeking = true
+                        handler.removeCallbacks(hideTouch)
+                    }
+
+                    override fun onStopTrackingTouch(seekBar: SeekBar) {
+                        seeking = false
+                        val p = player
+                        val duration = p?.duration ?: 0L
+                        if (p != null && duration > 0 && p.isCurrentMediaItemSeekable) p.seekTo(duration * seekBar.progress / 1000)
+                        showTouch()
+                    }
+                })
+                parent.addView(seek, parent.indexOfChild(bar) + 1)
+                touchSeek = seek
+            }
+        }
+    }
+
+    private fun showTouch() {
+        touchControls?.visibility = View.VISIBLE
+        overlay.visibility = View.VISIBLE
+        handler.removeCallbacks(hideOverlay)
+        handler.removeCallbacks(hideTouch)
+        val playing = player?.playWhenReady ?: true
+        if (playing && pausedAt == 0L) handler.postDelayed(hideTouch, 4_000)
+        if (type == "live") loadEpg()
+        updateBar()
+    }
+
+    private fun hideSystemBars() {
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && mobile) hideSystemBars()
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_DOWN) prefs.touch()
+        return super.dispatchTouchEvent(ev)
     }
 
     override fun onStop() {
@@ -359,6 +512,10 @@ class PlayerActivity : Activity() {
                     } else {
                         logo.visibility = View.GONE
                     }
+                }
+                if (autoResume && startMs == 0L && lastPositionMs == 0L) {
+                    startMs = response.optJSONObject("resume")?.optLong("position_ms") ?: 0L
+                    autoResume = false
                 }
                 // Efter portalbyte: fortsätt där strömmen bröts.
                 val position = when {
@@ -445,6 +602,13 @@ class PlayerActivity : Activity() {
             .setPreferredTextLanguage(if (subtitles == "off" || subtitles.isEmpty()) null else subtitles)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitles == "off")
             .build()
+        if (mobile) {
+            // Telefonen: pausa vid samtal och när hörlurarna kopplas ur.
+            newPlayer.setAudioAttributes(
+                AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true,
+            )
+            newPlayer.setHandleAudioBecomingNoisy(true)
+        }
         newPlayer.addListener(listener)
         playerView.player = newPlayer
         val live = type == "live"
@@ -654,7 +818,7 @@ class PlayerActivity : Activity() {
     private fun showFatal(text: String, canRetry: Boolean = true) {
         fatalShown = true
         spinner.visibility = View.GONE
-        statusView.text = if (canRetry) "$text\n\nOK: försök igen   Tillbaka: avsluta" else text
+        statusView.text = if (!canRetry) text else if (mobile) "$text\n\nTryck här för att försöka igen" else "$text\n\nOK: försök igen   Tillbaka: avsluta"
         statusView.visibility = View.VISIBLE
     }
 
@@ -1112,6 +1276,7 @@ class PlayerActivity : Activity() {
     private fun updateBar() {
         if (!modern) return
         val p = player
+        touchPlay?.text = if (if (type == "live") pausedAt == 0L else p?.playWhenReady != false) "❚❚" else "▶"
         val bar = seekProgress ?: return
         if (type == "live") {
             val program = currentProgram
@@ -1138,22 +1303,27 @@ class PlayerActivity : Activity() {
         val duration = p.duration
         if (duration <= 0) {
             bar.visibility = View.GONE
+            touchSeek?.visibility = View.GONE
             times?.visibility = View.GONE
             return
         }
         val position = if (vodSeekTarget >= 0) vodSeekTarget else p.currentPosition
         bar.progress = (position * 1000 / duration).toInt().coerceIn(0, 1000)
-        timePos?.text = Format.clock(position)
+        if (!seeking) timePos?.text = Format.clock(position)
+        touchSeek?.let { seek ->
+            if (!seeking) seek.progress = bar.progress
+            seek.visibility = View.VISIBLE
+        }
         timeEnd?.text = "−" + Format.clock((duration - position).coerceAtLeast(0))
         endsAt?.text = "Slutar " + clockFormat.format(Date(System.currentTimeMillis() + (duration - position)))
-        bar.visibility = View.VISIBLE
+        bar.visibility = if (touchSeek != null) View.GONE else View.VISIBLE
         times?.visibility = View.VISIBLE
         // "Nästa avsnitt" de sista 20 sekunderna (som Netflix).
         val hasNext = type == "episode" && queueIndex >= 0 && queueIndex + 1 < queueIds.size
         val card = nextCard ?: return
         if (hasNext && duration - position in 1..20_000 && p.playWhenReady) {
             val left = ((duration - position) / 1000).coerceAtLeast(1)
-            card.text = "Nästa avsnitt om $left s\n${queueNames.getOrNull(queueIndex + 1) ?: ""}\nOK: spela nu"
+            card.text = "Nästa avsnitt om $left s\n${queueNames.getOrNull(queueIndex + 1) ?: ""}\n" + if (mobile) "Tryck: spela nu" else "OK: spela nu"
             card.visibility = View.VISIBLE
         } else {
             card.visibility = View.GONE
@@ -1186,10 +1356,13 @@ class PlayerActivity : Activity() {
                 }
             }
             if (shifted) options.add("Tillbaka till direkt" to { goLive() })
-            currentProgram?.let { program ->
-                options.add("● Spela in \"${program.optString("title")}\"" to { recordCurrentProgram() })
+            if (!mobile) {
+                // Inspelning görs på TV-boxarna (USB-minnet), inte på telefonen.
+                currentProgram?.let { program ->
+                    options.add("● Spela in \"${program.optString("title")}\"" to { recordCurrentProgram() })
+                }
+                options.add("● Spela in nu (välj längd)…" to { recordNow() })
             }
-            options.add("● Spela in nu (välj längd)…" to { recordNow() })
             Session.previousChannel?.takeIf { it.first != itemId }?.let { prev ->
                 options.add("Förra kanalen: ${prev.second}" to { previousChannel() })
             }

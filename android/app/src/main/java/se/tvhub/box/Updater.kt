@@ -10,8 +10,6 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * Självuppdatering. Home Assistant hämtar den nya versionen från GitHub och lämnar den
@@ -53,10 +51,8 @@ object Updater {
         val file = File(dir, "tvhub.apk")
         Api.async({
             dir.mkdirs()
-            val conn = URL(prefs.server.trimEnd('/') + "/device/app.apk").openConnection() as HttpURLConnection
-            conn.setRequestProperty("Authorization", "Bearer ${prefs.token}")
-            conn.connectTimeout = 10_000
-            conn.readTimeout = 120_000
+            // Hemma direkt från Home Assistant, annars via Nabu Casa (telefonen).
+            val conn = Api.openBlocking("/device/app.apk", readTimeoutMs = 120_000)
             try {
                 if (conn.responseCode != 200) throw ApiException(conn.responseCode, "Uppdateringen kunde inte hämtas (HTTP ${conn.responseCode}).")
                 conn.inputStream.use { input -> file.outputStream().use { output -> input.copyTo(output) } }

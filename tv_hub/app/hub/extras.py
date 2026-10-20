@@ -260,3 +260,47 @@ def notify_home_assistant(hits):
 
 
 catalog._after_sync.append(check_watches)
+
+
+# ====================================================================
+# Favoritavsnitt
+# ====================================================================
+def set_episode_favorite(scope, episode_id, series_id, title, ext, icon, on):
+    episode_id = str(episode_id or "")
+    if not episode_id or len(episode_id) > 40:
+        raise ValueError("Okänt avsnitt.")
+    adult = 1 if scope.adult else 0
+    if not on:
+        db.x("DELETE FROM fav_episodes WHERE adult = ? AND episode_id = ?", (adult, episode_id))
+        return False
+    series_id = str(series_id or "")
+    if not catalog.in_scope("series", series_id, scope):
+        raise LookupError("Serien finns inte.")
+    series = catalog.get_item("series", series_id) or {}
+    ext = str(ext or "mp4")
+    if not ext.isalnum() or len(ext) > 8:
+        ext = "mp4"
+    db.x("""INSERT OR REPLACE INTO fav_episodes (adult, episode_id, series_id, title, ext, icon, added)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+         (adult, episode_id, series_id, (str(title or "").strip() or f"{series.get('name', 'Avsnitt')}")[:200],
+          ext, (icon or series.get("icon") or None), db.iso()))
+    return True
+
+
+def episode_favorites(scope):
+    out = []
+    for row in db.q("SELECT * FROM fav_episodes WHERE adult = ? ORDER BY added", (1 if scope.adult else 0,)):
+        if not catalog.in_scope("series", row["series_id"], scope):
+            continue
+        series = catalog.get_item("series", row["series_id"]) or {}
+        out.append({
+            "type": "episode", "id": row["episode_id"], "series_id": row["series_id"], "name": row["title"],
+            "icon": row["icon"] or series.get("icon"), "ext": row["ext"], "favorite": True,
+            "category_name": series.get("name"), "backdrop": series.get("backdrop"), "adult": bool(row["adult"]),
+        })
+    return out
+
+
+def episode_favorite_ids(adult, series_id):
+    return [r["episode_id"] for r in db.q("SELECT episode_id FROM fav_episodes WHERE adult = ? AND series_id = ?",
+                                            (1 if adult else 0, str(series_id)))]

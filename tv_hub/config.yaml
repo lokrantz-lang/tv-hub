@@ -1,5 +1,5 @@
 name: TV Hub
-version: "1.6.1"
+version: "1.8.0"
 slug: tv_hub
 description: Egen IPTV-tjänst för Formuler-boxar med portalbyte, favoriter, grupper och felsökning
 url: https://github.com/lokrantz-lang/tv-hub
@@ -13,6 +13,9 @@ boot: auto
 ingress: true
 homeassistant_api: true
 ingress_port: 8080
+# Vanliga (icke-admin) användare måste få en ingress-session för att appen ska nå
+# TV Hub via Nabu Casa. Webbadminen spärras ändå för alla som inte är administratörer.
+panel_admin: false
 panel_icon: mdi:television-classic
 panel_title: TV Hub
 ports:

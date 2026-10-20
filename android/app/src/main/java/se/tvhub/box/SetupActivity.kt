@@ -20,6 +20,7 @@ class SetupActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        FormFactor.portraitIfMobile(this)
         setContentView(R.layout.activity_setup)
         prefs = Prefs(this)
         Api.init(prefs)
@@ -60,7 +61,7 @@ class SetupActivity : Activity() {
         pair.isEnabled = false
         status.setTextColor(getColor(R.color.muted))
         status.text = "Ansluter…"
-        val name = Build.MODEL ?: "TV-box"
+        val name = if (FormFactor.isMobile(this)) "Mobil (${Build.MODEL ?: "telefon"})" else Build.MODEL ?: "TV-box"
         val body = JSONObject()
             .put("code", pairingCode)
             .put("name", name)

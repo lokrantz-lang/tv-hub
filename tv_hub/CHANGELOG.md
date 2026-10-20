@@ -1,5 +1,33 @@
 # Ändringar
 
+## 1.8.0
+
+- Appen fungerar på telefonen (Android), i samma app som på boxarna:
+  - Mobilläge väljs automatiskt på en telefon: stående, touch och flikar längst ner
+    (Hem, Live, Filmer, Serier, Sök). Inställningar uppe till höger.
+  - Spelaren: tryck på bilden för knappar (paus, −10/+30 s, kanal upp/ner, ljud, undertexter),
+    dra i reglaget för att spola och vrid telefonen för helskärm.
+  - Dolt vuxenläge: tryck tre gånger snabbt på "TV Hub" överst. I vuxenläget: håll in "TV Hub"
+    för att visa eller dölja favoriter och historik.
+  - Inspelning görs fortfarande på boxarna och visas inte på telefonen.
+- Utanför hemmet via Nabu Casa, utan att öppna något i routern:
+  - Ställs in i webbadminen under Boxar → Telefon utanför hemmet, med knappen Testa vägen.
+  - Telefonen byter själv: hemadressen på hemmets wifi, Nabu Casa annars.
+  - Videon går direkt från Toucan till telefonen.
+- Säkerhet: vanliga (icke-admin) användare i Home Assistant får nu öppna tillägget, eftersom appen
+  behöver det. Webbadminen spärras ändå för alla som inte är administratörer.
+
+## 1.7.0
+
+- Spela in filmer och serier till USB-minnet i boxen (nedladdning från Toucan):
+  - Film: knappen "⬇ Spela in" på detaljsidan, eller håll in OK på filmen.
+  - Serie: "Spela in hela serien" på seriesidan, eller håll in OK på ett avsnitt för avsnittet eller säsongen.
+  - Webbadminen: välj box i detaljrutan i Biblioteket.
+- Nedladdningar görs en i taget och fortsätter där de slutade om strömmen bryts. En avbruten film raderas.
+- Inspelningarna spelas upp under Inspelningar, med spolning och "fortsätt där du var".
+- Favoritavsnitt: håll in OK på ett avsnitt och välj "Lägg till i favoriter". Avsnittet syns bland
+  favoriterna och spelas direkt där du slutade. Favoritavsnitt markeras med ★ på seriesidan.
+
 ## 1.6.1
 
 - "Nytt tillagt" och raderna Nytt: filmer/serier visar bara titlar som dykt upp i listan sedan

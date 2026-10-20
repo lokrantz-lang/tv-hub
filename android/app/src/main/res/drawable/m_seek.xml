@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spolreglaget på telefonen: tunn vit linje på grått, centrerad i höjdled. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background" android:height="4dp" android:gravity="center_vertical">
+        <shape><solid android:color="#4DFFFFFF" /><corners android:radius="2dp" /></shape>
+    </item>
+    <item android:id="@android:id/progress" android:height="4dp" android:gravity="center_vertical">
+        <clip><shape><solid android:color="#FFFFFF" /><corners android:radius="2dp" /></shape></clip>
+    </item>
+</layer-list>

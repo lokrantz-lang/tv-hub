@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spelarens knappar på telefonen. Läggs ovanpå bilden; tryck på bilden visar/döljer dem. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/touch_layer"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clickable="true">
+
+    <FrameLayout
+        android:id="@+id/touch_controls"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#4D000000"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <ImageView
+                android:id="@+id/t_close"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/m_round"
+                android:contentDescription="Stäng"
+                android:padding="12dp"
+                android:src="@drawable/ic_m_close" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/t_audio"
+                style="@style/TouchPill"
+                android:text="Ljud" />
+
+            <TextView
+                android:id="@+id/t_subs"
+                style="@style/TouchPill"
+                android:text="Text" />
+
+            <TextView
+                android:id="@+id/t_more"
+                style="@style/TouchPill"
+                android:text="Mer" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/t_left"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:background="@drawable/m_round"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp" />
+
+            <TextView
+                android:id="@+id/t_play"
+                android:layout_width="84dp"
+                android:layout_height="84dp"
+                android:layout_marginStart="32dp"
+                android:layout_marginEnd="32dp"
+                android:background="@drawable/m_round"
+                android:gravity="center"
+                android:text="❚❚"
+                android:textColor="#FFFFFF"
+                android:textSize="28sp" />
+
+            <TextView
+                android:id="@+id/t_right"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:background="@drawable/m_round"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp" />
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

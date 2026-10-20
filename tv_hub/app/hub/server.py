@@ -1,6 +1,8 @@
 """HTTP-servrar.
 
 Admin (port 8080): bara via Home Assistant Ingress. Webbadmin + admin-API.
+  Samma port tar också emot appens anrop till /device/... via Nabu Casa (se remote.py),
+  med boxens nyckel i X-TVHub-Token.
 Enheter (port 8099): TV-boxar och Home Assistant-sensorer, med nyckel.
 """
 import json
@@ -14,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import VERSION, catalog, db, devices, diagnostics, extras, info, portals, recordings, updates
+from . import VERSION, catalog, db, devices, diagnostics, extras, info, portals, recordings, remote, updates
 from .config import CFG
 from .xtream import XtreamError
 
@@ -639,6 +641,20 @@ def admin_recording_create(h):
     dev = db.q1("SELECT * FROM devices WHERE id = ?", (device_id,))
     if not dev or dev["model"] == "integration":
         raise HttpError(400, "Boxen finns inte.")
+    kind = data.get("kind") or "live"
+    if kind in ("vod", "series"):
+        ref = catalog.get_item(kind, str(data.get("id") or ""))
+        if ref is None:
+            raise HttpError(404, "Finns inte.")
+        scope = devices.scope_for(dev, bool(ref.get("adult")))
+        if bool(scope.adult) != bool(ref.get("adult")):
+            raise HttpError(400, "Boxens profil tillåter inte det här.")
+        if not catalog.in_scope(kind, ref["id"], scope):
+            raise HttpError(400, "Boxens profil tillåter inte det här.")
+        if kind == "series":
+            return 201, recordings.create_series(dev, scope, ref["id"], series_detail(ref["id"]), data.get("season"))
+        rec, created = recordings.create_media(dev, scope, "vod", ref["id"])
+        return (201 if created else 200), rec
     channel = catalog.get_item("live", str(data.get("stream_id") or ""))
     if channel is None:
         raise HttpError(404, "Kanalen finns inte.")
@@ -669,6 +685,22 @@ def admin_guide(h, stream_id):
 
 
 # ----- diagnostik -----
+# ----- telefonen utanför hemmet (Nabu Casa) -----
+@route(ADMIN, "GET", r"/api/remote")
+def admin_remote(h):
+    return 200, remote.settings()
+
+
+@route(ADMIN, "PUT", r"/api/remote")
+def admin_remote_save(h):
+    return 200, remote.save_settings(h.read_json())
+
+
+@route(ADMIN, "POST", r"/api/remote/test")
+def admin_remote_test(h):
+    return 200, remote.test_path()
+
+
 @route(ADMIN, "GET", r"/api/diagnostics")
 def admin_diagnostics(h):
     return 200, {
@@ -692,11 +724,20 @@ DEVICE = []
 
 class DeviceHandler(BaseHandler):
     routes = DEVICE
+    via_ingress = False
+
+    def auth_header(self):
+        return self.headers.get("Authorization")
+
+    def device_ip(self):
+        return self.client_ip()
 
     def device(self):
-        dev = devices.authenticate(self.headers.get("Authorization"), self.client_ip())
+        dev = devices.authenticate(self.auth_header(), self.device_ip())
         if dev is None:
             raise HttpError(401, "Boxen är inte parad. Para om den i appen.")
+        if self.via_ingress:
+            remote.mark_remote(dev, self.headers, self.device_ip())
         return dev
 
     def wants_adult(self):
@@ -741,7 +782,7 @@ def dev_home(h):
         "profile": {"allow_adult": bool(dev["allow_adult"]), "only_group_id": dev["only_group_id"]},
         "continue": [] if scope.private else extras.continue_watching(scope),
         "recent_live": [] if scope.private else extras.recent_channels(dev["id"], scope),
-        "favorites": [] if scope.private else catalog.favorites(scope),
+        "favorites": [] if scope.private else catalog.favorites(scope) + extras.episode_favorites(scope),
         "groups": catalog.groups(with_items=True, scope=scope),
         "saved_filters": [] if group_only else extras.saved_filters(scope.adult),
         "watch_hits": [] if group_only or scope.adult else extras.recent_hits(scope),
@@ -833,6 +874,7 @@ def dev_series(h, sid):
     progress, watched = ({}, []) if scope.private else extras.series_progress(scope.adult or 0, sid)
     detail["progress"] = progress
     detail["watched"] = watched
+    detail["favorite_episodes"] = [] if scope.private else extras.episode_favorite_ids(scope.adult, sid)
     if scope.private:
         detail["favorite"] = False
     return 200, detail
@@ -911,6 +953,10 @@ def dev_neighbours(h, item_id):
 def dev_favorite(h):
     dev, scope = h.context()
     data = h.read_json()
+    if data.get("type") == "episode":
+        on = extras.set_episode_favorite(scope, data.get("id"), data.get("series_id"), data.get("name"),
+                                         data.get("ext"), data.get("icon"), bool(data.get("on", True)))
+        return 200, {"favorite": on}
     if not catalog.in_scope(data.get("type"), data.get("id"), scope):
         raise HttpError(404, "Finns inte.")
     on = catalog.set_favorite(data.get("type"), data.get("id"), bool(data.get("on", True)))
@@ -965,6 +1011,16 @@ def dev_recordings(h):
 def dev_recording_create(h):
     dev, scope = h.context()
     data = h.read_json()
+    kind = data.get("kind") or "live"
+    if kind == "series":
+        sid = str(data.get("series_id") or "")
+        if not catalog.in_scope("series", sid, scope):
+            raise HttpError(404, "Serien finns inte.")
+        return 201, recordings.create_series(dev, scope, sid, series_detail(sid), data.get("season"))
+    if kind in recordings.MEDIA_SOURCES:
+        rec, created = recordings.create_media(dev, scope, kind, data.get("id"), data.get("title"), data.get("ext"),
+                                               data.get("series_id"))
+        return (201 if created else 200), rec
     rec, created = recordings.create(dev, scope, data.get("stream_id"), data.get("title"),
                                      data.get("start"), data.get("end"))
     return (201 if created else 200), rec
@@ -1086,8 +1142,60 @@ def dev_summary(h):
     }
 
 
+@route(DEVICE, "GET", r"/device/remote")
+def dev_remote(h):
+    """Uppgifter för att nå TV Hub via Nabu Casa. Bara hemma, aldrig via Nabu Casa."""
+    h.device()
+    if h.via_ingress:
+        raise HttpError(404, "Hittades inte")
+    return 200, remote.device_config()
+
+
+# Anrop som inte behövs (eller inte ska gå) via Nabu Casa.
+NOT_VIA_INGRESS = {dev_pair, dev_speedtest, dev_remote}
+DEVICE_VIA_INGRESS = [r for r in DEVICE if r[2] not in NOT_VIA_INGRESS]
+
+DENIED_PAGE = """<!doctype html><html lang="sv"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>TV Hub</title>
+<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px;line-height:1.5">
+<h2>TV Hub</h2><p>Webbadminen är bara för administratörer i Home Assistant.</p>
+<p style="color:#999">Den här användaren används av TV Hub-appen på telefonen.</p></body></html>"""
+
+
+class IngressHandler(DeviceHandler):
+    """Port 8080. Webbadminen för administratörer, och appens anrop via Nabu Casa."""
+    via_ingress = True
+
+    def dispatch(self, method):
+        path = urlparse(self.path).path
+        self.routes = DEVICE_VIA_INGRESS if path.startswith("/device/") else ADMIN
+        if self.routes is ADMIN and AdminHandler.allowed(self) and not remote.admin_allowed(self.headers):
+            if method == "GET" and path in ("/", "/index.html"):
+                body = DENIED_PAGE.encode("utf-8")
+                self.send_response(403)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_json(403, {"error": "Webbadminen är bara för administratörer i Home Assistant."})
+            return
+        super().dispatch(method)
+
+    def allowed(self):
+        return AdminHandler.allowed(self)
+
+    def auth_header(self):
+        token = (self.headers.get("X-TVHub-Token") or "").strip()
+        return f"Bearer {token}" if token else None
+
+    def device_ip(self):
+        forwarded = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        return f"Nabu Casa ({forwarded})" if forwarded else "Nabu Casa"
+
+
 def start_servers():
-    admin = ThreadingHTTPServer(("0.0.0.0", CFG["admin_port"]), AdminHandler)
+    admin = ThreadingHTTPServer(("0.0.0.0", CFG["admin_port"]), IngressHandler)
     device = ThreadingHTTPServer(("0.0.0.0", CFG["device_port"]), DeviceHandler)
     admin.daemon_threads = device.daemon_threads = True
     threading.Thread(target=admin.serve_forever, daemon=True, name="admin").start()

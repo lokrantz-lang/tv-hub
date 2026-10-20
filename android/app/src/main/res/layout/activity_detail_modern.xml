@@ -122,6 +122,19 @@
                 android:textAllCaps="false"
                 android:textColor="@color/m_on_focus"
                 android:textSize="17sp" />
+
+            <Button
+                android:id="@+id/record"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/m_button"
+                android:paddingStart="26dp"
+                android:paddingEnd="26dp"
+                android:text="⬇  Spela in"
+                android:textAllCaps="false"
+                android:textColor="@color/m_on_focus"
+                android:textSize="17sp" />
         </LinearLayout>
 
         <TextView

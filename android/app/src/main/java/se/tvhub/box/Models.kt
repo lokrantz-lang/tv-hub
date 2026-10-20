@@ -37,12 +37,15 @@ data class Item(
     val added: Long? = null,
     val backdrop: String? = null,
     val plot: String? = null,
+    /** Favoritavsnitt: vilken serie avsnittet hör till. */
+    val seriesId: String? = null,
 ) {
     val typeLabel: String
         get() = when (type) {
             "live" -> "Kanal"
             "vod" -> "Film"
             "series" -> "Serie"
+            "episode" -> "Avsnitt"
             else -> ""
         }
 
@@ -73,6 +76,7 @@ data class Item(
             added = if (o.isNull("added")) null else o.optLong("added").takeIf { it > 0 },
             backdrop = o.optStringOrNull("backdrop"),
             plot = o.optStringOrNull("plot"),
+            seriesId = o.optStringOrNull("series_id"),
         )
 
         fun list(array: JSONArray?): List<Item> {

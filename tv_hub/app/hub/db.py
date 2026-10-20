@@ -257,6 +257,24 @@ SCHEMA = [
     ALTER TABLE items ADD COLUMN first_seen INTEGER;
     ALTER TABLE category_prefs ADD COLUMN adult_override INTEGER
     """,
+    # version 6: inspelning (nedladdning) av filmer och avsnitt
+    """
+    ALTER TABLE recordings ADD COLUMN ext TEXT;
+    ALTER TABLE recordings ADD COLUMN series_id TEXT
+    """,
+    # version 7: favoritavsnitt (avsnitt finns inte i katalogen, så namn och bild sparas här)
+    """
+    CREATE TABLE fav_episodes (
+        adult INTEGER NOT NULL DEFAULT 0,
+        episode_id TEXT NOT NULL,
+        series_id TEXT NOT NULL,
+        title TEXT,
+        ext TEXT,
+        icon TEXT,
+        added TEXT NOT NULL,
+        PRIMARY KEY (adult, episode_id)
+    )
+    """,
 ]
 
 

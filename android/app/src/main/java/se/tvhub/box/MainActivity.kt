@@ -115,6 +115,12 @@ class MainActivity : Activity() {
             Session.recordingsSynced = true
             RecScheduler.sync(this)
         }
+        if (FormFactor.isMobile(this)) {
+            // Telefonen: mobilläget (samma app, eget utseende).
+            startActivity(Intent(this, MobileActivity::class.java))
+            finish()
+            return
+        }
         if (prefs.modern) {
             // Det moderna utseendet är standard. Det klassiska väljs under Inställningar → Utseende.
             startActivity(Intent(this, HomeActivity::class.java))
@@ -658,7 +664,7 @@ class MainActivity : Activity() {
     private fun recRow(rec: Rec): Row {
         val state = when (rec.status) {
             "scheduled" -> "Planerad"
-            "recording" -> "● Spelar in"
+            "recording" -> if (rec.media) "⬇ Laddar ner · ${Rec.size(rec.localFile?.length() ?: rec.sizeBytes)}" else "● Spelar in"
             "done" -> if (rec.localFile != null) "Klar · ${Rec.size(rec.localFile?.length() ?: rec.sizeBytes)}" else "Klar, men filen finns inte på USB-minnet"
             "failed" -> "Misslyckades"
             else -> rec.status
@@ -769,6 +775,7 @@ class MainActivity : Activity() {
             }
             is Item -> when (entry.type) {
                 "series" -> SeriesActivity.start(this, entry.id, entry.name)
+                "episode" -> playFavoriteEpisode(this, entry)
                 "vod" -> DetailActivity.start(this, entry.id, entry.name)
                 else -> {
                     val channels = entries.filterIsInstance<Item>().filter { it.type == "live" }
@@ -787,6 +794,8 @@ class MainActivity : Activity() {
     private fun openRecording(rec: Rec) {
         val file = rec.localFile
         when {
+            rec.media && rec.status == "recording" ->
+                Toast.makeText(this, "Laddas ner just nu. Den går att se när den är klar.", Toast.LENGTH_SHORT).show()
             file != null && (rec.status == "done" || rec.status == "recording") ->
                 PlayerActivity.start(this, type = "file", id = file.absolutePath, name = rec.title, ext = null)
             rec.status == "scheduled" ->
@@ -805,7 +814,7 @@ class MainActivity : Activity() {
     private fun onRecordingLongClick(rec: Rec) {
         val options = ArrayList<Pair<String, () -> Unit>>()
         if (rec.localFile != null) options.add("Spela" to { openRecording(rec) })
-        if (rec.status == "recording") options.add("Stoppa inspelningen (behåll det inspelade)" to {
+        if (rec.status == "recording") options.add((if (rec.media) "Avbryt nedladdningen" else "Stoppa inspelningen (behåll det inspelade)") to {
             RecScheduler.send(this, RecScheduler.ACTION_STOP, rec.id)
             Toast.makeText(this, "Inspelningen stoppas.", Toast.LENGTH_SHORT).show()
             handler.postDelayed({ if (section == "recordings") showSection("recordings", keepFocus = true) }, 2_500)
@@ -837,8 +846,18 @@ class MainActivity : Activity() {
         val options = ArrayList<Pair<String, () -> Unit>>()
         when (item.type) {
             "live" -> options.add("Programguide och tidigare program" to { GuideActivity.start(this, item.id, item.name) })
-            "vod" -> options.add("Detaljer" to { DetailActivity.start(this, item.id, item.name) })
-            "series" -> options.add("Avsnitt" to { SeriesActivity.start(this, item.id, item.name) })
+            "vod" -> {
+                options.add("Detaljer" to { DetailActivity.start(this, item.id, item.name) })
+                options.add("⬇ Spela in till USB-minnet" to { RecordMedia.film(this, item.id) })
+            }
+            "series" -> {
+                options.add("Avsnitt" to { SeriesActivity.start(this, item.id, item.name) })
+                options.add("⬇ Spela in hela serien till USB-minnet" to { RecordMedia.series(this, item.id) })
+            }
+            "episode" -> {
+                options.add("▶ Spela" to { playFavoriteEpisode(this, item) })
+                item.seriesId?.let { sid -> options.add("Visa serien" to { SeriesActivity.start(this, sid, item.categoryName ?: item.name, item.id) }) }
+            }
         }
         if (!privateMode()) options.add(favoriteLabel to { toggleFavorite(item, position) })
         AlertDialog.Builder(this)

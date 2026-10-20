@@ -6,7 +6,10 @@ schemat, så att man kan planera från webbadminen eller mobilen, och visar stat
 Källa:
   live     programmet har inte sänts klart: boxen spelar in direktsändningen
   archive  programmet har redan sänts: boxen laddar ner det från Toucans arkiv (catch-up)
+  vod      en film laddas ner till USB-minnet
+  episode  ett avsnitt laddas ner till USB-minnet
 """
+import re
 import time
 
 from . import catalog, db
@@ -16,7 +19,8 @@ MAX_SCHEDULED_PER_DEVICE = 200
 ACTIVE_STATUSES = ("scheduled", "recording")
 STATUSES = ("scheduled", "recording", "done", "failed", "deleted")
 FIELDS = ("id, device_id, stream_id, channel, title, start, end, source, adult, status, "
-          "session_id, size_bytes, file, error, created, updated")
+          "session_id, size_bytes, file, error, created, updated, ext, series_id")
+MEDIA_SOURCES = ("vod", "episode")
 
 
 def _row(row):
@@ -74,6 +78,76 @@ def create(device, scope, stream_id, title, start, end):
     db.log_event("recording_created", {"title": title, "channel": channel["name"], "source": source},
                  device_id=device["id"])
     return get(rec_id), True
+
+
+def create_media(device, scope, kind, item_id, title=None, ext=None, series_id=None, series_name=None):
+    """Spela in (ladda ner) en film eller ett avsnitt till boxens USB-minne."""
+    item_id = str(item_id or "")
+    if kind not in MEDIA_SOURCES or not item_id or len(item_id) > 40:
+        raise ValueError("Okänd film eller avsnitt.")
+    if kind == "vod":
+        if not catalog.in_scope("vod", item_id, scope):
+            raise LookupError("Filmen finns inte.")
+        item = catalog.get_item("vod", item_id) or {}
+        title = (str(title or "").strip() or item.get("name") or f"Film {item_id}")[:200]
+        ext = item.get("ext") or ext or "mp4"
+        channel = "Film"
+        adult = 1 if item.get("adult") else 0
+    else:
+        series_id = str(series_id or "")
+        if not series_id or not catalog.in_scope("series", series_id, scope):
+            raise LookupError("Serien finns inte.")
+        series = catalog.get_item("series", series_id) or {}
+        channel = (series_name or series.get("name") or "Serie")[:120]
+        title = (str(title or "").strip() or f"{channel} avsnitt {item_id}")[:200]
+        adult = 1 if series.get("adult") else 0
+    ext = str(ext or "mp4")
+    if not ext.isalnum() or len(ext) > 8:
+        ext = "mp4"
+    existing = db.q1(
+        "SELECT * FROM recordings WHERE device_id = ? AND stream_id = ? AND source = ? AND status != 'deleted'",
+        (device["id"], item_id, kind),
+    )
+    if existing:
+        return _row(existing), False
+    count = db.q1("SELECT COUNT(*) AS n FROM recordings WHERE device_id = ? AND status = 'scheduled'",
+                  (device["id"],))["n"]
+    if count >= MAX_SCHEDULED_PER_DEVICE:
+        raise ValueError("För många planerade inspelningar.")
+    now = int(time.time())
+    rec_id = db.x(
+        """INSERT INTO recordings (device_id, stream_id, channel, title, start, end, source, adult,
+           status, created, updated, ext, series_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?)""",
+        (device["id"], item_id, channel, title, now, now, kind, adult, db.iso(), db.iso(), ext,
+         series_id if kind == "episode" else None),
+    ).lastrowid
+    db.log_event("recording_created", {"title": title, "source": kind}, device_id=device["id"])
+    return get(rec_id), True
+
+
+def create_series(device, scope, series_id, detail, season=None):
+    """Alla avsnitt i en serie (eller en säsong). detail = seriens avsnittslista från källan."""
+    created = existing = 0
+    name = detail.get("name") or (catalog.get_item("series", series_id) or {}).get("name") or "Serie"
+    for s in detail.get("seasons") or []:
+        if season not in (None, "") and str(s.get("season")) != str(season):
+            continue
+        for ep in s.get("episodes") or []:
+            ep_title = str(ep.get("title") or "").strip()
+            if ep_title and name.lower() in ep_title.lower():
+                title = ep_title  # källan skriver ofta redan "Serie - S01E02 - Namn"
+            else:
+                title = f"{name} S{s.get('season')}E{ep.get('num')}"
+                if ep_title and not re.match(r"^S\d+\s*E\d+$", ep_title, re.IGNORECASE):
+                    title += f" · {ep_title}"
+            _, new = create_media(device, scope, "episode", ep.get("id"), title, ep.get("ext"), series_id, name)
+            if new:
+                created += 1
+            else:
+                existing += 1
+    if created + existing == 0:
+        raise LookupError("Serien har inga avsnitt.")
+    return {"created": created, "existing": existing}
 
 
 def get(rec_id):
