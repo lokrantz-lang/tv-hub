@@ -1,5 +1,15 @@
 # Ändringar
 
+## 2.2.0
+
+- **Mina media** på boxarna: filmer, hemvideo och bilder från NAS:en (DLNA, t.ex. Synologys Media Server) och från en USB-disk.
+  - NAS:en hittas automatiskt, eller läggs till med IP-adress. USB-disken dyker upp när den sätts i.
+  - Mappar som på disken, med Sortera (namn/datum) och Visa (affisch, lista, bara bild).
+  - Filmer fortsätter där du slutade och nästa fil i mappen spelas automatiskt. `.srt` bredvid filmen läses in.
+  - Bilder med bildspel. Mobilfoton vänds rätt.
+  - Inget visas i Fortsätt titta på Hem. Dolda mappar och mappar med XXX/18+/Adult i namnet syns bara i vuxenläget.
+- Tillägget byggs inte längre för armv7 (varningen i Home Assistant försvinner).
+
 ## 2.1.0
 
 - **Favoriter** som eget val i menyn på TV:n, och gruppen ★ Favoriter i Filmer och Serier.

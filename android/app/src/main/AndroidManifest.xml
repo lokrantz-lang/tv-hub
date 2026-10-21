@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <!-- Röststyrning: starta uppspelning när appen är stängd (Android 10 och senare) -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Mina media: läsa filmer och bilder på en USB-disk (Android 7–12; boxarna kör 7 och 10) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <!-- Röstsök: få se om Googles röstinmatning finns (Android 11 och senare kräver det här). -->
     <queries>
@@ -30,6 +32,7 @@
         android:label="@string/app_name"
         android:largeHeap="true"
         android:supportsRtl="false"
+        android:requestLegacyExternalStorage="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
 
@@ -60,6 +63,11 @@
 
         <activity
             android:name=".FilmNightActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation"
+            android:exported="false" />
+
+        <activity
+            android:name=".ImageViewerActivity"
             android:configChanges="keyboard|keyboardHidden|navigation"
             android:exported="false" />
 

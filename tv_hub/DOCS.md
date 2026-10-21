@@ -74,6 +74,25 @@ ungefär lika lång tid som Toucan och din uppkoppling tillåter. Den räknas so
 - **Två strömmar.** Att titta på en kanal medan en annan spelas in ger två samtidiga anslutningar hos Toucan. Anslutningsvakten släpper igenom inspelningar.
 - **Vuxeninspelningar** sparas i en dold mapp (`.privat`) med neutrala filnamn (`rec-123.ts`) och en `.nomedia`-fil, så att galleri- och videoappar inte visar dem. Notisen under inspelning visar bara "TV Hub spelar in". I webbadminen syns de först när du kryssar i *Visa 18+*. Äldre vuxeninspelningar flyttas dit automatiskt.
 
+## Mina media (NAS och USB-disk)
+
+*Mina media* i menyn på boxarna visar filmer, hemvideo och bilder från NAS:en och från en USB-disk i boxen.
+Uppspelningen går inte via Toucan och räknas inte som en anslutning där.
+
+- **NAS:en** hittas av sig själv om den har en mediaserver (DLNA). På en Synology: paketet **Media Server**.
+  Vilka mappar som syns styrs i DSM under *Kontrollpanelen → Indexeringstjänst → Indexerad mapp*.
+  Hittas den inte: *Lägg till NAS…* uppe till höger och skriv in dess IP-adress.
+- **USB-disken** dyker upp när den sätts i. Första gången frågar boxen om TV Hub får läsa filer: svara *Tillåt*.
+- **Mappar som på disken.** OK öppnar, Tillbaka går upp en mapp. *Sortera* (namn eller datum) och *Visa* fungerar som i Filmer.
+- **Film och video** spelas i TV Hubs spelare och fortsätter där du slutade. Filerna i en mapp spelas i ordning
+  (t.ex. avsnitt). En `.srt` med samma namn som filmen läses in (USB).
+- **Bilder:** OK visar bilden, vänster/höger bläddrar, OK startar bildspelet. Håll in OK på en mapp för *Bildspel av mappen*.
+- **Ingenting härifrån visas i Fortsätt titta på Hem.**
+- **Dölj:** håll in OK på en mapp → *Dölj mappen*. Dolda mappar, och mappar med XXX, 18+, Adult eller Porn i namnet, syns bara i vuxenläget.
+- **Begränsningar:** filerna spelas som de är (ingen omkodning). Tunga 4K-filer kan hacka över wifi och på Z Alpha.
+  Filmer med bara DTS- eller TrueHD-ljud kan bli tysta: välj ett annat ljudspår. ISO-filer och Blu-ray-mappar fungerar inte.
+  USB-disken: FAT32 och exFAT fungerar, NTFS beror på boxen. En 2,5"-disk kan behöva egen ström.
+
 ## Påminnelser och insomningstimer
 
 - **Påminn mig:** i programguiden, OK på ett kommande program → *Påminn mig när det börjar*. När programmet börjar frågar

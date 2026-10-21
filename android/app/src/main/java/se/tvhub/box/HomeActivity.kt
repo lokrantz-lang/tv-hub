@@ -56,6 +56,7 @@ class HomeActivity : Activity(), CardListener {
         Nav("vod", "Filmer", R.drawable.ic_m_movie),
         Nav("series", "Serier", R.drawable.ic_m_series),
         Nav("recordings", "Inspelningar", R.drawable.ic_m_record),
+        Nav("media", "Mina media", R.drawable.ic_m_folder),
         Nav("settings", "Inställningar", R.drawable.ic_m_settings),
     )
 
@@ -82,6 +83,7 @@ class HomeActivity : Activity(), CardListener {
     private var vodPage: BrowsePage? = null
     private var seriesPage: BrowsePage? = null
     private var favoritesPage: BrowsePage? = null
+    private var mediaPage: MediaPage? = null
     private var searchPage: SearchPage? = null
     private var recordingsPage: RecordingsPage? = null
 
@@ -113,6 +115,7 @@ class HomeActivity : Activity(), CardListener {
             return
         }
         Control.start(this)
+        ImageLoader.appContext = applicationContext
         Fonts.install(this)
         setContentView(R.layout.activity_home)
         rail = findViewById(R.id.rail)
@@ -145,6 +148,46 @@ class HomeActivity : Activity(), CardListener {
         }
         loadHome()
         Taste.promptPending(this)
+    }
+
+    /** USB-disk i eller ur: Mina media uppdateras. */
+    private val mountReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_MEDIA_MOUNTED) {
+                Toast.makeText(this@HomeActivity, "USB-disk ansluten. Den finns under Mina media.", Toast.LENGTH_LONG).show()
+            }
+            handler.postDelayed({ mediaPage?.refreshSources(discover = false) }, 800)
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filter = android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_MEDIA_MOUNTED)
+            addAction(Intent.ACTION_MEDIA_UNMOUNTED)
+            addAction(Intent.ACTION_MEDIA_REMOVED)
+            addAction(Intent.ACTION_MEDIA_EJECT)
+            addDataScheme("file")
+        }
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(mountReceiver, filter, android.content.Context.RECEIVER_EXPORTED)
+            else registerReceiver(mountReceiver, filter)
+        } catch (_: Exception) {
+        }
+    }
+
+    override fun onStop() {
+        try {
+            unregisterReceiver(mountReceiver)
+        } catch (_: Exception) {
+        }
+        super.onStop()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == Media.PERMISSION_REQUEST) mediaPage?.refreshSources(discover = false)
     }
 
     override fun onDestroy() {
@@ -263,6 +306,8 @@ class HomeActivity : Activity(), CardListener {
         open fun chooseGroup(): Boolean = false
         /** Pilknapp som annars skulle hamna i menyn (eller på fel ställe). true = hanterad. */
         open fun onEdge(focused: View, keyCode: Int): Boolean = false
+        /** Tillbaka på sidan (t.ex. upp en mapp). true = hanterad. */
+        open fun onBack(): Boolean = false
     }
 
     private fun showPage(key: String) {
@@ -274,6 +319,7 @@ class HomeActivity : Activity(), CardListener {
             "favorites" -> favoritesPage ?: BrowsePage("favorites").also { favoritesPage = it }
             "search" -> searchPage ?: SearchPage().also { searchPage = it }
             "recordings" -> recordingsPage ?: RecordingsPage().also { recordingsPage = it }
+            "media" -> mediaPage ?: MediaPage().also { mediaPage = it }
             else -> return
         }
         current = key
@@ -296,6 +342,7 @@ class HomeActivity : Activity(), CardListener {
         "favorites" -> favoritesPage
         "search" -> searchPage
         "recordings" -> recordingsPage
+        "media" -> mediaPage
         else -> null
     }
 
@@ -379,6 +426,7 @@ class HomeActivity : Activity(), CardListener {
         vodPage = null
         seriesPage = null
         favoritesPage = null
+        mediaPage = null
         searchPage = null
         recordingsPage = null
         container.removeAllViews()
@@ -1550,6 +1598,392 @@ class HomeActivity : Activity(), CardListener {
         override fun onBindViewHolder(holder: RowAdapter.Holder, position: Int) = rows.onBindViewHolder(holder, position)
     }
 
+    // ================================================================ Mina media
+
+    /**
+     * Mina media: NAS:en (DLNA) och USB-disken. Mappar som på disken, samma visningslägen som Filmer.
+     * Inget härifrån hamnar i Fortsätt titta. Dolda mappar syns bara i vuxenläget.
+     */
+    private inner class MediaPage : Page(), CardListener {
+        override val view: View = LayoutInflater.from(this@HomeActivity).inflate(R.layout.page_browse, container, false)
+        private val pageTitle: TextView = view.findViewById(R.id.page_title)
+        private val sortButton: TextView = view.findViewById(R.id.sort_button)
+        private val viewButton: TextView = view.findViewById(R.id.view_button)
+        private val addButton: TextView = view.findViewById(R.id.filter_button)
+        private val chips: RecyclerView = view.findViewById(R.id.chips)
+        private val info: TextView = view.findViewById(R.id.info)
+        private val grid: RecyclerView = view.findViewById(R.id.grid)
+        private val chipAdapter = RowAdapter(
+            onClick = { row, _ -> selectSource(row, focusGrid = true) },
+            onLongClick = { row, _ -> sourceOptions(row) },
+        )
+        private val gridAdapter = CardAdapter(this)
+        private val gridManager: GridLayoutManager
+        private val columns: Int
+        private var style = prefs.viewStyle("media")
+        private var byDate = false
+        private var sources: List<Media.Source> = emptyList()
+        private var source: Media.Source? = null
+        private val stack = ArrayList<Pair<String, String>>()  // (ref, namn) från roten och nedåt
+        private var entries: List<Media.Entry> = emptyList()
+        private var token = 0
+        private var searching = false
+        private var lastDiscover = 0L
+
+        init {
+            pageTitle.text = "Mina media"
+            chipAdapter.edgeLock = false
+            chips.layoutManager = LinearLayoutManager(this@HomeActivity, LinearLayoutManager.HORIZONTAL, false)
+            chips.adapter = ChipAdapter(chipAdapter)
+            chips.itemAnimator = null
+            val width = resources.displayMetrics.widthPixels / resources.displayMetrics.density
+            columns = ((width - 96 - 40) / 154).toInt().coerceIn(4, 8)
+            gridManager = GridLayoutManager(this@HomeActivity, columns)
+            grid.layoutManager = gridManager
+            grid.adapter = gridAdapter
+            grid.itemAnimator = null
+            gridAdapter.onEdgeKey = { position, keyCode ->
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP && position < gridManager.spanCount) {
+                    chips.post { Focus.position(chips, chipAdapter.indexOf(source?.id?.let { "src:$it" }).coerceAtLeast(0)) }
+                    true
+                } else {
+                    false
+                }
+            }
+            sortButton.setOnClickListener {
+                Look.choose(this@HomeActivity, "Sortera", listOf("Namn", "Datum (nyast först)"), if (byDate) 1 else 0) { which ->
+                    byDate = which == 1
+                    render()
+                }
+            }
+            viewButton.setOnClickListener {
+                Look.choose(this@HomeActivity, "Visa", ViewStyle.LABELS, ViewStyle.index(style)) { which ->
+                    style = ViewStyle.fromIndex(which)
+                    prefs.setViewStyle("media", style)
+                    applyStyle()
+                }
+            }
+            addButton.setOnClickListener { addServer() }
+            Look.focusGrow(sortButton, 1.04f)
+            Look.focusGrow(viewButton, 1.04f)
+            Look.focusGrow(addButton, 1.04f)
+            addButton.text = "Lägg till NAS…"
+            applyStyle()
+            updateButtons()
+        }
+
+        override fun onShow() {
+            refreshSources(discover = true)
+        }
+
+        override fun focusEntry(): Boolean {
+            if (gridAdapter.itemCount > 0) {
+                grid.post { grid.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() ?: grid.requestFocus() }
+            } else {
+                Focus.position(chips, 0)
+            }
+            return true
+        }
+
+        override fun onEdge(focused: View, keyCode: Int): Boolean {
+            val inChips = isInside(focused, chips)
+            val onButtons = focused === sortButton || focused === viewButton || focused === addButton
+            return when {
+                inChips && keyCode == KeyEvent.KEYCODE_DPAD_UP -> {
+                    sortButton.requestFocus()
+                    true
+                }
+                onButtons && keyCode == KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    Focus.position(chips, chipAdapter.indexOf(source?.id?.let { "src:$it" }).coerceAtLeast(0))
+                    true
+                }
+                onButtons && keyCode == KeyEvent.KEYCODE_DPAD_UP -> true
+                else -> false
+            }
+        }
+
+        /** Tillbaka: upp en mapp. I roten: som vanligt (till Hem). */
+        override fun onBack(): Boolean {
+            if (stack.size <= 1) return false
+            stack.removeAt(stack.size - 1)
+            load(focusFirst = true)
+            return true
+        }
+
+        override fun chooseGroup(): Boolean {
+            val rows = chipAdapter.rows
+            if (rows.isEmpty()) return false
+            Look.choose(this@HomeActivity, "Källor", rows.map { it.title }) { selectSource(rows[it], focusGrid = true) }
+            return true
+        }
+
+        // ---------- källor
+
+        fun refreshSources(discover: Boolean) {
+            val list = ArrayList<Media.Source>()
+            Media.savedServers(this@HomeActivity).forEach { list.add(Media.DlnaSource(this@HomeActivity, it)) }
+            val drives = Media.usbDrives(this@HomeActivity)
+            val usbAllowed = Media.hasReadPermission(this@HomeActivity)
+            if (usbAllowed) drives.forEach { list.add(Media.UsbSource(this@HomeActivity, it)) }
+            sources = list
+            val rows = ArrayList<Row>()
+            list.forEach { rows.add(Row((if (it is Media.UsbSource) "USB: " else "") + it.label, key = "src:${it.id}")) }
+            if (drives.isNotEmpty() && !usbAllowed) rows.add(Row("USB-disk: ge TV Hub läsrätt", key = "usbperm"))
+            chipAdapter.submit(rows)
+            val keep = source?.id?.let { id -> list.firstOrNull { it.id == id } }
+            if (keep == null) {
+                source = list.firstOrNull()
+                stack.clear()
+                source?.let { stack.add(it.rootRef to it.label) }
+                load()
+            }
+            chipAdapter.select(source?.id?.let { "src:$it" })
+            if (list.isEmpty()) {
+                gridAdapter.submit(emptyList())
+                info.text = when {
+                    searching -> "Letar efter NAS i hemnätet…"
+                    drives.isNotEmpty() && !usbAllowed -> "Välj \"USB-disk: ge TV Hub läsrätt\" och tryck Tillåt."
+                    else -> "Ingen NAS hittades, och ingen USB-disk sitter i. Har NAS:en en mediaserver (Synology: Media Server)? " +
+                        "Välj Lägg till NAS… uppe till höger och skriv in dess IP-adress."
+                }
+            }
+            if (discover && !searching && System.currentTimeMillis() - lastDiscover > 60_000) discoverServers()
+        }
+
+        private fun discoverServers() {
+            searching = true
+            lastDiscover = System.currentTimeMillis()
+            if (sources.isEmpty()) info.text = "Letar efter NAS i hemnätet…"
+            Api.async({ Dlna.discover(3_000) }) { result ->
+                searching = false
+                val found = result.getOrNull().orEmpty()
+                val saved = Media.savedServers(this@HomeActivity)
+                val merged = saved.map { old -> found.firstOrNull { it.udn.isNotEmpty() && it.udn == old.udn } ?: old } +
+                    found.filter { f -> saved.none { it.udn.isNotEmpty() && it.udn == f.udn || it.location == f.location } }
+                Media.saveServers(this@HomeActivity, merged)
+                if (current == "media") refreshSources(discover = false)
+            }
+        }
+
+        private fun addServer() {
+            val input = android.widget.EditText(this@HomeActivity)
+            input.hint = "t.ex. 192.168.1.20"
+            input.inputType = android.text.InputType.TYPE_CLASS_PHONE
+            val pad = Look.dp(this@HomeActivity, 20)
+            input.setPadding(pad, pad / 2, pad, pad / 2)
+            android.app.AlertDialog.Builder(this@HomeActivity)
+                .setTitle("NAS:ens IP-adress")
+                .setView(input)
+                .setPositiveButton("Lägg till") { _, _ ->
+                    val ip = input.text.toString().trim()
+                    if (ip.isEmpty()) return@setPositiveButton
+                    info.text = "Letar efter en mediaserver på $ip…"
+                    Api.async({ Dlna.findAt(ip, 3_000) }) { result ->
+                        val server = result.getOrNull()
+                        if (server == null) {
+                            Look.message(this@HomeActivity, "Hittade ingen mediaserver",
+                                "Ingen mediaserver svarade på $ip. Kontrollera adressen, och att mediaservern är på " +
+                                    "(Synology: paketet Media Server).")
+                            info.text = ""
+                            return@async
+                        }
+                        Media.saveServers(this@HomeActivity, Media.savedServers(this@HomeActivity) + server)
+                        source = null
+                        refreshSources(discover = false)
+                        Toast.makeText(this@HomeActivity, "${server.name} är tillagd", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .setNegativeButton("Avbryt", null)
+                .show()
+            input.requestFocus()
+        }
+
+        private fun selectSource(row: Row, focusGrid: Boolean) {
+            if (row.key == "usbperm") {
+                Media.requestReadPermission(this@HomeActivity)
+                return
+            }
+            val s = sources.firstOrNull { "src:${it.id}" == row.key } ?: return
+            if (s.id != source?.id) {
+                source = s
+                stack.clear()
+                stack.add(s.rootRef to s.label)
+                chipAdapter.select(row.key)
+                load(focusFirst = focusGrid)
+            } else if (focusGrid) {
+                focusEntry()
+            }
+        }
+
+        private fun sourceOptions(row: Row) {
+            val s = sources.firstOrNull { "src:${it.id}" == row.key } as? Media.DlnaSource ?: return
+            Look.confirm(this@HomeActivity, "Glöm ${s.label}?", "Den hittas igen nästa gång den svarar i hemnätet.", "Glöm") {
+                Media.forgetServer(this@HomeActivity, s.server)
+                source = null
+                lastDiscover = System.currentTimeMillis()
+                refreshSources(discover = false)
+            }
+        }
+
+        // ---------- innehåll
+
+        private fun load(focusFirst: Boolean = false) {
+            val s = source ?: return
+            val (ref, _) = stack.lastOrNull() ?: return
+            val t = ++token
+            info.text = "Hämtar…"
+            Api.async({ s.list(ref) }) { result ->
+                if (t != token) return@async
+                result.onSuccess { list ->
+                    entries = list
+                    render()
+                    if (focusFirst) focusEntry()
+                }.onFailure {
+                    entries = emptyList()
+                    gridAdapter.submit(emptyList())
+                    info.text = if (s is Media.DlnaSource) "${s.label} svarar inte. Är NAS:en på? (${Api.friendly(it)})"
+                    else "Kan inte läsa USB-disken. Sitter den i?"
+                }
+            }
+        }
+
+        private fun render() {
+            val visible = Media.sort(entries.filter { Media.visible(this@HomeActivity, it) }, byDate)
+            applyStyle()
+            gridAdapter.submit(visible.map { card(it) })
+            grid.scrollToPosition(0)
+            val path = stack.joinToString("  ›  ") { it.second }
+            val folders = visible.count { it.folder }
+            val videos = visible.count { it.kind == "video" }
+            val images = visible.count { it.kind == "image" }
+            val counts = listOfNotNull(
+                folders.takeIf { it > 0 }?.let { "$it mappar" }, videos.takeIf { it > 0 }?.let { "$it videor" },
+                images.takeIf { it > 0 }?.let { "$it bilder" },
+            ).joinToString(", ")
+            info.text = if (visible.isEmpty()) "$path  ·  Tom mapp" else "$path  ·  $counts" +
+                if (stack.size > 1) "   ·   Tillbaka: upp en mapp" else ""
+            updateButtons()
+        }
+
+        private fun card(e: Media.Entry): Card {
+            val sub = when {
+                e.folder -> "Mapp"
+                e.kind == "video" -> e.durationMs?.let { Format.minutes((it / 60_000).toInt().coerceAtLeast(1)) }
+                    ?: e.date?.let { java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale("sv", "SE")).format(java.util.Date(it * 1000)) }
+                else -> e.date?.let { java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale("sv", "SE")).format(java.util.Date(it * 1000)) }
+            }
+            val badge = when {
+                e.hidden -> "Dold"
+                e.kind == "video" && e.url != null && Media.isSeen(this@HomeActivity, e.url) -> "✓"
+                else -> null
+            }
+            return Card(Card.POSTER, e.key, (if (e.folder) "📁 " else if (e.kind == "image") "🖼 " else "") + e.name, sub, e.thumb,
+                badge = badge, payload = e)
+        }
+
+        private fun applyStyle() {
+            if (gridAdapter.style != style) {
+                gridAdapter.style = style
+                gridManager.spanCount = if (style == ViewStyle.LIST) 1 else columns
+                gridAdapter.notifyDataSetChanged()
+            }
+            viewButton.text = "Visa: " + ViewStyle.label(style)
+        }
+
+        private fun updateButtons() {
+            sortButton.text = "Sortera: " + if (byDate) "Datum" else "Namn"
+        }
+
+        private fun shown(): List<Media.Entry> = gridAdapter.cards.mapNotNull { it.payload as? Media.Entry }
+
+        override fun onCardClick(card: Card, shelf: Shelf?) {
+            val e = card.payload as? Media.Entry ?: return
+            when (e.kind) {
+                "folder" -> {
+                    stack.add(e.ref to e.name)
+                    load(focusFirst = true)
+                }
+                "video" -> play(e, fromStart = false)
+                "image" -> {
+                    val images = shown().filter { it.kind == "image" }
+                    ImageViewerActivity.start(this@HomeActivity, images, images.indexOfFirst { it.key == e.key }.coerceAtLeast(0))
+                }
+            }
+        }
+
+        private fun play(e: Media.Entry, fromStart: Boolean) {
+            val url = e.url ?: return
+            val videos = shown().filter { it.kind == "video" && it.url != null }
+            if (fromStart) prefs.setRecordingPosition(url, 0L)
+            PlayerActivity.start(
+                this@HomeActivity, type = "file", id = url, name = e.name, ext = null,
+                queueIds = ArrayList(videos.map { it.url!! }), queueNames = ArrayList(videos.map { it.name }),
+                queueIndex = videos.indexOfFirst { it.key == e.key }, subtitle = e.subtitle,
+                queueSubs = ArrayList(videos.map { it.subtitle ?: "" }), label = source?.label,
+            )
+        }
+
+        override fun onCardLongClick(card: Card, shelf: Shelf?) {
+            val e = card.payload as? Media.Entry ?: return
+            val options = ArrayList<Pair<String, () -> Unit>>()
+            when (e.kind) {
+                "folder" -> {
+                    options.add("Öppna" to { onCardClick(card, shelf) })
+                    options.add("Bildspel av mappen" to { slideshow(e) })
+                    if (e.hidden) {
+                        if (!Media.isAdultName(e.name)) options.add("Visa mappen igen" to {
+                            Media.setHidden(this@HomeActivity, e.key, false)
+                            load()
+                        })
+                    } else {
+                        options.add("Dölj mappen" to {
+                            Media.setHidden(this@HomeActivity, e.key, true)
+                            Toast.makeText(this@HomeActivity, "Dold. Syns bara i vuxenläget.", Toast.LENGTH_LONG).show()
+                            load()
+                        })
+                    }
+                }
+                "video" -> {
+                    val url = e.url ?: return
+                    val resume = prefs.recordingPosition(url)
+                    options.add((if (resume > 0) "▶ Fortsätt (${Format.clock(resume)})" else "▶ Spela") to { play(e, fromStart = false) })
+                    if (resume > 0) options.add("Spela från början" to { play(e, fromStart = true) })
+                    val seen = Media.isSeen(this@HomeActivity, url)
+                    options.add((if (seen) "Markera som osedd" else "Markera som sedd") to {
+                        Media.setSeen(this@HomeActivity, url, !seen)
+                        render()
+                    })
+                }
+                "image" -> {
+                    options.add("Visa" to { onCardClick(card, shelf) })
+                    options.add("Bildspel från den här bilden" to {
+                        val images = shown().filter { it.kind == "image" }
+                        ImageViewerActivity.start(this@HomeActivity, images, images.indexOfFirst { it.key == e.key }.coerceAtLeast(0), slideshow = true)
+                    })
+                }
+            }
+            if (options.isEmpty()) return
+            Look.choose(this@HomeActivity, e.name, options.map { it.first }) { options[it].second() }
+        }
+
+        /** Bildspel av alla bilder i en mapp (inte undermappar). */
+        private fun slideshow(folder: Media.Entry) {
+            val s = source ?: return
+            Api.async({ s.list(folder.ref) }) { result ->
+                val images = Media.sort(result.getOrNull().orEmpty().filter { it.kind == "image" }, byDate = false)
+                if (images.isEmpty()) {
+                    Toast.makeText(this@HomeActivity, "Inga bilder direkt i den mappen.", Toast.LENGTH_SHORT).show()
+                } else {
+                    ImageViewerActivity.start(this@HomeActivity, images, 0, slideshow = true)
+                }
+            }
+        }
+
+        override fun onCardFocus(card: Card, shelf: Shelf?, shelfIndex: Int, cardIndex: Int) {
+            markFocused(null)
+        }
+    }
+
     // ================================================================ Inspelningar
 
     private inner class RecordingsPage : Page() {
@@ -1962,6 +2396,7 @@ class HomeActivity : Activity(), CardListener {
             return
         }
         val focused = currentFocus
+        if (focused != null && !isInRail(focused) && currentPage()?.onBack() == true) return
         if (current != "home") {
             goHome()
             return

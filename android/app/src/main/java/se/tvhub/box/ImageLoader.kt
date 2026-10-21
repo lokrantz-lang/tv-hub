@@ -32,7 +32,7 @@ object ImageLoader {
     fun load(view: ImageView, url: String?, maxSide: Int = MAX_SIDE, fade: Boolean = false, onDone: ((Boolean) -> Unit)? = null) {
         view.tag = url
         view.setImageDrawable(null)
-        if (url.isNullOrBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) {
+        if (url.isNullOrBlank() || !(url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/") || url.startsWith("frame:"))) {
             onDone?.invoke(false)
             return
         }
@@ -84,7 +84,12 @@ object ImageLoader {
         }
     }
 
+    /** Mina media: bilder på USB-disken ("/…") och en bild ur en video ("frame:/…"). */
+    var appContext: android.content.Context? = null
+
     private fun fetch(url: String, maxSide: Int): Bitmap? {
+        if (url.startsWith("frame:")) return frame(url.removePrefix("frame:"), maxSide)
+        if (url.startsWith("/")) return decode(java.io.File(url).readBytes(), maxSide)
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 5_000
         conn.readTimeout = 8_000
@@ -92,6 +97,14 @@ object ImageLoader {
         try {
             if (conn.responseCode != 200) return null
             val bytes = conn.inputStream.use { it.readBytes() }
+            return decode(bytes, maxSide)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun decode(bytes: ByteArray, maxSide: Int): Bitmap? {
+        run {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
@@ -101,9 +114,56 @@ object ImageLoader {
                 inSampleSize = sample
                 inPreferredConfig = if (maxSide > MAX_SIDE) Bitmap.Config.RGB_565 else Bitmap.Config.ARGB_8888
             }
-            return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
+            return rotate(bitmap, bytes)
+        }
+    }
+
+    /** Foton från mobilen är ofta lagrade på sidan med en EXIF-uppgift om hur de ska vändas. */
+    private fun rotate(bitmap: Bitmap, bytes: ByteArray): Bitmap {
+        val degrees = try {
+            when (android.media.ExifInterface(java.io.ByteArrayInputStream(bytes))
+                .getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL)) {
+                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                else -> 0f
+            }
+        } catch (_: Exception) {
+            0f
+        }
+        if (degrees == 0f) return bitmap
+        val m = android.graphics.Matrix().apply { postRotate(degrees) }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, m, true)
+    }
+
+    /** En bild en bit in i videon. Sparas på boxen så att den bara görs en gång. */
+    private fun frame(path: String, maxSide: Int): Bitmap? {
+        val dir = appContext?.cacheDir?.let { java.io.File(it, "frames").also { d -> d.mkdirs() } }
+        val cached = dir?.let { java.io.File(it, Integer.toHexString(path.hashCode()) + ".jpg") }
+        if (cached != null && cached.isFile) return decode(cached.readBytes(), maxSide)
+        val retriever = android.media.MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(path)
+            val durationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            val at = if (durationMs > 0) (durationMs / 10).coerceAtMost(5 * 60_000L) else 10_000L
+            val frame = retriever.getFrameAtTime(at * 1000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: return null
+            val scale = maxSide.toFloat() / maxOf(frame.width, frame.height)
+            val small = if (scale < 1f) Bitmap.createScaledBitmap(frame, (frame.width * scale).toInt(), (frame.height * scale).toInt(), true) else frame
+            if (cached != null) {
+                try {
+                    java.io.FileOutputStream(cached).use { small.compress(Bitmap.CompressFormat.JPEG, 82, it) }
+                } catch (_: Exception) {
+                }
+            }
+            return small
+        } catch (_: Throwable) {
+            return null
         } finally {
-            conn.disconnect()
+            try {
+                retriever.release()
+            } catch (_: Throwable) {
+            }
         }
     }
 }

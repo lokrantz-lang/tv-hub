@@ -79,6 +79,9 @@ class PlayerActivity : Activity() {
             catchupStart: Long = 0L,
             catchupMinutes: Int = 0,
             autoResume: Boolean = false,
+            subtitle: String? = null,
+            queueSubs: ArrayList<String>? = null,
+            label: String? = null,
         ) {
             val intent = Intent(context, PlayerActivity::class.java)
                 .putExtra("type", type)
@@ -95,6 +98,10 @@ class PlayerActivity : Activity() {
             if (queueIds != null) intent.putStringArrayListExtra("queue_ids", queueIds)
             if (queueNames != null) intent.putStringArrayListExtra("queue_names", queueNames)
             if (queueExts != null) intent.putStringArrayListExtra("queue_exts", queueExts)
+            // Mina media: undertext (.srt) och var filen kommer ifrån.
+            subtitle?.let { intent.putExtra("subtitle", it) }
+            if (queueSubs != null) intent.putStringArrayListExtra("queue_subs", queueSubs)
+            label?.let { intent.putExtra("label", it) }
             // Fjärrstart: startas från tjänsten i bakgrunden, inte från en skärm.
             if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
@@ -136,6 +143,9 @@ class PlayerActivity : Activity() {
     private var queueNames: List<String> = emptyList()
     private var queueExts: List<String> = emptyList()
     private var queueIndex = -1
+    private var subtitleUri: String? = null
+    private var queueSubs: List<String> = emptyList()
+    private var sourceLabel: String? = null
 
     // Session hos TV Hub
     private var sessionId: String? = null
@@ -323,6 +333,9 @@ class PlayerActivity : Activity() {
         queueNames = intent.getStringArrayListExtra("queue_names") ?: emptyList()
         queueExts = intent.getStringArrayListExtra("queue_exts") ?: emptyList()
         queueIndex = intent.getIntExtra("queue_index", -1)
+        subtitleUri = intent.getStringExtra("subtitle")
+        queueSubs = intent.getStringArrayListExtra("queue_subs") ?: emptyList()
+        sourceLabel = intent.getStringExtra("label")
         if (itemId.isEmpty()) {
             finish()
             return
@@ -726,10 +739,22 @@ class PlayerActivity : Activity() {
         playerView.useController = !live && !modern
         playerView.isFocusable = !live && !modern
         if (!live) playerView.requestFocus()
+        val mediaItem = subtitleUri?.takeIf { type == "file" }?.let { sub ->
+            // Mina media: .srt bredvid filmen (USB) eller från NAS:en.
+            val subUri = if (sub.startsWith("/")) Uri.fromFile(File(sub)) else Uri.parse(sub)
+            MediaItem.Builder().setUri(url).setSubtitleConfigurations(
+                listOf(
+                    MediaItem.SubtitleConfiguration.Builder(subUri)
+                        .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_SUBRIP)
+                        .setLanguage("sv")
+                        .build(),
+                ),
+            ).build()
+        } ?: MediaItem.fromUri(url)
         if (positionMs > 0 && (type == "vod" || type == "episode" || type == "file" || shiftStart > 0)) {
-            newPlayer.setMediaItem(MediaItem.fromUri(url), positionMs)
+            newPlayer.setMediaItem(mediaItem, positionMs)
         } else {
-            newPlayer.setMediaItem(MediaItem.fromUri(url))
+            newPlayer.setMediaItem(mediaItem)
         }
         newPlayer.playWhenReady = true
         newPlayer.prepare()
@@ -807,7 +832,7 @@ class PlayerActivity : Activity() {
         val p = player
         if (type == "file") {
             releasePlayer()
-            showFatal("Inspelningen går inte att spela.\n${describe(error)}")
+            showFatal("Filen går inte att spela.\n${describe(error)}")
             return
         }
         if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && p != null) {
@@ -890,6 +915,15 @@ class PlayerActivity : Activity() {
                 return
             }
             prefs.setRecordingPosition(itemId, 0L)
+            if (!isRecordingFile()) Media.setSeen(this, itemId, true)
+            if (!sleepAtEnd && queueIndex >= 0 && queueIndex + 1 < queueIds.size) {
+                // Mina media: nästa fil i mappen (t.ex. nästa avsnitt).
+                releasePlayer()
+                prefs.setRecordingPosition(itemId, 0L)
+                moveTo(queueIndex + 1)
+                playFile()
+                return
+            }
             finish()
             return
         }
@@ -964,16 +998,28 @@ class PlayerActivity : Activity() {
 
     // ---------------------------------------------------------------- inspelningar
 
+    /** Inspelning (Inspelningar) eller fil från Mina media (USB-disken eller NAS:en). */
+    private fun isRecordingFile(): Boolean = itemId.contains("/Inspelningar/") || itemId.contains("/.privat/")
+
     private fun playFile() {
-        val file = File(itemId)
         titleView.text = itemName
-        if (!file.isFile) {
-            showFatal("Filen finns inte. Sitter USB-minnet i?", canRetry = true)
-            return
+        val remote = itemId.startsWith("http://") || itemId.startsWith("https://")
+        val uri = if (remote) itemId else {
+            val file = File(itemId)
+            if (!file.isFile) {
+                showFatal(if (isRecordingFile()) "Filen finns inte. Sitter USB-minnet i?" else "Filen finns inte. Sitter USB-disken i?", canRetry = true)
+                return
+            }
+            Uri.fromFile(file).toString()
         }
-        epgView.text = if (RecordService.isRecording(itemId)) "● Spelas in just nu" else "Inspelning"
+        val position = if (queueIds.size > 1 && queueIndex >= 0) "  ·  ${queueIndex + 1} av ${queueIds.size}" else ""
+        epgView.text = when {
+            RecordService.isRecording(itemId) -> "● Spelas in just nu"
+            isRecordingFile() -> "Inspelning"
+            else -> (sourceLabel ?: if (remote) "Från NAS:en" else "Från USB-disken") + position
+        }
         val saved = prefs.recordingPosition(itemId)
-        startPlayer(Uri.fromFile(file).toString(), saved)
+        startPlayer(uri, saved)
         showOverlay(4_000)
     }
 
@@ -982,6 +1028,7 @@ class PlayerActivity : Activity() {
         val position = p.currentPosition
         val nearEnd = duration > 0 && duration - position < 60_000 && !RecordService.isRecording(itemId)
         prefs.setRecordingPosition(itemId, if (nearEnd) 0L else position)
+        if (nearEnd && !isRecordingFile()) Media.setSeen(this, itemId, true)
     }
 
     /** Spola med vänster/höger. Tryck i följd läggs ihop; håller man in går det snabbare. */
@@ -1340,6 +1387,7 @@ class PlayerActivity : Activity() {
         itemId = queueIds[index]
         itemName = queueNames.getOrNull(index) ?: itemId
         ext = queueExts.getOrNull(index)
+        if (type == "file") subtitleUri = queueSubs.getOrNull(index)?.ifEmpty { null }
     }
 
     /** Byter kanal efter en kort paus, så att man kan bläddra flera steg utan att varje kanal startar. */
@@ -1400,6 +1448,14 @@ class PlayerActivity : Activity() {
     }
 
     private fun playNextNow() {
+        if (type == "file" && queueIndex >= 0 && queueIndex + 1 < queueIds.size) {
+            nextCard?.visibility = View.GONE
+            releasePlayer()
+            Media.setSeen(this, itemId, true)
+            moveTo(queueIndex + 1)
+            playFile()
+            return
+        }
         if (type != "episode" || queueIndex < 0 || queueIndex + 1 >= queueIds.size) return
         nextCard?.visibility = View.GONE
         val final = metrics()
@@ -1458,7 +1514,7 @@ class PlayerActivity : Activity() {
         bar.visibility = if (touchSeek != null) View.GONE else View.VISIBLE
         times?.visibility = View.VISIBLE
         // "Nästa avsnitt" de sista 20 sekunderna (som Netflix).
-        val hasNext = type == "episode" && queueIndex >= 0 && queueIndex + 1 < queueIds.size
+        val hasNext = (type == "episode" || (type == "file" && !sleepAtEnd)) && queueIndex >= 0 && queueIndex + 1 < queueIds.size
         val card = nextCard ?: return
         if (hasNext && !casting && duration - position in 1..20_000 && state.third) {
             val left = ((duration - position) / 1000).coerceAtLeast(1)
@@ -1548,6 +1604,10 @@ class PlayerActivity : Activity() {
             if (type == "live") {
                 moveTo(which)
                 switchSoon()
+            } else if (type == "file") {
+                releasePlayer()
+                moveTo(which)
+                playFile()
             } else {
                 stopSession("closed")
                 moveTo(which)
