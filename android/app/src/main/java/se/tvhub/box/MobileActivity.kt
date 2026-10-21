@@ -209,6 +209,14 @@ class MobileActivity : Activity(), CardListener {
         page.onShow()
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val text = Voice.result(requestCode, resultCode, data) ?: return
+        if (current != "search") show("search")
+        (pageFor("search") as? SearchPage)?.setQuery(text)
+    }
+
     private fun resetAll() {
         home = null
         pageCache.clear()
@@ -276,9 +284,7 @@ class MobileActivity : Activity(), CardListener {
         if (++titleTaps >= 3) {
             titleTaps = 0
             titleTapStart = 0L
-            prefs.adultMode = !prefs.adultMode
-            Toast.makeText(this, "Läge ändrat", Toast.LENGTH_SHORT).show()
-            resetAll()
+            AdultGate.toggle(this) { resetAll() }
         }
     }
 
@@ -314,6 +320,10 @@ class MobileActivity : Activity(), CardListener {
     }
 
     override fun onCardLongClick(card: Card, shelf: Shelf?) {
+        (card.payload as? ContinueItem)?.let { c ->
+            continueOptions(this, c, open = { onCardClick(card, shelf) }, removed = { loadHome() })
+            return
+        }
         (card.payload as? Item)?.let { showItemOptions(it) }
     }
 
@@ -390,6 +400,7 @@ class MobileActivity : Activity(), CardListener {
             "Hämta listor igen",
             "Para om telefonen",
             "Om TV Hub",
+            "Nytt per dag",
         )
         Look.choose(this, "Inställningar", labels) { which ->
             when (which) {
@@ -405,6 +416,7 @@ class MobileActivity : Activity(), CardListener {
                 }
                 2 -> Updater.check(this, prefs, quiet = false)
                 3 -> resetAll()
+                6 -> NewDays.show(this)
                 4 -> Look.confirm(this, "Para om telefonen?", "Du behöver en ny kod från webbadminen och måste vara hemma på wifi.", "Para om") {
                     prefs.clearPairing()
                     startActivity(Intent(this, SetupActivity::class.java))
@@ -877,10 +889,26 @@ class MobileActivity : Activity(), CardListener {
         private var token = 0
         private val searchTask = Runnable { search() }
 
+        fun setQuery(text: String) {
+            query.setText(text)
+            query.setSelection(text.length)
+            handler.removeCallbacks(searchTask)
+            search()
+            hideKeyboard()
+        }
+
         init {
             query.visibility = View.VISIBLE
             view.findViewById<View>(R.id.bar).visibility = View.VISIBLE
             view.findViewById<View>(R.id.sort).visibility = View.GONE
+            // Röstsök: samma Google-ruta som på TV:n.
+            if (Voice.available(this@MobileActivity)) {
+                view.findViewById<TextView>(R.id.view_toggle).let {
+                    it.text = "🎤 Röst"
+                    it.visibility = View.VISIBLE
+                    it.setOnClickListener { Voice.start(this@MobileActivity) }
+                }
+            }
             list.layoutManager = LinearLayoutManager(this@MobileActivity)
             list.adapter = results
             list.itemAnimator = null

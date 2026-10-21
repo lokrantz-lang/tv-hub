@@ -205,6 +205,7 @@ class DetailActivity : Activity(), CardListener {
                 list.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
                 list.adapter = adapter
                 adapter.submit(cards)
+                list.visibility = View.VISIBLE
                 findViewById<TextView?>(R.id.more_title)?.visibility = View.VISIBLE
             }
         }

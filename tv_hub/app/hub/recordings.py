@@ -75,7 +75,9 @@ def create(device, scope, stream_id, title, start, end):
            status, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)""",
         (device["id"], stream_id, channel["name"], title, start, end, source, adult, db.iso(), db.iso()),
     ).lastrowid
-    db.log_event("recording_created", {"title": title, "channel": channel["name"], "source": source},
+    # Händelseloggen (Diagnostik) visar aldrig titlar på vuxeninspelningar.
+    db.log_event("recording_created", {"title": "18+" if adult else title, "channel": "" if adult else channel["name"],
+                                       "source": source},
                  device_id=device["id"])
     return get(rec_id), True
 
@@ -121,7 +123,7 @@ def create_media(device, scope, kind, item_id, title=None, ext=None, series_id=N
         (device["id"], item_id, channel, title, now, now, kind, adult, db.iso(), db.iso(), ext,
          series_id if kind == "episode" else None),
     ).lastrowid
-    db.log_event("recording_created", {"title": title, "source": kind}, device_id=device["id"])
+    db.log_event("recording_created", {"title": "18+" if adult else title, "source": kind}, device_id=device["id"])
     return get(rec_id), True
 
 
@@ -190,7 +192,8 @@ def report(device, rec_id, status, size_bytes=None, file=None, error=None):
          (status, size_bytes, str(file)[:500] if file else row["file"],
           str(error)[:300] if error else None, db.iso(), rec_id))
     if status in ("done", "failed"):
-        db.log_event("recording_" + status, {"title": row["title"], "size": size_bytes, "error": error},
+        db.log_event("recording_" + status, {"title": "18+" if row["adult"] else row["title"], "size": size_bytes,
+                                             "error": error},
                      device_id=device["id"])
     return get(rec_id)
 

@@ -43,6 +43,8 @@ data class Rec(
     val error: String?,
     val ext: String? = null,
     val seriesId: String? = null,
+    /** Vuxeninspelning: dold mapp, neutralt filnamn och neutral notis. */
+    val adult: Boolean = false,
 ) {
     /** Film eller avsnitt som laddas ner (inte en tv-sändning). */
     val media: Boolean
@@ -79,6 +81,7 @@ data class Rec(
             error = o.optStringOrNull("error"),
             ext = o.optStringOrNull("ext"),
             seriesId = o.optStringOrNull("series_id"),
+            adult = o.optBoolean("adult"),
         )
 
         fun list(array: JSONArray?): List<Rec> {
@@ -130,7 +133,26 @@ object RecStorage {
 
     fun folder(volume: Volume): File = File(volume.dir, "Inspelningar").also { it.mkdirs() }
 
+    /**
+     * Vuxeninspelningar: dold mapp (punkt först) med en .nomedia-fil, så att galleri- och videoappar
+     * inte visar den. Filerna får neutrala namn (rec-123.ts).
+     */
+    fun privateFolder(volume: Volume): File {
+        val dir = File(volume.dir, ".privat").also { it.mkdirs() }
+        try {
+            File(dir, ".nomedia").createNewFile()
+        } catch (_: IOException) {
+        }
+        return dir
+    }
+
+    fun folderFor(volume: Volume, rec: Rec): File = if (rec.adult) privateFolder(volume) else folder(volume)
+
     fun fileFor(folder: File, rec: Rec): File {
+        if (rec.adult) {
+            val ext = if (rec.media) rec.ext?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,8}")) } ?: "mp4" else "ts"
+            return File(folder, "rec-${rec.id}.$ext")
+        }
         if (rec.media) {
             val ext = rec.ext?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,8}")) } ?: "mp4"
             val name = rec.title.replace(Regex("[^\\p{L}\\p{N} ._()-]"), "_").replace(Regex("\\s+"), " ").trim().take(120)
@@ -287,6 +309,7 @@ class RecordService : Service() {
             known.add(rec.id)
             try {
                 handle(rec, now, alarms)
+                hideIfAdult(rec)
             } catch (e: Exception) {
                 android.util.Log.w("TVHub", "Inspelning ${rec.id}: ${e.message}")
             }
@@ -322,6 +345,17 @@ class RecordService : Service() {
         }
     }
 
+    /** Äldre vuxeninspelningar (före 2.1) flyttas till den dolda mappen och döps om. */
+    private fun hideIfAdult(rec: Rec) {
+        if (!rec.adult || rec.status != "done" || jobs.containsKey(rec.id)) return
+        val file = rec.localFile ?: return
+        val volumeDir = file.parentFile?.parentFile ?: return
+        if (file.parentFile?.name == ".privat") return
+        val target = RecStorage.fileFor(RecStorage.privateFolder(RecStorage.Volume(volumeDir, true)), rec)
+        if (target.exists() || !file.renameTo(target)) return
+        report(rec.id, "done", target.length(), target.absolutePath, null)
+    }
+
     private fun startJob(rec: Rec) {
         if (jobs.containsKey(rec.id)) return
         // Arkivhämtningar en i taget; nästa startar när den här är klar.
@@ -335,7 +369,7 @@ class RecordService : Service() {
             report(rec.id, "failed", 0, null, "USB-minnet är fullt.")
             return
         }
-        val job = RecordJob(this, rec, RecStorage.folder(volume))
+        val job = RecordJob(this, rec, RecStorage.folderFor(volume, rec))
         jobs[rec.id] = job
         active[job.file.absolutePath] = rec.id
         main.post { refresh() }
@@ -380,7 +414,8 @@ class RecordService : Service() {
     // ---------------------------------------------------------------- notis och väckning
 
     private fun notification(): Notification {
-        val titles = jobs.values.map { "${it.rec.channel}: ${it.rec.title}" }
+        // Vuxeninspelningar visas aldrig med namn i notisen.
+        val titles = jobs.values.map { if (it.rec.adult) "TV Hub spelar in" else "${it.rec.channel}: ${it.rec.title}" }.distinct()
         val text = if (titles.isEmpty()) "Kontrollerar inspelningar…" else titles.joinToString(", ")
         val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL) else Notification.Builder(this)
         return builder

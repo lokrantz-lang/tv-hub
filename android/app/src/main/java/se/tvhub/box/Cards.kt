@@ -115,6 +115,9 @@ class CardAdapter(
     /** Telefonens rutnät: korten fyller kolumnen (bredd, höjd i px). Null = layoutens storlek. */
     var itemSize: Pair<Int, Int>? = null
 
+    /** TV: hur affischer visas (se [ViewStyle]). DEFAULT = som förut (telefonen har egna layouter). */
+    var style = ViewStyle.DEFAULT
+
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
         val art: ImageView? = view.findViewById(R.id.art)
         val fallback: TextView? = view.findViewById(R.id.fallback)
@@ -122,6 +125,7 @@ class CardAdapter(
         val subtitle: TextView? = view.findViewById(R.id.subtitle)
         val badge: TextView? = view.findViewById(R.id.badge)
         val progress: ProgressBar? = view.findViewById(R.id.progress)
+        val plot: TextView? = view.findViewById(R.id.plot)
     }
 
     fun submit(list: List<Card>) {
@@ -144,13 +148,19 @@ class CardAdapter(
 
     override fun getItemCount() = cards.size
 
-    override fun getItemViewType(position: Int) = cards[position].kind
+    override fun getItemViewType(position: Int): Int {
+        val kind = cards[position].kind
+        // Lista: affischer och kanaler blir rader.
+        if (style == ViewStyle.LIST && kind != Card.WIDE) return LIST_ROW
+        return kind
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
         val layout = when (viewType) {
+            LIST_ROW -> R.layout.card_list_m
             Card.WIDE -> R.layout.card_wide_m
             Card.CHANNEL -> R.layout.card_channel_m
-            else -> R.layout.card_poster_m
+            else -> if (style == ViewStyle.TITLE) R.layout.card_poster_t else R.layout.card_poster_m
         }
         val view = LayoutInflater.from(parent.context).inflate(layout, parent, false)
         itemSize?.let { (w, h) ->
@@ -165,10 +175,25 @@ class CardAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val card = cards[position]
-        holder.title?.text = card.title
+        val item = card.payload as? Item
+        val row = getItemViewType(position) == LIST_ROW
+        val subtitle = when {
+            row && item != null -> listOfNotNull(
+                if (item.type == "live") item.num?.toString() else null,
+                item.facts.ifEmpty { null }, item.genre, item.categoryName,
+            ).joinToString("  ·  ")
+            style == ViewStyle.TITLE && card.kind == Card.POSTER && item != null -> item.facts.ifEmpty { item.categoryName ?: "" }
+            else -> card.subtitle
+        }
+        holder.title?.text = if (row && card.kind == Card.CHANNEL) (card.subtitle ?: card.title) else card.title
         holder.subtitle?.let {
-            it.text = card.subtitle ?: ""
-            it.visibility = if (card.subtitle.isNullOrEmpty()) View.GONE else View.VISIBLE
+            it.text = subtitle ?: ""
+            it.visibility = if (subtitle.isNullOrEmpty()) (if (style == ViewStyle.TITLE) View.INVISIBLE else View.GONE) else View.VISIBLE
+        }
+        holder.plot?.let {
+            val text = if (card.kind == Card.CHANNEL) card.title.takeIf { t -> t != card.subtitle } else item?.plot
+            it.text = text ?: ""
+            it.visibility = if (text.isNullOrBlank()) View.GONE else View.VISIBLE
         }
         holder.fallback?.text = if (card.kind == Card.CHANNEL) (card.subtitle ?: card.title) else card.title
         holder.fallback?.visibility = View.VISIBLE
@@ -205,7 +230,7 @@ class CardAdapter(
             val p = holder.bindingAdapterPosition
             onEdgeKey?.invoke(p, keyCode) ?: false
         }
-        Look.focusGrow(view) { hasFocus ->
+        Look.focusGrow(view, if (row) 1.0f else 1.07f) { hasFocus ->
             if (hasFocus) {
                 val p = holder.bindingAdapterPosition
                 if (p != RecyclerView.NO_POSITION) listener.onCardFocus(cards[p], shelf, shelfIndex, p)
@@ -213,6 +238,23 @@ class CardAdapter(
         }
     }
 }
+
+/** TV: visningsläge för filmer och serier. Sparas per sida och box. */
+object ViewStyle {
+    const val DEFAULT = -1
+    const val TITLE = 0
+    const val IMAGE = 1
+    const val LIST = 2
+
+    val LABELS = listOf("Affisch med titel", "Lista", "Bara bild")
+    private val ORDER = listOf(TITLE, LIST, IMAGE)
+
+    fun label(style: Int) = LABELS[ORDER.indexOf(style).coerceAtLeast(0)]
+    fun fromIndex(index: Int) = ORDER[index]
+    fun index(style: Int) = ORDER.indexOf(style).coerceAtLeast(0)
+}
+
+private const val LIST_ROW = 10
 
 /** Lodrät lista av rader, varje rad en vågrät lista av kort. */
 class ShelfAdapter(private val listener: CardListener) : RecyclerView.Adapter<ShelfAdapter.Holder>() {
@@ -223,6 +265,9 @@ class ShelfAdapter(private val listener: CardListener) : RecyclerView.Adapter<Sh
 
     /** Telefonen: rubrikerna går att trycka på ("Visa alla"). */
     var titleClicks = false
+
+    /** TV: affischer med titel under (se [ViewStyle]). */
+    var style = ViewStyle.DEFAULT
 
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
         val title: TextView = view.findViewById(R.id.title)
@@ -256,6 +301,7 @@ class ShelfAdapter(private val listener: CardListener) : RecyclerView.Adapter<Sh
         holder.cards.setRecycledViewPool(pool)
         holder.cards.itemAnimator = null
         val adapter = CardAdapter(listener)
+        adapter.style = style
         holder.adapter = adapter
         holder.cards.adapter = adapter
         return holder
@@ -285,4 +331,23 @@ fun playFavoriteEpisode(activity: android.app.Activity, item: Item) {
         activity, type = "episode", id = item.id, name = item.name, ext = item.ext,
         seriesId = item.seriesId, icon = item.icon, autoResume = true,
     )
+}
+
+/** Håll in OK på ett kort i Fortsätt titta: fortsätt, eller ta bort det ur raden. */
+fun continueOptions(activity: android.app.Activity, c: ContinueItem, open: () -> Unit, removed: () -> Unit) {
+    val title = c.seriesName ?: c.name
+    val labels = listOf("▶ Fortsätt titta", "Ta bort från Fortsätt titta")
+    Look.choose(activity, title, labels) { which ->
+        if (which == 0) {
+            open()
+            return@choose
+        }
+        val body = org.json.JSONObject().put("type", c.type).put("id", c.id).put("series_id", c.seriesId)
+        Api.obj("POST", "/device/continue/remove", body) { result ->
+            result.onSuccess {
+                android.widget.Toast.makeText(activity, "$title är borttagen ur Fortsätt titta", android.widget.Toast.LENGTH_SHORT).show()
+                removed()
+            }.onFailure { android.widget.Toast.makeText(activity, Api.friendly(it), android.widget.Toast.LENGTH_LONG).show() }
+        }
+    }
 }

@@ -16,7 +16,8 @@ from urllib.parse import parse_qs, urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import VERSION, ai, catalog, control, db, devices, diagnostics, extras, info, portals, recordings, remote, taste, updates
+from . import (VERSION, ai, catalog, control, db, devices, diagnostics, extras, info, portals, recordings, reminders,
+               remote, taste, updates)
 from .config import CFG
 from .xtream import XtreamError
 
@@ -756,7 +757,9 @@ class DeviceHandler(BaseHandler):
 
     def context(self):
         dev = self.device()
-        return dev, devices.scope_for(dev, self.wants_adult(), self.wants_history())
+        # PIN-kod (valfri): vuxenläget gäller bara med en giltig upplåsning från /device/adult-unlock.
+        adult = self.wants_adult() and devices.adult_unlocked(dev, (self.headers.get("X-TVHub-Unlock") or "").strip())
+        return dev, devices.scope_for(dev, adult, self.wants_history())
 
     def viewer_id(self):
         """Tittarläget som valts i Filmkväll (X-TVHub-Viewer). None = inget valt."""
@@ -805,6 +808,7 @@ def dev_home(h):
             "vod", scope, None, {"sort": "rating", "min_rating": "7.5", "min_year": str(time.gmtime().tm_year - 6)}, 0, 30)[0],
         "counts": catalog.counts(scope),
         "recordings": len(recordings.for_device(dev["id"], adult=scope.adult or 0)),
+        "adult_pin": devices.adult_pin_set(),
     }
 
 
@@ -1260,10 +1264,18 @@ def dev_new(h):
     kinds = catalog.TYPES if kind == "all" else [kind]
     if any(k not in catalog.TYPES for k in kinds):
         raise HttpError(400, "Okänd typ")
+    params = {"sort": "added", "new_only": "1"}
+    day = _int_arg(h.query, "day", 0, 0, 10**11)
+    if day:
+        # Nytt per dag: bara den dagen (start = midnatt, från /device/new-summary).
+        params.update(seen_from=str(day), seen_to=str(day + 86400 + 3600))
+    category = (h.query.get("category_id") or [None])[0]
     items = []
     for k in kinds:
-        found, _ = catalog.browse(k, scope, None, {"sort": "added", "new_only": "1"}, 0, limit)
+        found, _ = catalog.browse(k, scope, category, params, 0, limit)
         items += found
+    if day:
+        items = [i for i in items if catalog.day_start(i.get("first_seen") or 0) == day]
     items.sort(key=lambda i: -(i.get("first_seen") or 0))
     return 200, {"items": items[:limit]}
 
@@ -1279,6 +1291,94 @@ def dev_channel_by_num(h):
     if not found:
         raise HttpError(404, f"Ingen kanal har nummer {num}.")
     return 200, found[0]
+
+
+@route(DEVICE, "GET", r"/device/new-summary")
+def dev_new_summary(h):
+    """Nytt per dag: kategorier med nya titlar och antal, per dag (senaste 14 dagarna)."""
+    dev, scope = h.context()
+    return 200, {"days": catalog.new_summary(scope, _int_arg(h.query, "days", 14, 1, 60))}
+
+
+# ----- Vuxenläge med PIN-kod -----
+@route(DEVICE, "POST", r"/device/adult-unlock")
+def dev_adult_unlock(h):
+    """Utan pin: talar om ifall kod krävs. Med pin: nyckel som appen skickar som X-TVHub-Unlock."""
+    dev = h.device()
+    data = h.read_json()
+    result = devices.unlock_adult(dev, data.get("pin"))
+    if result["error"]:
+        raise HttpError(403, result["error"])
+    return 200, result
+
+
+@route(DEVICE, "POST", r"/device/adult-lock")
+def dev_adult_lock(h):
+    dev = h.device()
+    devices.lock_adult(dev["id"])
+    return 200, {"ok": True}
+
+
+@route(ADMIN, "GET", r"/api/adult-pin")
+def admin_adult_pin(h):
+    return 200, {"set": devices.adult_pin_set()}
+
+
+@route(ADMIN, "PUT", r"/api/adult-pin")
+def admin_adult_pin_set(h):
+    return 200, {"set": devices.set_adult_pin(h.read_json().get("pin"))}
+
+
+# ----- Fortsätt titta: ta bort -----
+@route(DEVICE, "POST", r"/device/continue/remove")
+def dev_continue_remove(h):
+    dev, scope = h.context()
+    data = h.read_json()
+    return 200, {"removed": extras.remove_progress(scope, data.get("type"), data.get("id"), data.get("series_id"))}
+
+
+# ----- Påminnelser -----
+@route(DEVICE, "GET", r"/device/reminders")
+def dev_reminders(h):
+    dev, scope = h.context()
+    return 200, reminders.for_device(dev["id"], scope.adult)
+
+
+@route(DEVICE, "POST", r"/device/reminders")
+def dev_reminder_create(h):
+    dev, scope = h.context()
+    data = h.read_json()
+    rem, created = reminders.create(dev, scope, data.get("stream_id"), data.get("title"), data.get("start"), data.get("end"))
+    rem["phone_notify"] = bool(reminders.settings().get("notify")) and not rem["adult"]
+    return (201 if created else 200), rem
+
+
+@route(DEVICE, "DELETE", r"/device/reminders/(\d+)")
+def dev_reminder_delete(h, rid):
+    dev = h.device()
+    if not reminders.delete(dev, rid):
+        raise HttpError(404, "Påminnelsen finns inte.")
+    return 200, {"ok": True}
+
+
+@route(ADMIN, "GET", r"/api/reminders/settings")
+def admin_reminder_settings(h):
+    return 200, reminders.settings()
+
+
+@route(ADMIN, "PUT", r"/api/reminders/settings")
+def admin_reminder_settings_save(h):
+    return 200, reminders.save_settings(h.read_json())
+
+
+@route(ADMIN, "GET", r"/api/reminders/notify-services")
+def admin_notify_services(h):
+    return 200, reminders.notify_services()
+
+
+@route(ADMIN, "POST", r"/api/reminders/test")
+def admin_reminder_test(h):
+    return 200, reminders.test_notify()
 
 
 # ----- Filmkväll -----

@@ -57,6 +57,7 @@ class Prefs(context: Context) {
                 .putLong("adult_since", now)
                 .putLong("adult_last_active", now)
                 .putBoolean("adult_history", false)  // vuxenläget startar alltid utan historik
+                .also { if (!value) it.remove("adult_unlock") }
                 .apply()
         }
 
@@ -112,6 +113,46 @@ class Prefs(context: Context) {
     }
 
     /** Utseende: modernt (standard) eller klassiskt (tre kolumner som tidigare). Mobilen är alltid modern. */
+    /** TV: visningsläge per sida ("vod", "series", "favorites", "new"), se [ViewStyle]. */
+    fun viewStyle(page: String): Int = sp.getInt("view_$page", ViewStyle.TITLE)
+
+    fun setViewStyle(page: String, style: Int) {
+        sp.edit().putInt("view_$page", style).apply()
+    }
+
+    /** TV: starta på senaste kanalen när appen öppnas. */
+    var startOnLastChannel: Boolean
+        get() = sp.getBoolean("start_last_channel", false)
+        set(value) {
+            sp.edit().putBoolean("start_last_channel", value).apply()
+        }
+
+    /** Senast sedda kanal (id, namn, logga), för "Starta på senaste kanalen". */
+    var lastChannel: Triple<String, String, String?>?
+        get() {
+            val id = sp.getString("last_channel_id", "") ?: ""
+            if (id.isEmpty()) return null
+            return Triple(id, sp.getString("last_channel_name", "") ?: "", sp.getString("last_channel_icon", null))
+        }
+        set(value) {
+            sp.edit().putString("last_channel_id", value?.first ?: "").putString("last_channel_name", value?.second ?: "")
+                .putString("last_channel_icon", value?.third).apply()
+        }
+
+    /** Kanallistan som den senaste kanalen spelades från (för att kunna zappa efter start). */
+    var lastChannelQueue: String
+        get() = sp.getString("last_channel_queue", "") ?: ""
+        set(value) {
+            sp.edit().putString("last_channel_queue", value).apply()
+        }
+
+    /** Upplåsning av vuxenläget när PIN-kod används (skickas som X-TVHub-Unlock). */
+    var adultUnlock: String
+        get() = sp.getString("adult_unlock", "") ?: ""
+        set(value) {
+            sp.edit().putString("adult_unlock", value).apply()
+        }
+
     /** Egna val för fjärrkontrollens knappar (JSON), se [Keys]. */
     var keyMap: String
         get() = sp.getString("key_map", "") ?: ""
@@ -210,6 +251,9 @@ object Session {
     /** Föregående kanal för knappen "tillbaka till förra kanalen". */
     var previousChannel: Pair<String, String>? = null
     var currentChannel: Pair<String, String>? = null
+
+    /** "Starta på senaste kanalen" görs bara när appen startar. */
+    var lastChannelStarted = false
 
     /** Uppdateringskontroll görs en gång per start. */
     var updateChecked = false

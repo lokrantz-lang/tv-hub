@@ -3,7 +3,7 @@
 import signal
 import threading
 
-from hub import VERSION, ai, catalog, control, db, devices, diagnostics, extras, info, portals, recordings, taste
+from hub import VERSION, ai, catalog, control, db, devices, diagnostics, extras, info, portals, recordings, reminders, taste
 from hub.config import CFG
 from hub.server import start_servers
 
@@ -25,7 +25,8 @@ def main():
     catalog.backfill_years()
     _ = extras, taste  # registrerar bevakningskontrollen och Filmkvällens katalog efter synk
     stop_event = threading.Event()
-    for target in (portals.monitor_loop, catalog.sync_loop, info.fetch_loop, housekeeping, ai.loop, control.listen_loop):
+    for target in (portals.monitor_loop, catalog.sync_loop, info.fetch_loop, housekeeping, ai.loop, control.listen_loop,
+                   reminders.loop):
         threading.Thread(target=target, args=(stop_event,), daemon=True, name=target.__name__).start()
     admin, device = start_servers()
     print(

@@ -517,6 +517,13 @@ def _filters(params):
     if genre:
         conds.append("i.genre LIKE ?")
         args.append(f"%{genre}%")
+    seen_from, seen_to = num("seen_from", int), num("seen_to", int)
+    if seen_from is not None:
+        conds.append("i.first_seen >= ?")
+        args.append(seen_from)
+    if seen_to is not None:
+        conds.append("i.first_seen < ?")
+        args.append(seen_to)
     if str(params.get("new_only") or "") in ("1", "true"):
         # "Nytt tillagt": bara titlar som TV Hub själv har sett dyka upp (eget datum), inte källans datum.
         conds.append("i.first_seen IS NOT NULL")
@@ -550,6 +557,40 @@ def browse(kind, scope=ADMIN, category_id=None, params=None, offset=0, limit=300
     )
     favs = set() if scope.private else favorite_keys()
     return [_item(r, favs) for r in rows], total
+
+
+def day_start(ts):
+    """Midnatt (lokal tid) för dagen som ts ligger i."""
+    t = time.localtime(ts)
+    return int(time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1)))
+
+
+def new_summary(scope, days=14):
+    """Nytt per dag: för varje dag de kategorier som fått nya titlar, med antal. Nyaste dagen först.
+    Bygger på TV Hubs eget datum (first_seen). Dolda kategorier och vuxeninnehåll följer boxens läge."""
+    cutoff = day_start(time.time()) - (days - 1) * 86400
+    cond, args = scope.sql("i")
+    rows = db.q(
+        f"""SELECT i.type, i.category_id, i.category_name, i.first_seen FROM {BROWSE_FROM}
+            WHERE i.first_seen >= ?{cond}""",
+        (cutoff, *args),
+    )
+    out = {}
+    for r in rows:
+        start = day_start(r["first_seen"])
+        day = out.setdefault(start, {"start": start, "total": 0, "categories": {}})
+        key = (r["type"], r["category_id"])
+        cat = day["categories"].setdefault(key, {"type": r["type"], "category_id": r["category_id"],
+                                                  "name": r["category_name"] or "Utan kategori", "count": 0})
+        cat["count"] += 1
+        day["total"] += 1
+    order = {"vod": 0, "series": 1, "live": 2}
+    result = []
+    for start in sorted(out, reverse=True):
+        day = out[start]
+        cats = sorted(day["categories"].values(), key=lambda c: (order.get(c["type"], 9), -c["count"], c["name"]))
+        result.append({"start": start, "total": day["total"], "categories": cats})
+    return result
 
 
 def items_in_category(kind, category_id, offset=0, limit=200, scope=ADMIN):

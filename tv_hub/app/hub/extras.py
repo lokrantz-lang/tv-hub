@@ -87,6 +87,18 @@ def continue_watching(scope, limit=20):
     return out
 
 
+def remove_progress(scope, kind, item_id, series_id=None):
+    """Ta bort från Fortsätt titta (håll in OK). Avsnitt: hela serien försvinner ur raden."""
+    adult = scope.adult or 0
+    if kind == "episode" and series_id:
+        return db.x("DELETE FROM progress WHERE adult = ? AND type = 'episode' AND series_id = ?",
+                    (adult, str(series_id))).rowcount
+    if kind in ("vod", "episode"):
+        return db.x("DELETE FROM progress WHERE adult = ? AND type = ? AND item_id = ?",
+                    (adult, kind, str(item_id or ""))).rowcount
+    raise ValueError("Okänd typ")
+
+
 def series_progress(adult, series_id):
     progress = {r["item_id"]: {"position_ms": r["position_ms"], "duration_ms": r["duration_ms"]}
                 for r in db.q("SELECT * FROM progress WHERE adult = ? AND type = 'episode' AND series_id = ?",

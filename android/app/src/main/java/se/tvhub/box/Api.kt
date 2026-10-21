@@ -100,6 +100,7 @@ object Api {
         val adult = prefs.adultMode
         conn.setRequestProperty("X-TVHub-Mode", if (adult) "adult" else "normal")
         conn.setRequestProperty("X-TVHub-History", if (!adult || prefs.adultHistory) "show" else "hide")
+        if (adult && prefs.adultUnlock.isNotEmpty()) conn.setRequestProperty("X-TVHub-Unlock", prefs.adultUnlock)
         if (!adult) prefs.activeViewer?.let { conn.setRequestProperty("X-TVHub-Viewer", it.toString()) }
         return conn
     }

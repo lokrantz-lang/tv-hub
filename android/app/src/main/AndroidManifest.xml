@@ -13,6 +13,13 @@
     <!-- Röststyrning: starta uppspelning när appen är stängd (Android 10 och senare) -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- Röstsök: få se om Googles röstinmatning finns (Android 11 och senare kräver det här). -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 

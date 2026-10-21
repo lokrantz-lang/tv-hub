@@ -5,9 +5,11 @@ startar en ström medan en annan box tittar, och att ett övertagande väntar
 tills den andra boxen har stoppat.
 """
 import hashlib
+import hmac
 import json
 import re
 import secrets
+import threading
 import time
 
 from datetime import datetime, timezone
@@ -309,7 +311,7 @@ def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(
     if recording is not None:
         recordings.attach_session(device, recording["id"], item_id, session_id)
     db.log_event("record" if recording else "play",
-                 {"type": kind, "id": item_id, "name": display, "portal": portal["name"]},
+                 {"type": kind, "id": "" if adult else item_id, "name": "18+" if adult else display, "portal": portal["name"]},
                  device_id=device["id"], session_id=session_id)
     return {
         "status": "ok",
@@ -370,3 +372,81 @@ def cleanup():
     """Stänger sessioner utan heartbeat och rensar gammal historik."""
     db.x("UPDATE sessions SET ended = last_heartbeat, end_reason = 'timeout' "
          "WHERE ended IS NULL AND last_heartbeat < ?", (db.ago(minutes=5),))
+
+
+# ---------- PIN-kod för vuxenläget ----------
+# Valfri. Utan kod fungerar vuxenläget som förut. Med kod måste appen låsa upp hos TV Hub och
+# skicka med nyckeln (X-TVHub-Unlock); annars får boxen vanligt läge även om den ber om vuxenläge.
+UNLOCK_S = 3 * 3600
+MAX_TRIES = 5
+LOCKOUT_S = 300
+_unlocks = {}   # device_id -> (nyckel, giltig till)
+_tries = {}     # device_id -> (antal fel, första felet)
+_pin_lock = threading.Lock()
+
+
+def _pin_hash(pin, salt):
+    return hashlib.pbkdf2_hmac("sha256", pin.encode(), bytes.fromhex(salt), 100_000).hex()
+
+
+def adult_pin_set():
+    return bool(db.get_setting("adult_pin"))
+
+
+def set_adult_pin(pin):
+    pin = str(pin or "").strip()
+    if not pin:
+        db.set_setting("adult_pin", None)
+        with _pin_lock:
+            _unlocks.clear()
+        return False
+    if not pin.isdigit() or not 4 <= len(pin) <= 8:
+        raise ValueError("Koden ska vara 4–8 siffror.")
+    salt = secrets.token_hex(16)
+    db.set_setting("adult_pin", {"salt": salt, "hash": _pin_hash(pin, salt)})
+    with _pin_lock:
+        _unlocks.clear()
+    return True
+
+
+def unlock_adult(device, pin):
+    """Returnerar {"pin_required": bool, "token": str|None, "error": str|None}."""
+    stored = db.get_setting("adult_pin")
+    if not device["allow_adult"]:
+        return {"pin_required": bool(stored), "token": None, "error": "Den här boxen har inte vuxenläge."}
+    if not stored:
+        return {"pin_required": False, "token": "", "error": None}
+    if pin in (None, ""):
+        return {"pin_required": True, "token": None, "error": None}
+    now = time.time()
+    with _pin_lock:
+        count, first = _tries.get(device["id"], (0, now))
+        if now - first > LOCKOUT_S:
+            count, first = 0, now
+        if count >= MAX_TRIES:
+            left = int(LOCKOUT_S - (now - first)) // 60 + 1
+            return {"pin_required": True, "token": None, "error": f"För många försök. Vänta {left} min."}
+    if not hmac.compare_digest(_pin_hash(str(pin), stored["salt"]), stored["hash"]):
+        time.sleep(1)
+        with _pin_lock:
+            _tries[device["id"]] = (count + 1, first)
+        return {"pin_required": True, "token": None, "error": "Fel kod."}
+    token = secrets.token_urlsafe(24)
+    with _pin_lock:
+        _tries.pop(device["id"], None)
+        _unlocks[device["id"]] = (token, now + UNLOCK_S)
+    return {"pin_required": True, "token": token, "error": None}
+
+
+def adult_unlocked(device, token):
+    """Får boxen vuxenläge just nu? Utan PIN: ja. Med PIN: bara med giltig nyckel."""
+    if not adult_pin_set():
+        return True
+    with _pin_lock:
+        entry = _unlocks.get(device["id"])
+    return bool(entry and token and hmac.compare_digest(entry[0], token) and time.time() < entry[1])
+
+
+def lock_adult(device_id):
+    with _pin_lock:
+        _unlocks.pop(device_id, None)

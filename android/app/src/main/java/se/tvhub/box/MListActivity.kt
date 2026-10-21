@@ -30,6 +30,12 @@ class MListActivity : Activity() {
             context.startActivity(Intent(context, MListActivity::class.java).putExtra("mode", "new").putExtra("type", type))
         }
 
+        /** Nytt per dag: titlarna i en kategori som dök upp en viss dag. */
+        fun startDay(context: Context, title: String, day: Long, type: String, categoryId: String) {
+            context.startActivity(Intent(context, MListActivity::class.java).putExtra("mode", "day").putExtra("title", title)
+                .putExtra("day", day).putExtra("type", type).putExtra("category_id", categoryId))
+        }
+
         fun startShelf(context: Context, title: String, items: List<Item>) {
             shelfItems = items
             context.startActivity(Intent(context, MListActivity::class.java).putExtra("mode", "shelf").putExtra("title", title))
@@ -62,11 +68,20 @@ class MListActivity : Activity() {
         mode = intent.getStringExtra("mode") ?: "new"
         type = intent.getStringExtra("type") ?: "all"
         val title = findViewById<TextView>(R.id.title)
+        if (!FormFactor.isMobile(this)) {
+            // TV: luft runt kanterna (TV-apparater skär ofta av lite).
+            val pad = Look.dp(this, 40)
+            findViewById<View>(android.R.id.content).setPadding(pad, pad / 2, pad, pad / 2)
+        }
         if (mode == "shelf") {
             title.text = intent.getStringExtra("title") ?: ""
             rows.addAll(shelfItems)
             status.text = "${shelfItems.size} st"
             adapter.notifyDataSetChanged()
+            focusFirst()
+        } else if (mode == "day") {
+            title.text = intent.getStringExtra("title") ?: "Nytt"
+            loadDay()
         } else {
             title.text = "Nytt tillagt"
             val chips = findViewById<RecyclerView>(R.id.chips)
@@ -85,6 +100,27 @@ class MListActivity : Activity() {
     override fun onResume() {
         super.onResume()
         Taste.promptPending(this)
+    }
+
+    private fun focusFirst() {
+        if (!FormFactor.isMobile(this) && rows.isNotEmpty()) Focus.position(list, rows.indexOfFirst { it is Item }.coerceAtLeast(0))
+    }
+
+    private fun loadDay() {
+        status.text = "Hämtar…"
+        val q = "type=${Api.enc(type)}&category_id=${Api.enc(intent.getStringExtra("category_id") ?: "")}" +
+            "&day=${intent.getLongExtra("day", 0L)}&limit=500"
+        Api.obj("GET", "/device/new?$q") { result ->
+            if (isFinishing) return@obj
+            result.onSuccess { data ->
+                val items = Item.list(data.optJSONArray("items"))
+                rows.clear()
+                rows.addAll(items)
+                adapter.notifyDataSetChanged()
+                status.text = if (items.isEmpty()) "Inget här längre (titlarna kan ha tagits bort hos Toucan)." else "${items.size} st"
+                focusFirst()
+            }.onFailure { status.text = Api.friendly(it) }
+        }
     }
 
     private fun loadNew() {
@@ -107,6 +143,7 @@ class MListActivity : Activity() {
                 }
                 adapter.notifyDataSetChanged()
                 list.scrollToPosition(0)
+                focusFirst()
                 status.text = if (items.isEmpty()) {
                     "Inget nytt ännu. Här visas det som dykt upp i listorna sedan TV Hub började hålla koll. Listorna uppdateras var 12:e timme."
                 } else {
@@ -178,7 +215,7 @@ class MListActivity : Activity() {
             val item = row as Item
             val h = holder as Line
             h.title.text = item.name
-            val added = if (mode == "new") item.added?.let { Format.addedLabel(it) } else null
+            val added = if (mode == "new" || mode == "day") item.added?.let { Format.addedLabel(it) } else null
             h.subtitle.text = listOfNotNull(item.typeLabel.ifEmpty { null }, item.categoryName, item.facts.ifEmpty { null }, added)
                 .joinToString(" · ")
             h.fallback.text = item.name.take(14)

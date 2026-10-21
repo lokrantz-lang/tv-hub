@@ -51,6 +51,7 @@ class HomeActivity : Activity(), CardListener {
         Nav("home", "Hem", R.drawable.ic_m_home),
         Nav("night", "Filmkväll", R.drawable.ic_m_night),
         Nav("search", "Sök", R.drawable.ic_m_search),
+        Nav("favorites", "Favoriter", R.drawable.ic_m_star),
         Nav("live", "Live-TV", R.drawable.ic_m_live),
         Nav("vod", "Filmer", R.drawable.ic_m_movie),
         Nav("series", "Serier", R.drawable.ic_m_series),
@@ -80,6 +81,7 @@ class HomeActivity : Activity(), CardListener {
     private var livePage: LivePage? = null
     private var vodPage: BrowsePage? = null
     private var seriesPage: BrowsePage? = null
+    private var favoritesPage: BrowsePage? = null
     private var searchPage: SearchPage? = null
     private var recordingsPage: RecordingsPage? = null
 
@@ -122,6 +124,15 @@ class HomeActivity : Activity(), CardListener {
         buildRail()
         rail.viewTreeObserver.addOnGlobalFocusChangeListener { _, newFocus ->
             setRailExpanded(newFocus != null && isInRail(newFocus))
+        }
+        // Påminnelse som öppnade appen.
+        handler.post { Control.handleIntent(this, intent) }
+        // Snabbstart: visa Hem från förra gången direkt, uppdatera i bakgrunden (onResume → loadHome).
+        HomeCache.read(this)?.let { cached ->
+            home = cached
+            shownAdult = false
+            showPage("home")
+            homePage?.focusEntry()
         }
     }
 
@@ -250,6 +261,8 @@ class HomeActivity : Activity(), CardListener {
         open fun onHomeData(data: JSONObject) {}
         /** Grupper-knappen: välj kategori i en lista. false om sidan saknar kategorier. */
         open fun chooseGroup(): Boolean = false
+        /** Pilknapp som annars skulle hamna i menyn (eller på fel ställe). true = hanterad. */
+        open fun onEdge(focused: View, keyCode: Int): Boolean = false
     }
 
     private fun showPage(key: String) {
@@ -258,6 +271,7 @@ class HomeActivity : Activity(), CardListener {
             "live" -> livePage ?: LivePage().also { livePage = it }
             "vod" -> vodPage ?: BrowsePage("vod").also { vodPage = it }
             "series" -> seriesPage ?: BrowsePage("series").also { seriesPage = it }
+            "favorites" -> favoritesPage ?: BrowsePage("favorites").also { favoritesPage = it }
             "search" -> searchPage ?: SearchPage().also { searchPage = it }
             "recordings" -> recordingsPage ?: RecordingsPage().also { recordingsPage = it }
             else -> return
@@ -279,6 +293,7 @@ class HomeActivity : Activity(), CardListener {
         "live" -> livePage
         "vod" -> vodPage
         "series" -> seriesPage
+        "favorites" -> favoritesPage
         "search" -> searchPage
         "recordings" -> recordingsPage
         else -> null
@@ -292,6 +307,7 @@ class HomeActivity : Activity(), CardListener {
         Api.obj("GET", "/device/home?app_version=${Api.enc(BuildConfig.VERSION_NAME)}") { result ->
             result.onSuccess { data ->
                 if (prefs.adultMode && data.optString("mode") != "adult") prefs.adultMode = false
+                if (data.optString("mode") != "adult") HomeCache.write(this, data)
                 shownAdult = data.optString("mode") == "adult"
                 val first = home == null
                 home = data
@@ -308,6 +324,30 @@ class HomeActivity : Activity(), CardListener {
                     Updater.check(this, prefs, quiet = true)
                 }
             }.onFailure { handleError(it) }
+        }
+    }
+
+    /** Hem från förra gången, för snabbstart. Bara vanligt läge sparas. */
+    private object HomeCache {
+        private const val MAX_AGE_MS = 7 * 24 * 3600 * 1000L
+
+        private fun file(context: android.content.Context) = java.io.File(context.filesDir, "home_cache.json")
+
+        fun read(context: android.content.Context): JSONObject? {
+            if (Prefs(context).adultMode) return null
+            return try {
+                val f = file(context)
+                if (!f.isFile || System.currentTimeMillis() - f.lastModified() > MAX_AGE_MS) return null
+                JSONObject(f.readText()).takeIf { it.optString("mode") != "adult" }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        fun write(context: android.content.Context, data: JSONObject) {
+            val text = data.toString()
+            val f = file(context)
+            Api.async({ f.writeText(text) }) {}
         }
     }
 
@@ -338,6 +378,7 @@ class HomeActivity : Activity(), CardListener {
         livePage = null
         vodPage = null
         seriesPage = null
+        favoritesPage = null
         searchPage = null
         recordingsPage = null
         container.removeAllViews()
@@ -368,6 +409,10 @@ class HomeActivity : Activity(), CardListener {
     }
 
     override fun onCardLongClick(card: Card, shelf: Shelf?) {
+        (card.payload as? ContinueItem)?.let { c ->
+            continueOptions(this, c, open = { onCardClick(card, shelf) }, removed = { loadHome() })
+            return
+        }
         (card.payload as? Item)?.let { showItemOptions(it) }
     }
 
@@ -453,8 +498,14 @@ class HomeActivity : Activity(), CardListener {
         private val plot: TextView = view.findViewById(R.id.hero_plot)
         private val heroProgress: ProgressBar = view.findViewById(R.id.hero_progress)
         private val shelves: RecyclerView = view.findViewById(R.id.shelves)
-        private val manager = LinearLayoutManager(this@HomeActivity)
-        private val adapter = ShelfAdapter(this@HomeActivity)
+        // Androids egen rullning till det markerade stängs av: raden läggs alltid direkt under den
+        // stora bilden av scrollShelfToTop. Annars drar de åt olika håll och sidan hoppar.
+        private val manager = object : LinearLayoutManager(this@HomeActivity) {
+            override fun requestChildRectangleOnScreen(
+                parent: RecyclerView, child: View, rect: android.graphics.Rect, immediate: Boolean, focusedChildVisible: Boolean,
+            ): Boolean = false
+        }
+        private val adapter = ShelfAdapter(this@HomeActivity).also { it.style = ViewStyle.TITLE }
         private var heroTask: Runnable? = null
         private var lastShelf = -1
         private var focusedKey: Pair<String, String>? = null
@@ -478,6 +529,15 @@ class HomeActivity : Activity(), CardListener {
             if (target != null && restore(target)) return true
             return focusShelf(0, 0)
         }
+
+        /** Tillbaka på Hem: upp till första raden. false om man redan är där. */
+        fun goTop(): Boolean {
+            if (lastShelf <= 0 || adapter.itemCount == 0) return false
+            lastShelf = 0
+            return focusShelf(0, 0)
+        }
+
+        fun focusFirst(): Boolean = focusShelf(0, 0)
 
         private fun build(data: JSONObject) {
             val list = ArrayList<Shelf>()
@@ -599,7 +659,7 @@ class HomeActivity : Activity(), CardListener {
 
         /** Den markerade raden hamnar överst, direkt under den stora bilden (som Netflix). */
         private fun scrollShelfToTop(index: Int) {
-            if (Look.lite) {
+            if (Look.lite || index == 0) {
                 manager.scrollToPositionWithOffset(index, 0)
                 return
             }
@@ -639,16 +699,28 @@ class HomeActivity : Activity(), CardListener {
 
     // ================================================================ Filmer och Serier
 
+    /**
+     * Filmer, Serier och Favoriter: grupper överst, rutnät eller lista nedanför.
+     * Favoriter: grupperna är Filmer, Serier, Avsnitt och Kanaler (från hemdatan, ingen sökning).
+     */
     private inner class BrowsePage(private val type: String) : Page(), CardListener {
         override val view: View = LayoutInflater.from(this@HomeActivity).inflate(R.layout.page_browse, container, false)
         private val pageTitle: TextView = view.findViewById(R.id.page_title)
         private val sortButton: TextView = view.findViewById(R.id.sort_button)
+        private val viewButton: TextView = view.findViewById(R.id.view_button)
         private val filterButton: TextView = view.findViewById(R.id.filter_button)
         private val chips: RecyclerView = view.findViewById(R.id.chips)
         private val info: TextView = view.findViewById(R.id.info)
         private val grid: RecyclerView = view.findViewById(R.id.grid)
-        private val chipAdapter = RowAdapter(onClick = { row, _ -> selectChip(row, focusGrid = true) }, onFocus = { row, _ -> previewChip(row) })
+        private val chipAdapter = RowAdapter(
+            onClick = { row, _ -> selectChip(row, focusGrid = true) },
+            onFocus = { row, _ -> previewChip(row) },
+        )
         private val gridAdapter = CardAdapter(this)
+        private val gridManager: GridLayoutManager
+        private val columns: Int
+        private val favoritesOnly = type == "favorites"
+        private var style = prefs.viewStyle(type)
         private var categoryId: String? = null
         private var chipKey = "all"
         private val params = HashMap<String, String>()
@@ -659,19 +731,24 @@ class HomeActivity : Activity(), CardListener {
         private var built = false
 
         init {
-            pageTitle.text = if (type == "vod") "Filmer" else "Serier"
+            pageTitle.text = when (type) {
+                "vod" -> "Filmer"
+                "series" -> "Serier"
+                else -> "Favoriter"
+            }
             chipAdapter.edgeLock = false
             chips.layoutManager = LinearLayoutManager(this@HomeActivity, LinearLayoutManager.HORIZONTAL, false)
             chips.adapter = ChipAdapter(chipAdapter)
             chips.itemAnimator = null
             val width = resources.displayMetrics.widthPixels / resources.displayMetrics.density
-            val columns = ((width - 96 - 40) / 154).toInt().coerceIn(4, 8)
-            grid.layoutManager = GridLayoutManager(this@HomeActivity, columns)
+            columns = ((width - 96 - 40) / 154).toInt().coerceIn(4, 8)
+            gridManager = GridLayoutManager(this@HomeActivity, columns)
+            grid.layoutManager = gridManager
             grid.adapter = gridAdapter
             grid.itemAnimator = null
             gridAdapter.onEdgeKey = { position, keyCode ->
-                // Upp från första raden: till kategorierna.
-                if (keyCode == KeyEvent.KEYCODE_DPAD_UP && position < columns) {
+                // Upp från första raden: till grupperna.
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP && position < gridManager.spanCount) {
                     chips.post { Focus.position(chips, chipAdapter.indexOf(chipKey).coerceAtLeast(0)) }
                     true
                 } else {
@@ -680,16 +757,55 @@ class HomeActivity : Activity(), CardListener {
             }
             sortButton.setOnClickListener { showSort() }
             filterButton.setOnClickListener { showFilter() }
+            viewButton.setOnClickListener { chooseStyle() }
             Look.focusGrow(sortButton, 1.04f)
+            Look.focusGrow(viewButton, 1.04f)
             Look.focusGrow(filterButton, 1.04f)
+            if (favoritesOnly) {
+                sortButton.visibility = View.GONE
+                filterButton.visibility = View.GONE
+            }
+            applyStyle()
             updateButtons()
         }
 
+        /** Raden med knappar överst (Sortera, Visa, Filter): den första som syns. */
+        private fun firstButton(): View = if (sortButton.visibility == View.VISIBLE) sortButton else viewButton
+
+        override fun onEdge(focused: View, keyCode: Int): Boolean {
+            val inChips = isInside(focused, chips)
+            val onButtons = focused === sortButton || focused === viewButton || focused === filterButton
+            return when {
+                // Upp från grupperna: till Sortera (inte ut i menyn).
+                inChips && keyCode == KeyEvent.KEYCODE_DPAD_UP -> {
+                    firstButton().requestFocus()
+                    true
+                }
+                // Ner från knapparna: till gruppen som är vald.
+                onButtons && keyCode == KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    Focus.position(chips, chipAdapter.indexOf(chipKey).coerceAtLeast(0))
+                    true
+                }
+                onButtons && keyCode == KeyEvent.KEYCODE_DPAD_UP -> true
+                else -> false
+            }
+        }
+
         override fun onHomeData(data: JSONObject) {
-            if (built) return
+            if (built) {
+                // Favoriter ändras (★): uppdatera grupperna och listan som visas.
+                if (favoritesOnly) buildFavoriteChips(data, reload = true)
+                else if (chipKey == "fav") load(reset = true)
+                return
+            }
             built = true
+            if (favoritesOnly) {
+                buildFavoriteChips(data, reload = true)
+                return
+            }
             val rows = ArrayList<Row>()
             rows.add(Row("Alla", key = "all"))
+            if (favorites(data).isNotEmpty()) rows.add(Row("★ Favoriter", key = "fav"))
             rows.add(Row("Nytt tillagt", key = "new"))
             val cats = data.optJSONObject("categories")?.optJSONArray(type) ?: JSONArray()
             for (i in 0 until cats.length()) {
@@ -703,6 +819,22 @@ class HomeActivity : Activity(), CardListener {
             }
             chipAdapter.select(chipKey)
             load(reset = true)
+        }
+
+        /** Favoriter av sidans sort (Filmer: filmer, Serier: serier). */
+        private fun favorites(data: JSONObject?): List<Item> =
+            Item.list(data?.optJSONArray("favorites")).filter { it.type == type }
+
+        private val favoriteKinds = listOf("vod" to "Filmer", "series" to "Serier", "episode" to "Avsnitt", "live" to "Kanaler")
+
+        private fun buildFavoriteChips(data: JSONObject, reload: Boolean) {
+            val all = Item.list(data.optJSONArray("favorites"))
+            val rows = favoriteKinds.filter { (kind, _) -> all.any { it.type == kind } }
+                .map { (kind, label) -> Row("$label (${all.count { it.type == kind }})", key = "fav:$kind") }
+            chipAdapter.submit(rows)
+            if (rows.none { it.key == chipKey }) chipKey = rows.firstOrNull()?.key ?: "fav:vod"
+            chipAdapter.select(chipKey)
+            if (reload) load(reset = true)
         }
 
         override fun focusEntry(): Boolean {
@@ -740,7 +872,47 @@ class HomeActivity : Activity(), CardListener {
             }
         }
 
+        // ---------- visningsläge
+
+        /** Kanaler visas alltid som lista (korten är för breda för rutnätet). */
+        private fun effectiveStyle(): Int = if (chipKey == "fav:live") ViewStyle.LIST else style
+
+        private fun applyStyle() {
+            val s = effectiveStyle()
+            if (gridAdapter.style != s) {
+                gridAdapter.style = s
+                gridManager.spanCount = if (s == ViewStyle.LIST) 1 else columns
+                gridAdapter.notifyDataSetChanged()
+            }
+            viewButton.text = "Visa: " + ViewStyle.label(style)
+        }
+
+        private fun chooseStyle() {
+            Look.choose(this@HomeActivity, "Visa", ViewStyle.LABELS, ViewStyle.index(style)) { which ->
+                style = ViewStyle.fromIndex(which)
+                prefs.setViewStyle(type, style)
+                applyStyle()
+            }
+        }
+
+        private fun cardFor(item: Item): Card = if (item.type == "live") Card.channel(item) else Card.poster(item)
+
         private fun load(reset: Boolean, focusFirst: Boolean = false) {
+            if (favoritesOnly || chipKey == "fav") {
+                // Favoriter: finns redan i hemdatan.
+                val kind = if (favoritesOnly) chipKey.removePrefix("fav:") else type
+                val items = Item.list(home?.optJSONArray("favorites")).filter { it.type == kind }
+                token++
+                total = items.size
+                applyStyle()
+                gridAdapter.submit(items.map { cardFor(it) })
+                grid.scrollToPosition(0)
+                info.text = if (items.isEmpty()) "Inga favoriter här ännu. Tryck ★ eller håll in OK på en titel." else "${items.size} favoriter"
+                if (focusFirst && items.isNotEmpty()) focusEntry()
+                updateButtons()
+                return
+            }
+            applyStyle()
             val t = if (reset) ++token else token
             val offset = if (reset) 0 else gridAdapter.itemCount
             loading = true
@@ -773,7 +945,15 @@ class HomeActivity : Activity(), CardListener {
             }
         }
 
-        override fun onCardClick(card: Card, shelf: Shelf?) = this@HomeActivity.onCardClick(card, shelf)
+        override fun onCardClick(card: Card, shelf: Shelf?) {
+            val item = card.payload as? Item
+            if (item?.type == "live") {
+                // Kanaler: zappa bland kanalerna i listan.
+                openItem(item, gridAdapter.cards.mapNotNull { it.payload as? Item })
+            } else {
+                this@HomeActivity.onCardClick(card, shelf)
+            }
+        }
 
         override fun onCardLongClick(card: Card, shelf: Shelf?) = this@HomeActivity.onCardLongClick(card, shelf)
 
@@ -783,7 +963,8 @@ class HomeActivity : Activity(), CardListener {
             val added = if (params["new_only"] == "1") item.added?.let { Format.addedLabel(it) } else null
             info.text = listOfNotNull(item.name, added, item.facts.ifEmpty { null }, item.genre, if (item.watched) "✓ Sedd" else null)
                 .joinToString("   ·   ")
-            if (!loading && gridAdapter.itemCount < total && cardIndex >= gridAdapter.itemCount - 24) load(reset = false)
+            if (!favoritesOnly && chipKey != "fav" && !loading && gridAdapter.itemCount < total &&
+                cardIndex >= gridAdapter.itemCount - 24) load(reset = false)
         }
 
         override fun chooseGroup(): Boolean {
@@ -1099,6 +1280,9 @@ class HomeActivity : Activity(), CardListener {
             return true
         }
 
+        override fun onEdge(focused: View, keyCode: Int): Boolean =
+            keyCode == KeyEvent.KEYCODE_DPAD_UP && isInside(focused, chips)
+
         /** Kanalerna i listan just nu (sifferknapparna spelar med dem som kanallista). */
         fun channels(): List<Item> = channelAdapter.items
 
@@ -1221,7 +1405,7 @@ class HomeActivity : Activity(), CardListener {
         private val keys: RecyclerView = view.findViewById(R.id.keys)
         private val hint: TextView = view.findViewById(R.id.hint)
         private val shelves: RecyclerView = view.findViewById(R.id.shelves)
-        private val shelfAdapter = ShelfAdapter(this@HomeActivity)
+        private val shelfAdapter = ShelfAdapter(this@HomeActivity).also { it.style = ViewStyle.TITLE }
         private val keyAdapter = RowAdapter(onClick = { row, _ -> press(row.key) }, onKey = { _, p, code -> keyEdge(p, code) })
         private val keyColumns = 6
         private val keyManager = GridLayoutManager(this@HomeActivity, keyColumns)
@@ -1231,9 +1415,17 @@ class HomeActivity : Activity(), CardListener {
 
         init {
             val letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ1234567890".map { it.toString() }
-            val rows = letters.map { Row(it, key = it) } + listOf(Row("Mellanslag", key = " "), Row("⌫", key = "back"), Row("Rensa", key = "clear"))
+            // Röstsök överst, om boxen har Googles röstinmatning.
+            val voice = if (Voice.available(this@HomeActivity)) listOf(Row("🎤  Sök med rösten", key = "voice")) else emptyList()
+            val rows = voice + letters.map { Row(it, key = it) } +
+                listOf(Row("Mellanslag", key = " "), Row("⌫", key = "back"), Row("Rensa", key = "clear"))
+            val offset = voice.size
             keyManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-                override fun getSpanSize(position: Int): Int = if (position >= letters.size) 2 else 1
+                override fun getSpanSize(position: Int): Int = when {
+                    position < offset -> keyColumns
+                    position >= offset + letters.size -> 2
+                    else -> 1
+                }
             }
             keyAdapter.edgeLock = false
             keys.layoutManager = keyManager
@@ -1285,7 +1477,19 @@ class HomeActivity : Activity(), CardListener {
 
         fun type(key: String) = press(key)
 
+        /** Röstsök: det som sades blir sökningen. */
+        fun setQuery(text: String) {
+            query = text.lowercase()
+            render()
+            task?.let { handler.removeCallbacks(it) }
+            search()
+        }
+
         private fun press(key: String) {
+            if (key == "voice") {
+                Voice.start(this@HomeActivity)
+                return
+            }
             query = when (key) {
                 "back" -> query.dropLast(1)
                 "clear" -> ""
@@ -1304,7 +1508,7 @@ class HomeActivity : Activity(), CardListener {
             queryView.setTextColor(if (query.isEmpty()) 0xFF6E6E78.toInt() else 0xFFF5F5F7.toInt())
             val recent = prefs.recentSearches
             hint.text = if (query.isEmpty() && recent.isNotEmpty()) "Senaste: " + recent.joinToString(", ") else
-                "Välj bokstäver med fjärrkontrollen. Träffarna visas till höger.\nVänster eller Tillbaka: till menyn."
+                "Välj bokstäver med fjärrkontrollen, eller 🎤 överst. Träffarna visas till höger.\nVänster: till menyn. Tillbaka: till Hem."
         }
 
         private fun search() {
@@ -1323,7 +1527,7 @@ class HomeActivity : Activity(), CardListener {
                     items.filter { it.type == "vod" }.takeIf { it.isNotEmpty() }?.let { list.add(Shelf("s_vod", "Filmer", it.map { i -> Card.poster(i) })) }
                     items.filter { it.type == "series" }.takeIf { it.isNotEmpty() }?.let { list.add(Shelf("s_series", "Serier", it.map { i -> Card.poster(i) })) }
                     shelfAdapter.submit(list)
-                    hint.text = if (list.isEmpty()) "Inga träffar på \"$q\"." else "Höger för att gå till träffarna. Vänster eller Tillbaka: till menyn."
+                    hint.text = if (list.isEmpty()) "Inga träffar på \"$q\"." else "Höger för att gå till träffarna. Vänster: till menyn. Tillbaka: till Hem."
                     if (list.isNotEmpty()) prefs.recentSearches = listOf(q) + prefs.recentSearches.filter { it != q }
                 }.onFailure { hint.text = Api.friendly(it) }
             }
@@ -1445,6 +1649,8 @@ class HomeActivity : Activity(), CardListener {
             "Fjärrkontrollens knappar",
             "Röststyrning när appen är stängd",
             "Mobilläge (för telefon)",
+            "Nytt per dag",
+            "Starta på senaste kanalen: " + if (prefs.startOnLastChannel) "På" else "Av",
         )
         Look.choose(this, "Inställningar", labels) { which ->
             when (which) {
@@ -1469,6 +1675,12 @@ class HomeActivity : Activity(), CardListener {
                         "Tillbaka två gånger i menyn stänger appen.") {}
                 7 -> Keys.showSettings(this)
                 8 -> Control.showSettings(this)
+                10 -> NewDays.show(this)
+                11 -> {
+                    prefs.startOnLastChannel = !prefs.startOnLastChannel
+                    Toast.makeText(this, if (prefs.startOnLastChannel) "Appen startar på senaste kanalen" else "Appen startar på Hem",
+                        Toast.LENGTH_SHORT).show()
+                }
                 9 -> Look.confirm(this, "Byta till mobilläge?", "Mobilläget är gjort för touch på en telefon. På en TV-box behövs det inte.", "Byt") {
                     prefs.layoutMode = "mobile"
                     startActivity(Intent(this, MobileActivity::class.java))
@@ -1527,10 +1739,10 @@ class HomeActivity : Activity(), CardListener {
                 if (++secretPresses >= 3) {
                     secretPresses = 0
                     secretStartedAt = 0L
-                    prefs.adultMode = !prefs.adultMode
-                    Toast.makeText(this, "Läge ändrat", Toast.LENGTH_SHORT).show()
-                    resetMode()
-                    handler.postDelayed({ railViews["settings"]?.requestFocus() }, 300)
+                    AdultGate.toggle(this) {
+                        resetMode()
+                        handler.postDelayed({ railViews["settings"]?.requestFocus() }, 300)
+                    }
                 }
                 return true
             }
@@ -1550,6 +1762,7 @@ class HomeActivity : Activity(), CardListener {
                 }
                 return true
             }
+            if (navigationKey(event.keyCode)) return true
             if (event.repeatCount == 0) {
                 val code = event.keyCode
                 if (current == "search" && currentFocus !is EditText) {
@@ -1569,6 +1782,47 @@ class HomeActivity : Activity(), CardListener {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun isInside(view: View, parent: View): Boolean {
+        var v: View? = view
+        while (v != null) {
+            if (v === parent) return true
+            v = v.parent as? View
+        }
+        return false
+    }
+
+    /**
+     * Pilar som skulle hamna i menyn från sidan: vänster går till menyvalet för sidan man är på
+     * (inte det som råkar ligga närmast), upp/ner stannar kvar. Sidan får först bestämma själv.
+     */
+    private fun navigationKey(code: Int): Boolean {
+        if (code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_UP && code != KeyEvent.KEYCODE_DPAD_DOWN) return false
+        val focused = currentFocus ?: return false
+        if (isInRail(focused)) return false
+        if (currentPage()?.onEdge(focused, code) == true) return true
+        val direction = when (code) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> View.FOCUS_LEFT
+            KeyEvent.KEYCODE_DPAD_UP -> View.FOCUS_UP
+            else -> View.FOCUS_DOWN
+        }
+        val next = try {
+            focused.focusSearch(direction)
+        } catch (_: Exception) {
+            null
+        }
+        if (next == null || !isInRail(next)) return false
+        if (code == KeyEvent.KEYCODE_DPAD_LEFT) (railViews[current] ?: railViews["home"])?.requestFocus()
+        return true
+    }
+
+    /** Tillbaka: till Hem (menyn fälls ihop). På Hem: först upp till första raden, sedan fråga om stänga. */
+    private fun goHome() {
+        navTask?.let { handler.removeCallbacks(it) }
+        digits.cancel()
+        if (current != "home") showPage("home")
+        homePage?.focusFirst()
     }
 
     private fun markFocused(item: Item?) {
@@ -1611,7 +1865,7 @@ class HomeActivity : Activity(), CardListener {
             }
             "night" -> FilmNightActivity.start(this)
             "search", "live", "home" -> onRailClick(action)
-            "favorites" -> showFavorites()
+            "favorites" -> onRailClick("favorites")
             "new" -> showNew()
             "info" -> {
                 val item = needFocused() ?: return true
@@ -1669,17 +1923,6 @@ class HomeActivity : Activity(), CardListener {
         }
     }
 
-    private fun showFavorites() {
-        val favorites = Item.list(home?.optJSONArray("favorites"))
-        if (favorites.isEmpty() || privateMode()) {
-            Toast.makeText(this, "Inga favoriter ännu. Håll in OK på en titel (eller tryck ★) för att lägga till.", Toast.LENGTH_LONG).show()
-            return
-        }
-        Look.choose(this, "★ Favoriter", favorites.map { listOfNotNull(it.name, it.typeLabel.ifEmpty { null }).joinToString("  ·  ") }) {
-            openItem(favorites[it], favorites)
-        }
-    }
-
     private fun showNew() {
         Api.obj("GET", "/device/new?type=all&limit=80") { result ->
             result.onSuccess { data ->
@@ -1705,14 +1948,27 @@ class HomeActivity : Activity(), CardListener {
     }
 
     @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val text = Voice.result(requestCode, resultCode, data) ?: return
+        if (current != "search") showPage("search")
+        searchPage?.setQuery(text)
+    }
+
+    @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (!::rail.isInitialized) {
             super.onBackPressed()
             return
         }
         val focused = currentFocus
-        if (focused != null && !isInRail(focused)) {
-            focusRail()
+        if (current != "home") {
+            goHome()
+            return
+        }
+        if (focused != null && !isInRail(focused) && homePage?.goTop() == true) return
+        if (focused != null && isInRail(focused) && homePage != null && focused.tag != "home") {
+            goHome()
             return
         }
         val t = SystemClock.elapsedRealtime()

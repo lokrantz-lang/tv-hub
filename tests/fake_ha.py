@@ -44,6 +44,7 @@ STATES = [
     {"entity_id": "light.kok", "state": "on", "attributes": {"friendly_name": "Kök"}},
 ]
 CALLS = []
+NOTIFIES = []
 STATS = {"sessions": 0, "proxied": 0}
 ADMIN_PORT = 0
 
@@ -187,7 +188,14 @@ def handle_core(conn, method, path, headers):
             return respond(conn, 200, b'{"result":"ok"}')
     if sub == "states" and method == "GET":
         return respond(conn, 200, json.dumps(STATES).encode())
+    if sub == "services" and method == "GET":
+        return respond(conn, 200, json.dumps([
+            {"domain": "light", "services": {"turn_on": {}}},
+            {"domain": "notify", "services": {"mobile_app_telefon": {}, "persistent_notification": {}, "notify": {}}},
+        ]).encode())
     if sub.startswith(("services/", "events/")) and method == "POST":
+        if sub.startswith("services/notify/"):
+            NOTIFIES.append((sub, body))
         return respond(conn, 200, b"[]")
     return respond(conn, 404, b'{"message":"not found"}')
 
@@ -203,6 +211,8 @@ def handle_http(conn, method, path, headers):
             except OSError:
                 SUBSCRIBERS.remove((c, sid, etype))
         return respond(conn, 200, json.dumps({"sent": sent}).encode())
+    if path == "/__notifies":
+        return respond(conn, 200, json.dumps(NOTIFIES).encode())
     if path == "/__scripts":
         return respond(conn, 200, json.dumps(SCRIPTS).encode())
     if path == "/__stats":

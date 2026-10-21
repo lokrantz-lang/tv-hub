@@ -207,6 +207,17 @@ class PlayerActivity : Activity() {
     private var casting = false
     private var castButton: TextView? = null
 
+    // Insomningstimer
+    private var sleepAt = 0L            // väggklocka (ms) när spelaren stängs, 0 = av
+    private var sleepAtEnd = false      // stäng när programmet, filmen eller avsnittet slutar
+    private var sleepWarning = false
+    private val sleepTicker = object : Runnable {
+        override fun run() {
+            checkSleep()
+            handler.postDelayed(this, 5_000)
+        }
+    }
+
     // Sifferknapparna: byt till kanalnummer
     private val digits by lazy { DigitEntry(this) { onDigits(it) } }
     private val hideTouch = Runnable {
@@ -493,6 +504,10 @@ class PlayerActivity : Activity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_DOWN && sleepWarning) {
+            cancelSleep(fromKey = true)
+            return true
+        }
         if (ev.action == MotionEvent.ACTION_DOWN) prefs.touch()
         return super.dispatchTouchEvent(ev)
     }
@@ -630,6 +645,20 @@ class PlayerActivity : Activity() {
     }
 
     private fun rememberChannel() {
+        // "Starta på senaste kanalen" (TV-boxarna, aldrig vuxenkanaler).
+        if (!mobile && !prefs.adultMode && type == "live" && shiftStart == 0L) {
+            prefs.lastChannel = Triple(itemId, itemName, icon)
+            if (queueIds.size > 1) {
+                val from = (queueIndex - 250).coerceAtLeast(0)
+                val to = (from + 500).coerceAtMost(queueIds.size)
+                prefs.lastChannelQueue = JSONObject()
+                    .put("ids", JSONArray(queueIds.subList(from, to)))
+                    .put("names", JSONArray(queueIds.indices.toList().subList(from, to).map { queueNames.getOrNull(it) ?: queueIds[it] }))
+                    .toString()
+            } else {
+                prefs.lastChannelQueue = ""
+            }
+        }
         val current = itemId to itemName
         if (Session.currentChannel?.first != current.first) {
             Session.previousChannel = Session.currentChannel
@@ -886,6 +915,11 @@ class PlayerActivity : Activity() {
         player?.duration?.takeIf { it > 0 }?.let { final.put("position_ms", it).put("duration_ms", it) }
         stopSession("ended", final)
         lastPositionMs = 0L
+        if (sleepAtEnd) {
+            // Insomningstimer "när avsnittet slutar": inget nästa avsnitt.
+            finish()
+            return
+        }
         if (type == "episode" && queueIndex >= 0 && queueIndex + 1 < queueIds.size) {
             moveTo(queueIndex + 1)
             releasePlayer()
@@ -1189,6 +1223,10 @@ class PlayerActivity : Activity() {
                 prefs.touch()
                 seekVod(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1, event.repeatCount)
             }
+            return true
+        }
+        if (event.action == KeyEvent.ACTION_DOWN && sleepWarning) {
+            cancelSleep(fromKey = true)
             return true
         }
         if (event.action == KeyEvent.ACTION_DOWN) {
@@ -1667,6 +1705,7 @@ class PlayerActivity : Activity() {
                 options.add("Förra kanalen: ${prev.second}" to { previousChannel() })
             }
         }
+        options.add(sleepLabel() to { chooseSleep() })
         Look.choose(this, itemName, options.map { it.first }) { which -> options[which].second() }
     }
 
@@ -1682,6 +1721,85 @@ class PlayerActivity : Activity() {
             else -> null
         }
         return listOfNotNull(format.label, language, channels).distinct().joinToString(" · ").ifEmpty { fallback }
+    }
+
+    // ---------------------------------------------------------------- insomningstimer
+
+    private fun chooseSleep() {
+        val endLabel = when (type) {
+            "live" -> "När programmet slutar"
+            "episode" -> "När avsnittet slutar"
+            else -> "När filmen slutar"
+        }
+        val labels = listOf("Av", "Om 30 minuter", "Om 60 minuter", "Om 90 minuter", "Om 2 timmar", endLabel)
+        val checked = when {
+            sleepAtEnd -> 5
+            sleepAt == 0L -> 0
+            else -> -1
+        }
+        Look.choose(this, "Insomningstimer", labels, checked) { which ->
+            sleepWarning = false
+            sleepAtEnd = false
+            sleepAt = 0L
+            when (which) {
+                1 -> sleepAt = System.currentTimeMillis() + 30 * 60_000L
+                2 -> sleepAt = System.currentTimeMillis() + 60 * 60_000L
+                3 -> sleepAt = System.currentTimeMillis() + 90 * 60_000L
+                4 -> sleepAt = System.currentTimeMillis() + 120 * 60_000L
+                5 -> {
+                    sleepAtEnd = true
+                    // Live: programmets sluttid. Film och avsnitt: när uppspelningen tar slut (onEnded).
+                    if (type == "live") {
+                        val end = (currentProgram?.optLong("end") ?: 0L) * 1000
+                        if (end <= System.currentTimeMillis()) {
+                            sleepAtEnd = false
+                            Toast.makeText(this, "Programguiden saknas för kanalen. Välj en tid i stället.", Toast.LENGTH_LONG).show()
+                            return@choose
+                        }
+                        sleepAt = end
+                    }
+                }
+            }
+            handler.removeCallbacks(sleepTicker)
+            if (sleepAt > 0 || sleepAtEnd) handler.post(sleepTicker)
+            val text = when {
+                sleepAt > 0 -> "Stängs av kl " + clockFormat.format(Date(sleepAt))
+                sleepAtEnd -> "Stängs av när ${if (type == "episode") "avsnittet" else "filmen"} slutar"
+                else -> "Insomningstimern är av"
+            }
+            Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun sleepLabel(): String = when {
+        sleepAt > 0 -> "Insomningstimer: kl " + clockFormat.format(Date(sleepAt))
+        sleepAtEnd -> "Insomningstimer: när den slutar"
+        else -> "Insomningstimer…"
+    }
+
+    /** En minut innan: varning på skärmen. Valfri knapp (eller tryck) fortsätter titta. */
+    private fun checkSleep() {
+        if (closing || sleepAt == 0L) return
+        val left = sleepAt - System.currentTimeMillis()
+        if (left <= 0) {
+            close("sleep_timer")
+            finish()
+            return
+        }
+        if (left <= 60_000 && !sleepWarning) {
+            sleepWarning = true
+            statusView.text = "Insomningstimer: stängs av om en minut.\n" + if (mobile) "Tryck för att fortsätta titta." else "Tryck på valfri knapp för att fortsätta titta."
+            statusView.visibility = View.VISIBLE
+        }
+    }
+
+    private fun cancelSleep(fromKey: Boolean) {
+        sleepWarning = false
+        sleepAt = 0L
+        sleepAtEnd = false
+        handler.removeCallbacks(sleepTicker)
+        statusView.visibility = View.GONE
+        if (fromKey) Toast.makeText(this, "Insomningstimern är avstängd", Toast.LENGTH_SHORT).show()
     }
 
     private fun showTrackDialog(trackType: Int) {

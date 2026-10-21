@@ -353,6 +353,22 @@ SCHEMA = [
         updated TEXT NOT NULL
     )
     """,
+    # version 10: påminnelser om program
+    """
+    CREATE TABLE reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id INTEGER NOT NULL,
+        stream_id TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        title TEXT NOT NULL,
+        start INTEGER NOT NULL,
+        end INTEGER NOT NULL,
+        adult INTEGER NOT NULL DEFAULT 0,
+        sent INTEGER NOT NULL DEFAULT 0,
+        created TEXT NOT NULL
+    );
+    CREATE INDEX reminders_start ON reminders (sent, start)
+    """,
 ]
 
 

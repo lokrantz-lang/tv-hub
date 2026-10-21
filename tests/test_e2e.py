@@ -24,10 +24,12 @@ D = f"http://127.0.0.1:{DEVICE}"
 FAILS = []
 
 
-def call(method, url, body=None, token=None, raw=False, mode=None, history=None):
+def call(method, url, body=None, token=None, raw=False, mode=None, history=None, unlock=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Content-Type", "application/json")
+    if unlock:
+        req.add_header("X-TVHub-Unlock", unlock)
     if mode:
         req.add_header("X-TVHub-Mode", mode)
     if history:
@@ -270,6 +272,7 @@ def main():
         categories_and_new(ta)
         remote_control(ta, tb, pa, pb, cert)
         remote_access(ta, pa, cert)
+        version_21(ta, tb, pa, pb, cert)
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -1164,6 +1167,97 @@ def remote_access(ta, pa, cert):
     s, res = call("POST", f"{A}/api/remote/test")
     check("test med ogiltig nyckel förklarar", not res["ok"] and "logga in" in res["summary"], res)
     s, res = call("PUT", f"{A}/api/remote", {"token": "app-token-0123456789abcdef"})
+
+
+def version_21(ta, tb, pa, pb, cert):
+    """2.1: Nytt per dag, PIN för vuxenläget, ta bort från Fortsätt titta, påminnelser."""
+    import ssl
+    import threading
+    print("Version 2.1")
+    ctx = ssl.create_default_context(cafile=cert)
+    # Nytt per dag
+    s, summ = call("GET", f"{D}/device/new-summary", token=ta)
+    days = summ.get("days") or []
+    check("nytt per dag: dagar med kategorier och antal", s == 200 and days and days[0]["categories"]
+          and days[0]["total"] == sum(c["count"] for c in days[0]["categories"]), days[:1])
+    names = [c["name"] for d in days for c in d["categories"]]
+    check("nytt per dag: inga vuxenkategorier i vanligt läge", not any("Adult" in n or "XXX" in n for n in names), names)
+    cat = days[0]["categories"][0]
+    s, items = call("GET", f"{D}/device/new?type={cat['type']}&category_id={cat['category_id']}&day={days[0]['start']}", token=ta)
+    check("nytt per dag: titlarna för en dag och kategori", s == 200 and len(items["items"]) == cat["count"]
+          and all(i["category_id"] == cat["category_id"] for i in items["items"]), (cat, len(items.get("items", []))))
+    s, summ_a = call("GET", f"{D}/device/new-summary", token=ta, mode="adult")
+    adult_names = [c["name"] for d in summ_a["days"] for c in d["categories"]]
+    check("nytt per dag: vuxenläget blandar inte in vanliga kategorier", all(n not in names for n in adult_names), adult_names)
+
+    # PIN-kod för vuxenläget
+    s, res = call("PUT", f"{A}/api/adult-pin", {"pin": "12"})
+    check("PIN: för kort kod nekas", s == 400, res)
+    s, res = call("PUT", f"{A}/api/adult-pin", {"pin": "4321"})
+    s, home = call("GET", f"{D}/device/home", token=ta, mode="adult")
+    check("PIN: vuxenläge utan upplåsning ger vanligt läge", home["mode"] == "normal" and home["adult_pin"], home["mode"])
+    s, res = call("POST", f"{D}/device/adult-unlock", {}, token=ta)
+    check("PIN: appen får veta att kod krävs", s == 200 and res["pin_required"] and not res["token"], res)
+    s, res = call("POST", f"{D}/device/adult-unlock", {"pin": "0000"}, token=ta)
+    check("PIN: fel kod nekas", s == 403, res)
+    s, res = call("POST", f"{D}/device/adult-unlock", {"pin": "4321"}, token=ta)
+    unlock = res.get("token")
+    s, home = call("GET", f"{D}/device/home", token=ta, mode="adult", unlock=unlock)
+    check("PIN: rätt kod ger vuxenläget", home["mode"] == "adult", home["mode"])
+    s, home = call("GET", f"{D}/device/home", token=tb, mode="adult", unlock=unlock)
+    check("PIN: nyckeln gäller bara boxen som låste upp", home["mode"] == "normal", home["mode"])
+    call("POST", f"{D}/device/adult-lock", {}, token=ta)
+    s, home = call("GET", f"{D}/device/home", token=ta, mode="adult", unlock=unlock)
+    check("PIN: låses när vuxenläget stängs", home["mode"] == "normal", home["mode"])
+    s, res = call("PUT", f"{A}/api/adult-pin", {"pin": ""})
+    s, home = call("GET", f"{D}/device/home", token=ta, mode="adult")
+    check("PIN: utan kod som förut", home["mode"] == "adult" and not home["adult_pin"], home["mode"])
+
+    # Ta bort från Fortsätt titta
+    s, p = call("POST", f"{D}/device/play", {"type": "vod", "id": "503"}, token=ta)
+    call("POST", f"{D}/device/stop", {"session_id": p["session_id"], "metrics": {"position_ms": 900000, "duration_ms": 7200000}}, token=ta)
+    s, home = call("GET", f"{D}/device/home", token=ta)
+    had = any(c["id"] == "503" for c in home["continue"])
+    s, res = call("POST", f"{D}/device/continue/remove", {"type": "vod", "id": "503"}, token=ta)
+    s, home = call("GET", f"{D}/device/home", token=ta)
+    check("ta bort från Fortsätt titta", had and res["removed"] == 1 and not any(c["id"] == "503" for c in home["continue"]), res)
+
+    # Påminnelser
+    s, sv = call("GET", f"{A}/api/reminders/notify-services")
+    check("påminnelser: notify-tjänster från Home Assistant", sv["services"] == ["mobile_app_telefon"], sv)
+    s, res = call("PUT", f"{A}/api/reminders/settings", {"notify": "notify.mobile_app_telefon"})
+    check("påminnelser: tjänsten sparas", res == {"notify": "mobile_app_telefon"}, res)
+    s, res = call("POST", f"{A}/api/reminders/test")
+    check("påminnelser: testnotis", s == 200, res)
+    start = int(time.time()) + 20
+    s, rem = call("POST", f"{D}/device/reminders", {"stream_id": "101", "title": "Rapport", "start": start, "end": start + 1800}, token=tb)
+    check("påminnelse sparas", s == 201 and rem["channel"] == "SE: SVT1 HD", rem)
+    s, again = call("POST", f"{D}/device/reminders", {"stream_id": "101", "title": "Rapport", "start": start, "end": start + 1800}, token=tb)
+    check("samma påminnelse två gånger blir en", s == 200 and again["id"] == rem["id"], again)
+    s, res = call("POST", f"{D}/device/reminders", {"stream_id": "190", "title": "X", "start": start, "end": start + 600}, token=tb)
+    check("påminnelse om vuxenkanal nekas i vanligt läge", s == 400, res)
+    s, res = call("POST", f"{D}/device/reminders", {"stream_id": "101", "title": "Gammalt", "start": start - 3600, "end": start}, token=tb)
+    check("påminnelse om program som börjat nekas", s == 400, res)
+    s, lst = call("GET", f"{D}/device/reminders", token=tb)
+    check("boxen ser sina påminnelser", [r["id"] for r in lst] == [rem["id"]], lst)
+    got = []
+
+    def poll():
+        end = time.time() + 45
+        while time.time() < end and not got:
+            s, r = call("GET", f"{D}/device/commands?wait=20", token=tb)
+            got.extend(c for c in (r or {}).get("commands", []) if c["action"] == "reminder")
+    t = threading.Thread(target=poll); t.start(); t.join()
+    check("påminnelsen når boxen när programmet börjar", got and got[0]["title"] == "Rapport" and got[0]["channel_id"] == "101", got)
+    notes = json.loads(urllib.request.urlopen(urllib.request.Request(f"https://localhost:{HA_TLS}/__notifies"), context=ctx).read())
+    check("påminnelsen skickas till telefonen", any(n[0] == "services/notify/mobile_app_telefon" and "Rapport" in n[1]["title"] for n in notes), notes)
+    s, lst = call("GET", f"{D}/device/reminders", token=tb)
+    check("skickad påminnelse försvinner ur listan", lst == [], lst)
+    s, rem2 = call("POST", f"{D}/device/reminders", {"stream_id": "102", "title": "Sport", "start": start + 7200, "end": start + 9000}, token=tb)
+    s, res = call("DELETE", f"{D}/device/reminders/{rem2['id']}", token=ta)
+    check("annan box kan inte ta bort påminnelsen", s == 404, res)
+    s, res = call("DELETE", f"{D}/device/reminders/{rem2['id']}", token=tb)
+    check("påminnelse tas bort", s == 200, res)
 
 
 def _up(url):

@@ -17,7 +17,7 @@ import java.util.Locale
 /**
  * Programguide för en kanal: tidigare program (catch-up) och kommande.
  * OK på ett tidigare program spelar det i efterhand. OK på pågående program visar kanalen live.
- * OK på ett kommande program spelar in det. Håll in OK för alla val, t.ex. spela in ett tidigare program.
+ * OK på ett kommande program: påminn mig eller spela in. Håll in OK för alla val, t.ex. spela in ett tidigare program.
  */
 class GuideActivity : Activity() {
     companion object {
@@ -38,6 +38,8 @@ class GuideActivity : Activity() {
     private var channelName = ""
     private val dayFormat = SimpleDateFormat("EEEE d MMMM", Locale("sv", "SE"))
     private val timeFormat = SimpleDateFormat("HH:mm", Locale("sv", "SE"))
+    private val reminders = HashMap<Long, Int>()  // programstart -> påminnelsens id
+    private var guide: JSONObject? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,7 +59,24 @@ class GuideActivity : Activity() {
         list.adapter = adapter
         list.itemAnimator = null
         Api.obj("GET", "/device/guide/${Api.enc(streamId)}") { result ->
-            result.onSuccess { show(it) }.onFailure { status.text = Api.friendly(it) }
+            result.onSuccess { data ->
+                guide = data
+                loadReminders()
+            }.onFailure { status.text = Api.friendly(it) }
+        }
+    }
+
+    /** Påminnelser för kanalen (🔔 i listan). Programguiden visas även om det misslyckas. */
+    private fun loadReminders() {
+        Api.async({ Api.requestBlocking("GET", "/device/reminders") as? org.json.JSONArray }) { result ->
+            reminders.clear()
+            result.getOrNull()?.let { array ->
+                for (i in 0 until array.length()) {
+                    val r = array.optJSONObject(i) ?: continue
+                    if (r.optString("stream_id") == streamId) reminders[r.optLong("start")] = r.optInt("id")
+                }
+            }
+            guide?.let { show(it) }
         }
     }
 
@@ -68,9 +87,9 @@ class GuideActivity : Activity() {
             if (archiveDays > 0) "Tryck på ett program för att se det (direkt eller i efterhand, $archiveDays dagar bakåt)."
             else "Kanalen har inget arkiv. Tryck på programmet som sänds nu för att titta."
         } else if (archiveDays > 0) {
-            "Tidigare program kan ses i efterhand ($archiveDays dagar bakåt). OK spelar, kommande spelas in. Håll in OK för fler val."
+            "Tidigare program kan ses i efterhand ($archiveDays dagar bakåt). OK spelar. Kommande: påminn mig eller spela in."
         } else {
-            "Kanalen har inget arkiv. OK på ett kommande program spelar in det. Håll in OK för fler val."
+            "Kanalen har inget arkiv. OK på ett kommande program: påminn mig eller spela in."
         }
         if (programs == null || programs.length() == 0) {
             status.text = "Ingen programguide för den här kanalen."
@@ -96,13 +115,15 @@ class GuideActivity : Activity() {
                 p.now -> if (mobile) "●  Nu   ·   tryck för att titta" else "●  Nu   ·   OK: titta live"
                 p.playable -> "▶  Se i efterhand"
                 p.end * 1000 < System.currentTimeMillis() -> "Har sänts"
-                p.recordable -> "OK: spela in"
-                else -> null
+                reminders.containsKey(p.start) -> "🔔  Påminnelse"
+                mobile -> "Tryck: påminn mig"
+                else -> "OK: påminn mig eller spela in"
             }
             rows.add(Row("$time   ${p.title}", subtitle = label, key = "p:${p.start}", payload = p))
         }
+        val keep = Focus.focusedPosition(list)
         adapter.submit(rows)
-        Focus.position(list, nowIndex)
+        Focus.position(list, if (keep != androidx.recyclerview.widget.RecyclerView.NO_POSITION) keep else nowIndex)
     }
 
     private fun open(row: Row) {
@@ -110,7 +131,7 @@ class GuideActivity : Activity() {
         when {
             p.now -> PlayerActivity.start(this, type = "live", id = streamId, name = channelName, ext = null)
             p.playable -> play(p)
-            p.start * 1000 > System.currentTimeMillis() && p.recordable -> confirmRecord(p)
+            p.start * 1000 > System.currentTimeMillis() -> options(row)
             else -> Toast.makeText(this, "Det här programmet finns inte att se i efterhand.", Toast.LENGTH_SHORT).show()
         }
     }
@@ -128,6 +149,11 @@ class GuideActivity : Activity() {
         val options = ArrayList<Pair<String, () -> Unit>>()
         if (p.now) options.add("Titta live" to { open(row) })
         if (p.playable) options.add("Se i efterhand" to { play(p) })
+        if (p.start * 1000 > System.currentTimeMillis()) {
+            val id = reminders[p.start]
+            if (id != null) options.add("🔔 Ta bort påminnelsen" to { removeReminder(id) })
+            else options.add("🔔 Påminn mig när det börjar" to { remind(p) })
+        }
         if (p.recordable) {
             val label = when {
                 p.now -> "● Spela in resten av programmet"
@@ -141,6 +167,33 @@ class GuideActivity : Activity() {
             return
         }
         Look.choose(this, p.title, options.map { it.first }) { which -> options[which].second() }
+    }
+
+    private fun remind(p: Program) {
+        val body = JSONObject().put("stream_id", streamId).put("title", p.title).put("start", p.start).put("end", p.end)
+        Api.obj("POST", "/device/reminders", body) { result ->
+            result.onSuccess { rem ->
+                reminders[p.start] = rem.optInt("id")
+                val clock = timeFormat.format(Date(p.start * 1000))
+                val text = when {
+                    !mobile -> "🔔 Boxen frågar om den ska byta kanal kl $clock."
+                    rem.optBoolean("phone_notify") -> "🔔 Du får en notis kl $clock."
+                    else -> "🔔 Sparad, men ingen notis är vald. Välj telefon i webbadminen under Boxar → Påminnelser."
+                }
+                Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+                guide?.let { show(it) }
+            }.onFailure { Toast.makeText(this, Api.friendly(it), Toast.LENGTH_LONG).show() }
+        }
+    }
+
+    private fun removeReminder(id: Int) {
+        Api.obj("DELETE", "/device/reminders/$id") { result ->
+            result.onSuccess {
+                reminders.entries.removeAll { it.value == id }
+                Toast.makeText(this, "Påminnelsen är borttagen", Toast.LENGTH_SHORT).show()
+                guide?.let { show(it) }
+            }.onFailure { Toast.makeText(this, Api.friendly(it), Toast.LENGTH_LONG).show() }
+        }
     }
 
     private fun confirmRecord(p: Program) {

@@ -156,8 +156,8 @@ tbody tr:last-child td { border-bottom: 0; }
 .detail-body .close { position: absolute; top: 10px; right: 12px; }
 /* filmkväll */
 .night-controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
-.night-controls label.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; color: var(--text); }
-.night-controls label.chk input { width: auto; min-height: 0; }
+.night-controls label.chk, label.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; color: var(--text); white-space: nowrap; }
+.night-controls label.chk input, label.chk input { width: auto; min-height: 0; }
 .night-list { display: grid; gap: 12px; margin-top: 14px; }
 .night-item { display: grid; grid-template-columns: 64px 1fr; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .night-item:first-child { border-top: 0; padding-top: 0; }
@@ -436,7 +436,7 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
   <!-- INSPELNINGAR -->
   <section class="tabpanel" id="tab-recordings" hidden>
     <div class="panel">
-      <div class="hd"><h2>Inspelningar</h2><span class="small muted" id="rec-count"></span></div>
+      <div class="hd"><h2>Inspelningar</h2><span class="row" style="flex-wrap:nowrap"><label class="chk small"><input type="checkbox" id="rec-adult"> Visa 18+</label><span class="small muted" id="rec-count" style="white-space:nowrap"></span></span></div>
       <div class="bd">
         <p class="small muted" style="margin-top:0">Inspelningarna sparas på USB-minnet i boxen och spelas upp under <em>Inspelningar</em> i boxens meny. Boxen måste vara påslagen (standby räcker) när programmet sänds. Program som redan har sänts hämtas från Toucans arkiv.</p>
         <ul class="list" id="rec-list"></ul>
@@ -545,6 +545,26 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
           <div class="row"><button class="btn primary" type="submit">Spara</button><button class="btn" type="button" id="vc-cancel" hidden>Avbryt</button></div>
         </form>
         <div id="vc-yaml" class="hidden" style="margin-top:10px"><p class="small muted">Skriptet kunde inte skapas automatiskt. Klistra in det här under <em>Inställningar → Automationer och scener → Skript → ⋮ → Redigera i YAML</em>:</p><pre class="mono answer" id="vc-yaml-text"></pre></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Påminnelser till telefonen</h2><span id="rn-pill" class="small"></span></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">"Påminn mig" i boxens programguide visar en fråga på boxen när programmet börjar. Välj en notify-tjänst (Home Assistant-appen på telefonen) för att också få en notis. Påminnelser om vuxeninnehåll skickas aldrig till telefonen.</p>
+        <form id="rn-form" class="filters" style="align-items:flex-end">
+          <label class="f" style="min-width:280px">Notify-tjänst<input id="rn-notify" list="rn-services" placeholder="t.ex. mobile_app_galaxy_s23_fe" autocomplete="off"><datalist id="rn-services"></datalist></label>
+          <div class="row"><button class="btn primary" type="submit">Spara</button><button class="btn" type="button" id="rn-test">Skicka testnotis</button></div>
+        </form>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>PIN-kod för vuxenläget</h2><span id="pin-pill" class="small"></span></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Valfritt. Med en kod frågar boxen och telefonen efter den när vuxenläget slås på. Utan kod fungerar det som förut. Koden sparas krypterad och kan inte visas, bara bytas.</p>
+        <form id="pin-form" class="filters" style="align-items:flex-end">
+          <label class="f" style="min-width:180px">Ny kod (4–8 siffror)<input id="pin-new" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8"></label>
+          <div class="row"><button class="btn primary" type="submit">Spara kod</button><button class="btn danger" type="button" id="pin-clear">Ta bort kod</button></div>
+        </form>
       </div>
     </div>
     <div class="panel" style="margin-top:16px">
@@ -1321,12 +1341,15 @@ const fmtClock = (t) => new Date(t * 1000).toLocaleTimeString("sv-SE", { hour: "
 const fmtSize = (b) => b >= 1e9 ? `${(b / 1e9).toFixed(1).replace(".", ",")} GB` : b ? `${Math.round(b / 1e6)} MB` : "";
 let recChannel = null;
 loaders.recordings = async () => {
-  const [list, devs] = await Promise.all([api("recordings").catch((e) => (toast(e.message), [])), api("devices").catch(() => [])]);
+  let [list, devs] = await Promise.all([api("recordings").catch((e) => (toast(e.message), [])), api("devices").catch(() => [])]);
   const boxes = devs.filter((d) => d.model !== "integration");
   const sel = $("rec-device"); const keep = sel.value;
   sel.innerHTML = boxes.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("") || '<option value="">Ingen parad box</option>';
   if (keep && boxes.some((d) => String(d.id) === keep)) sel.value = keep;
-  $("rec-count").textContent = list.length ? `${list.length} st` : "";
+  // Vuxeninspelningar döljs tills man kryssar i "Visa 18+".
+  const hiddenAdult = $("rec-adult").checked ? 0 : list.filter((r) => r.adult).length;
+  if (!$("rec-adult").checked) list = list.filter((r) => !r.adult);
+  $("rec-count").textContent = (list.length ? `${list.length} st` : "") + (hiddenAdult ? ` (+${hiddenAdult} dolda)` : "");
   $("rec-list").innerHTML = list.map((r) => {
     const [label, cls] = REC_STATUS[r.status] || [r.status, ""];
     const src = r.source === "archive" ? " · från arkivet" : (r.source === "vod" || r.source === "episode") ? " · nedladdning" : "";
@@ -1337,6 +1360,7 @@ loaders.recordings = async () => {
       <button class="btn ghost small danger" data-act="del">Ta bort</button></div></li>`;
   }).join("") || '<li class="empty">Inga inspelningar. Planera nedan eller i boxens programguide.</li>';
 };
+$("rec-adult").addEventListener("change", () => loaders.recordings());
 $("rec-list").addEventListener("click", (e) => {
   const b = e.target.closest("[data-act]"); if (!b) return;
   const id = b.closest("li").dataset.id;
@@ -1474,8 +1498,28 @@ function sparkline(svg, points) {
 
 /* ---------- boxar ---------- */
 let pairTimer;
+async function loadReminderSettings() {
+  const [st, sv, pin] = await Promise.all([api("reminders/settings").catch(() => ({})),
+    api("reminders/notify-services").catch(() => ({ services: [] })), api("adult-pin").catch(() => ({}))]);
+  $("rn-notify").value = st.notify || "";
+  $("rn-services").innerHTML = (sv.services || []).map((n) => `<option value="${esc(n)}">`).join("");
+  $("rn-pill").innerHTML = st.notify ? '<span class="pill ok">på</span>' : '<span class="pill">bara boxen</span>';
+  $("pin-pill").innerHTML = pin.set ? '<span class="pill ok">kod satt</span>' : '<span class="pill">ingen kod</span>';
+}
+$("rn-form").addEventListener("submit", (e) => { e.preventDefault(); guarded(async () => {
+  await api("reminders/settings", { method: "PUT", body: { notify: $("rn-notify").value } }); toast("Sparat"); loadReminderSettings(); }); });
+$("rn-test").addEventListener("click", (e) => guarded(async () => {
+  await api("reminders/settings", { method: "PUT", body: { notify: $("rn-notify").value } });
+  await api("reminders/test", { method: "POST" }); toast("Testnotis skickad"); }, e.target));
+$("pin-form").addEventListener("submit", (e) => { e.preventDefault(); guarded(async () => {
+  await api("adult-pin", { method: "PUT", body: { pin: $("pin-new").value } }); $("pin-new").value = "";
+  toast("Koden är sparad. Boxar i vuxenläget går tillbaka till vanligt läge."); loadReminderSettings(); }); });
+$("pin-clear").addEventListener("click", (e) => { if (!confirm("Ta bort koden? Vuxenläget slås då på som förut, utan kod.")) return;
+  guarded(async () => { await api("adult-pin", { method: "PUT", body: { pin: "" } }); toast("Koden är borttagen"); loadReminderSettings(); }, e.target); });
+
 loaders.devices = async () => {
   loadRemote();
+  loadReminderSettings();
   if (!vc.data) loadVoice();
   const list = await api("devices").catch((e) => (toast(e.message), []));
   if (!groupList.length) groupList = (await api("groups").catch(() => [])).map((g) => ({ id: g.id, name: g.name }));

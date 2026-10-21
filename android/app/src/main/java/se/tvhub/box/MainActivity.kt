@@ -126,10 +126,13 @@ class MainActivity : Activity() {
         if (prefs.modern) {
             // Det moderna utseendet är standard. Det klassiska väljs under Inställningar → Utseende.
             startActivity(Intent(this, HomeActivity::class.java))
+            startLastChannel()
             finish()
             return
         }
+        startLastChannel()
         setContentView(R.layout.activity_main)
+        window.decorView.post { Control.handleIntent(this, intent) }
         menuPane = findViewById(R.id.menu_pane)
         menuList = findViewById(R.id.menu)
         middlePane = findViewById(R.id.middle_pane)
@@ -228,9 +231,7 @@ class MainActivity : Activity() {
                 if (secretPresses >= 3) {
                     secretPresses = 0
                     secretStartedAt = 0L
-                    prefs.adultMode = !prefs.adultMode
-                    Toast.makeText(this, "Läge ändrat", Toast.LENGTH_SHORT).show()
-                    resetMode()
+                    AdultGate.toggle(this) { resetMode() }
                 }
                 return true
             }
@@ -1159,6 +1160,28 @@ class MainActivity : Activity() {
 
     // ================================================================ inställningar
 
+    /** Inställningen "Starta på senaste kanalen": spelaren öppnas ovanpå menyn när appen startar. */
+    private fun startLastChannel() {
+        if (Session.lastChannelStarted) return
+        Session.lastChannelStarted = true
+        if (!prefs.startOnLastChannel || prefs.adultMode) return
+        val (id, name, icon) = prefs.lastChannel ?: return
+        var ids: ArrayList<String>? = null
+        var names: ArrayList<String>? = null
+        try {
+            val q = org.json.JSONObject(prefs.lastChannelQueue)
+            val a = q.optJSONArray("ids")
+            val b = q.optJSONArray("names")
+            if (a != null && b != null && a.length() == b.length()) {
+                ids = ArrayList((0 until a.length()).map { a.optString(it) })
+                names = ArrayList((0 until b.length()).map { b.optString(it) })
+            }
+        } catch (_: Exception) {
+        }
+        PlayerActivity.start(this, type = "live", id = id, name = name, ext = null, queueIds = ids, queueNames = names,
+            queueIndex = ids?.indexOf(id) ?: -1, icon = icon)
+    }
+
     private fun showSettings() {
         val options = arrayOf(
             "Utseende: Klassiskt (byt till Modernt)",
@@ -1171,6 +1194,8 @@ class MainActivity : Activity() {
             "Fjärrkontrollens knappar",
             "Röststyrning när appen är stängd",
             "Mobilläge (för telefon)",
+            "Nytt per dag",
+            "Starta på senaste kanalen: " + if (prefs.startOnLastChannel) "På" else "Av",
         )
         AlertDialog.Builder(this)
             .setTitle("Inställningar")
@@ -1193,6 +1218,12 @@ class MainActivity : Activity() {
                     6 -> showAbout()
                     7 -> Keys.showSettings(this)
                     8 -> Control.showSettings(this)
+                    10 -> NewDays.show(this)
+                    11 -> {
+                        prefs.startOnLastChannel = !prefs.startOnLastChannel
+                        Toast.makeText(this, if (prefs.startOnLastChannel) "Appen startar på senaste kanalen" else "Appen startar på Hem",
+                            Toast.LENGTH_SHORT).show()
+                    }
                     9 -> {
                         prefs.layoutMode = "mobile"
                         startActivity(Intent(this, MobileActivity::class.java))

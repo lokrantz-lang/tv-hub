@@ -28,6 +28,7 @@ import org.json.JSONObject
  */
 object Control {
     fun start(context: Context) {
+        Foreground.register(context)
         val prefs = Prefs(context)
         if (FormFactor.isMobile(context) || !prefs.paired) return
         val intent = Intent(context, ControlService::class.java)
@@ -118,6 +119,35 @@ object Control {
                 PlayerActivity.current?.get()?.finish()
                 FilmNightActivity.start(context, cmd.optInt("viewer", 0))
             }
+            "reminder" -> reminder(context, cmd)
+        }
+    }
+
+    /** Påminnelse: fråga på skärmen om boxen ska byta kanal. Vuxenpåminnelser bara i vuxenläget. */
+    private fun reminder(context: Context, cmd: JSONObject) {
+        val prefs = Prefs(context)
+        if (cmd.optBoolean("adult") && !prefs.adultMode) return
+        val activity = Foreground.current()
+        if (activity != null) {
+            showReminder(activity, cmd)
+            return
+        }
+        // Appen är stängd: öppna den med frågan (Z10 Pro behöver "Visa ovanpå andra appar").
+        val target = if (prefs.modern) HomeActivity::class.java else MainActivity::class.java
+        try {
+            context.startActivity(Intent(context, target).putExtra("reminder", cmd.toString()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Exception) {
+        }
+    }
+
+    fun showReminder(activity: Activity, cmd: JSONObject) {
+        if (activity.isFinishing) return
+        val channelId = cmd.optString("channel_id")
+        val channel = cmd.optString("channel")
+        val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale("sv", "SE")).format(java.util.Date(cmd.optLong("start") * 1000))
+        Look.confirm(activity, "🔔 ${cmd.optString("title")}", "Börjar $clock på $channel.", "Byt kanal") {
+            PlayerActivity.current?.get()?.let { if (it !== activity) it.finish() }
+            PlayerActivity.start(activity, type = "live", id = channelId, name = channel, ext = null)
         }
     }
 
@@ -127,7 +157,46 @@ object Control {
         for (i in 0 until array.length()) out.add(array.optString(i))
         return out
     }
+
+    /** Påminnelse som öppnade appen (se [reminder]). */
+    fun handleIntent(activity: Activity, intent: Intent?) {
+        val raw = intent?.getStringExtra("reminder") ?: return
+        intent.removeExtra("reminder")
+        try {
+            showReminder(activity, JSONObject(raw))
+        } catch (_: Exception) {
+        }
+    }
 }
+
+/** Vilken skärm i appen som syns just nu (för påminnelser). */
+object Foreground : android.app.Application.ActivityLifecycleCallbacks {
+    private var resumed: java.lang.ref.WeakReference<Activity>? = null
+    private var registered = false
+
+    fun register(context: Context) {
+        if (registered) return
+        registered = true
+        (context.applicationContext as? android.app.Application)?.registerActivityLifecycleCallbacks(this)
+    }
+
+    fun current(): Activity? = resumed?.get()?.takeIf { !it.isFinishing }
+
+    override fun onActivityResumed(activity: Activity) {
+        resumed = java.lang.ref.WeakReference(activity)
+    }
+
+    override fun onActivityPaused(activity: Activity) {
+        if (resumed?.get() === activity) resumed = null
+    }
+
+    override fun onActivityCreated(activity: Activity, savedInstanceState: android.os.Bundle?) {}
+    override fun onActivityStarted(activity: Activity) {}
+    override fun onActivityStopped(activity: Activity) {}
+    override fun onActivitySaveInstanceState(activity: Activity, outState: android.os.Bundle) {}
+    override fun onActivityDestroyed(activity: Activity) {}
+}
+
 
 /**
  * Lyssnar efter kommandon i bakgrunden, även när appen är stängd. Visar en notis (krav från

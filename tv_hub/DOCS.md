@@ -29,11 +29,24 @@ för att visa dem, och igen för att dölja dem. Tittandet sparas alltid, men vi
 Läget stängs av efter 15 minuter utan aktivitet, efter högst 3 timmar och när appen eller boxen startas om.
 En box med profilen *Utan vuxenläge* eller *Bara gruppen …* kan inte byta läge.
 
+**PIN-kod (valfritt):** webbadminen, *Boxar → PIN-kod för vuxenläget*. Med en kod frågar boxen och telefonen efter
+den efter de tre trycken. Utan kod fungerar det som förut. Koden sparas krypterad och kan bara bytas, inte visas.
+Efter fem fel i rad går det inte att försöka igen på 5 minuter.
+
 ## Utseende i boxarna
 
 Appen startar i det **moderna utseendet**: meny med ikoner till vänster, Hem med stora bilder och rader,
-Live-TV, Filmer, Serier, Sök och Inspelningar. Det **klassiska utseendet** med tre kolumner finns kvar:
+Favoriter, Live-TV, Filmer, Serier, Sök och Inspelningar. Det **klassiska utseendet** med tre kolumner finns kvar:
 välj **Inställningar → Utseende** i appen. Valet sparas per box.
+
+- **Visa:** i Filmer, Serier och Favoriter väljer knappen *Visa* (bredvid Sortera) mellan *Affisch med titel*,
+  *Lista* (liten bild med år, längd, genre, betyg och handling) och *Bara bild*. Valet sparas per sida och box.
+- **Favoriter** i menyn: grupperna Filmer, Serier, Avsnitt och Kanaler. Filmer och Serier har också gruppen ★ Favoriter.
+- **Tillbaka** går till Hem från alla sidor. På Hem går Tillbaka först upp till första raden och frågar sedan om appen ska stängas.
+- **Sök med rösten:** 🎤 överst på tangentbordet i Sök öppnar Googles röstinmatning. Det du säger blir sökningen.
+- **Nytt per dag:** *Inställningar → Nytt per dag* visar, per dag de senaste 14 dagarna, kategorierna som fått något nytt.
+- **Starta på senaste kanalen:** *Inställningar*. Appen öppnar då kanalen du såg sist (aldrig en vuxenkanal).
+- **Ta bort från Fortsätt titta:** håll in OK på kortet.
 
 Under **Kategorier** i webbadminen kan en kategori få ett eget namn (*Eget namn*) och väljas som
 **Start**: Filmer, Serier eller Live öppnar då i den kategorin, både på TV:n och i telefonen.
@@ -44,7 +57,7 @@ Inspelningarna sparas på ett USB-minne i boxen. Webbadminen håller schemat och
 
 1. Sätt i ett USB-minne i boxen. Det ska vara formaterat som FAT32 eller exFAT.
 2. Planera en inspelning på något av följande sätt:
-   - **Programguiden i boxen:** håll in OK på en kanal, välj *Programguide*, och tryck OK på ett kommande program.
+   - **Programguiden i boxen:** håll in OK på en kanal, välj *Programguide*, tryck OK på ett kommande program och välj *Spela in*.
    - **Under uppspelning:** tryck OK två gånger och välj *Spela in*.
    - **Webbadminen:** fliken *Inspelningar*, välj box och kanal. Boxen hämtar schemat inom 20 minuter.
 3. Titta under **Inspelningar** i boxens meny.
@@ -59,6 +72,15 @@ ungefär lika lång tid som Toucan och din uppkoppling tillåter. Den räknas so
 - **Filerna** ligger i `Android/data/se.tvhub.box/files/Inspelningar` på USB-minnet och kan öppnas på en dator (VLC spelar dem).
 - **Avinstallera inte appen.** Android raderar då appens mapp på USB-minnet. Uppdateringar påverkar inte inspelningarna.
 - **Två strömmar.** Att titta på en kanal medan en annan spelas in ger två samtidiga anslutningar hos Toucan. Anslutningsvakten släpper igenom inspelningar.
+- **Vuxeninspelningar** sparas i en dold mapp (`.privat`) med neutrala filnamn (`rec-123.ts`) och en `.nomedia`-fil, så att galleri- och videoappar inte visar dem. Notisen under inspelning visar bara "TV Hub spelar in". I webbadminen syns de först när du kryssar i *Visa 18+*. Äldre vuxeninspelningar flyttas dit automatiskt.
+
+## Påminnelser och insomningstimer
+
+- **Påminn mig:** i programguiden, OK på ett kommande program → *Påminn mig när det börjar*. När programmet börjar frågar
+  boxen om den ska byta kanal. Med en notify-tjänst vald i webbadminen (*Boxar → Påminnelser till telefonen*) kommer också en
+  notis till telefonen. Boxen måste vara på. Är TV Hub stängd på Z10 Pro krävs "Visa ovanpå andra appar" (se Röststyrning).
+- **Insomningstimer:** under uppspelning, OK två gånger (eller *Mer* på telefonen) → *Insomningstimer*: 30, 60 eller 90 minuter,
+  2 timmar eller när programmet, filmen eller avsnittet slutar. En minut innan visas en varning. Tryck valfri knapp för att fortsätta titta.
 
 ## Timeshift
 
@@ -92,7 +114,7 @@ Välj vem som tittar och få tio förslag. TV: *Filmkväll* i menyn. Telefon: kn
 | ★ Favorit | Favorit på/av för det markerade | Favorit på/av (avsnitt: serien) |
 | Röd | Filmkväll | Spela in programmet |
 | Grön | Sök | Förra kanalen |
-| Gul | Favoriter | Från programmets början |
+| Gul | Favoriter (sidan) | Från programmets början |
 | Blå | Nytt tillagt | Tillbaka till direkt |
 | Info | Detaljer för det markerade | Programinfo |
 | Guide | Programguide för markerad kanal | Programguide |

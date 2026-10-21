@@ -1,5 +1,26 @@
 # Ändringar
 
+## 2.1.0
+
+- **Favoriter** som eget val i menyn på TV:n, och gruppen ★ Favoriter i Filmer och Serier.
+- **Visa:** affisch med titel (standard), lista med mer info, eller bara bild. Titlar under affischerna även på Hem.
+- **Röstsök:** 🎤 i Sök på TV:n och telefonen öppnar Googles röstinmatning.
+- **Nytt per dag** under Inställningar: per dag, kategorierna med nya titlar och antal.
+- **Påminnelser:** "Påminn mig" i programguiden. Boxen frågar om den ska byta kanal, och telefonen kan få en notis via Home Assistant.
+- **Insomningstimer** i spelaren.
+- **Starta på senaste kanalen** (inställning per box).
+- **PIN-kod för vuxenläget** (valfri, sätts i webbadminen).
+- **Ta bort från Fortsätt titta:** håll in OK på kortet.
+- **Snabbare start:** Hem från förra gången visas direkt och uppdateras i bakgrunden.
+- **Navigering på TV:n:**
+  - Upp från grupperna i Filmer och Serier går till Sortera, Visa och Filter.
+  - Vänster längst till vänster går till menyvalet för sidan du är på.
+  - Hem rullar utan att hoppa.
+  - Tillbaka går till Hem.
+  - "Mer som detta" på filmsidan går att nå.
+- **Vuxeninspelningar:** dold mapp med neutrala filnamn, neutral notis, dolda i webbadminen tills "Visa 18+" är ikryssat.
+  Händelseloggen visar inte titlar på vuxeninnehåll.
+
 ## 2.0.0
 
 - **Röststyrning och fjärrstart.** Säg till Google "Fortsätt titta i sovrummet", "Spela senaste Rapport i
