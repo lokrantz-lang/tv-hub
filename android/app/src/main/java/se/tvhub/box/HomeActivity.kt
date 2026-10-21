@@ -90,6 +90,11 @@ class HomeActivity : Activity(), CardListener {
     private var historyStartedAt = 0L
     private var backPressedAt = 0L
 
+    // Fjärrkontrollens knappar: vad som är markerat just nu, och sifferknapparna.
+    private var focusedItem: Item? = null
+    private var focusedPage = ""
+    private val digits by lazy { DigitEntry(this) { onDigits(it) } }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
@@ -105,6 +110,7 @@ class HomeActivity : Activity(), CardListener {
             finish()
             return
         }
+        Control.start(this)
         Fonts.install(this)
         setContentView(R.layout.activity_home)
         rail = findViewById(R.id.rail)
@@ -242,6 +248,8 @@ class HomeActivity : Activity(), CardListener {
         open fun onShow() {}
         abstract fun focusEntry(): Boolean
         open fun onHomeData(data: JSONObject) {}
+        /** Grupper-knappen: välj kategori i en lista. false om sidan saknar kategorier. */
+        open fun chooseGroup(): Boolean = false
     }
 
     private fun showPage(key: String) {
@@ -354,6 +362,7 @@ class HomeActivity : Activity(), CardListener {
     }
 
     override fun onCardFocus(card: Card, shelf: Shelf?, shelfIndex: Int, cardIndex: Int) {
+        markFocused(card.payload as? Item)
         if (current == "home") homePage?.onFocus(card, shelfIndex)
         if (current == "search") searchPage?.onFocus(shelfIndex)
     }
@@ -688,6 +697,10 @@ class HomeActivity : Activity(), CardListener {
                 rows.add(Row(c.optString("name"), key = "cat:${c.optString("category_id")}", payload = c.optString("category_id")))
             }
             chipAdapter.submit(rows)
+            // Startkategori från webbadminen (Kategorier → Start).
+            data.optJSONObject("start_categories")?.optStringOrNull(type)?.let { id ->
+                rows.firstOrNull { it.key == "cat:$id" }?.let { chipKey = it.key; categoryId = id }
+            }
             chipAdapter.select(chipKey)
             load(reset = true)
         }
@@ -766,10 +779,20 @@ class HomeActivity : Activity(), CardListener {
 
         override fun onCardFocus(card: Card, shelf: Shelf?, shelfIndex: Int, cardIndex: Int) {
             val item = card.payload as? Item ?: return
+            markFocused(item)
             val added = if (params["new_only"] == "1") item.added?.let { Format.addedLabel(it) } else null
             info.text = listOfNotNull(item.name, added, item.facts.ifEmpty { null }, item.genre, if (item.watched) "✓ Sedd" else null)
                 .joinToString("   ·   ")
             if (!loading && gridAdapter.itemCount < total && cardIndex >= gridAdapter.itemCount - 24) load(reset = false)
+        }
+
+        override fun chooseGroup(): Boolean {
+            val rows = chipAdapter.rows.filter { !it.header }
+            if (rows.isEmpty()) return false
+            Look.choose(this@HomeActivity, "Grupper", rows.map { it.title }, checked = rows.indexOfFirst { it.key == chipKey }) {
+                selectChip(rows[it], focusGrid = true)
+            }
+            return true
         }
 
         // ---------- sortering och filter (samma som i det klassiska utseendet)
@@ -988,6 +1011,9 @@ class HomeActivity : Activity(), CardListener {
                 rows.add(Row(c.optString("name"), key = "cat:${c.optString("category_id")}", payload = c.optString("category_id")))
             }
             chipAdapter.submit(rows)
+            data.optJSONObject("start_categories")?.optStringOrNull("live")?.let { id ->
+                rows.firstOrNull { it.key == "cat:$id" }?.let { chipKey = it.key; categoryId = id }
+            }
             chipAdapter.select(chipKey)
             load(reset = true)
         }
@@ -1064,7 +1090,20 @@ class HomeActivity : Activity(), CardListener {
             }
         }
 
+        override fun chooseGroup(): Boolean {
+            val rows = chipAdapter.rows.filter { !it.header }
+            if (rows.isEmpty()) return false
+            Look.choose(this@HomeActivity, "Grupper", rows.map { it.title }, checked = rows.indexOfFirst { it.key == chipKey }) {
+                selectChip(rows[it], true)
+            }
+            return true
+        }
+
+        /** Kanalerna i listan just nu (sifferknapparna spelar med dem som kanallista). */
+        fun channels(): List<Item> = channelAdapter.items
+
         private fun onChannelFocus(item: Item, position: Int) {
+            markFocused(item)
             if (!loading && chipKey != "fav" && channelAdapter.items.size < total && position >= channelAdapter.items.size - 30) {
                 load(reset = false)
             }
@@ -1244,6 +1283,8 @@ class HomeActivity : Activity(), CardListener {
             (holder.cards.getChildAt(0) ?: holder.cards).requestFocus()
         }
 
+        fun type(key: String) = press(key)
+
         private fun press(key: String) {
             query = when (key) {
                 "back" -> query.dropLast(1)
@@ -1401,6 +1442,8 @@ class HomeActivity : Activity(), CardListener {
             "Hämta listor igen",
             "Para om den här boxen",
             "Om TV Hub",
+            "Fjärrkontrollens knappar",
+            "Röststyrning när appen är stängd",
             "Mobilläge (för telefon)",
         )
         Look.choose(this, "Inställningar", labels) { which ->
@@ -1424,7 +1467,9 @@ class HomeActivity : Activity(), CardListener {
                         "Menyn till vänster: upp/ner väljer, höger går in. Håll in OK för fler val.\n" +
                         "Under uppspelning: upp/ner byter kanal, vänster/höger spolar i filmer, OK visar val.\n" +
                         "Tillbaka två gånger i menyn stänger appen.") {}
-                7 -> Look.confirm(this, "Byta till mobilläge?", "Mobilläget är gjort för touch på en telefon. På en TV-box behövs det inte.", "Byt") {
+                7 -> Keys.showSettings(this)
+                8 -> Control.showSettings(this)
+                9 -> Look.confirm(this, "Byta till mobilläge?", "Mobilläget är gjort för touch på en telefon. På en TV-box behövs det inte.", "Byt") {
                     prefs.layoutMode = "mobile"
                     startActivity(Intent(this, MobileActivity::class.java))
                     finish()
@@ -1505,8 +1550,158 @@ class HomeActivity : Activity(), CardListener {
                 }
                 return true
             }
+            if (event.repeatCount == 0) {
+                val code = event.keyCode
+                if (current == "search" && currentFocus !is EditText) {
+                    // Sök: siffrorna skriver i sökrutan.
+                    val d = when (code) {
+                        in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> code - KeyEvent.KEYCODE_0
+                        else -> -1
+                    }
+                    if (d >= 0) {
+                        searchPage?.type(d.toString())
+                        return true
+                    }
+                } else if (currentFocus !is EditText && digits.onKey(code)) {
+                    return true
+                }
+                Keys.browseAction(prefs, code)?.let { if (runKey(it)) return true }
+            }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun markFocused(item: Item?) {
+        focusedItem = item
+        focusedPage = current
+    }
+
+    /** Det markerade kortet eller kanalen, om fokus fortfarande ligger på sidan (inte i menyn). */
+    private fun focused(): Item? {
+        val view = currentFocus ?: return null
+        if (isInRail(view) || focusedPage != current) return null
+        return focusedItem
+    }
+
+    private fun needFocused(what: String = "en titel"): Item? {
+        val item = focused()
+        if (item == null) Toast.makeText(this, "Markera $what först.", Toast.LENGTH_SHORT).show()
+        return item
+    }
+
+    /** Fjärrkontrollens knappar i menyerna, se [Keys]. */
+    private fun runKey(action: String): Boolean {
+        when (action) {
+            "options" -> {
+                val view = currentFocus ?: return false
+                if (isInRail(view)) return false
+                view.performLongClick()
+            }
+            "favorite" -> {
+                val item = needFocused() ?: return true
+                if (privateMode() || item.type == "file") return true
+                toggleFavorite(item)
+            }
+            "groups" -> {
+                val page = currentPage()
+                if (page == null || !page.chooseGroup()) {
+                    showPage("live")
+                    handler.post { if (livePage?.chooseGroup() != true) focusPage() }
+                }
+            }
+            "night" -> FilmNightActivity.start(this)
+            "search", "live", "home" -> onRailClick(action)
+            "favorites" -> showFavorites()
+            "new" -> showNew()
+            "info" -> {
+                val item = needFocused() ?: return true
+                when (item.type) {
+                    "vod" -> DetailActivity.start(this, item.id, item.name)
+                    "series" -> SeriesActivity.start(this, item.id, item.name)
+                    "live" -> GuideActivity.start(this, item.id, item.name)
+                    "episode" -> item.seriesId?.let { SeriesActivity.start(this, it, item.categoryName ?: item.name, item.id) }
+                }
+            }
+            "guide" -> {
+                val item = focused()
+                if (item?.type == "live") GuideActivity.start(this, item.id, item.name)
+                else Toast.makeText(this, "Markera en kanal först.", Toast.LENGTH_SHORT).show()
+            }
+            "record" -> {
+                val item = needFocused() ?: return true
+                when (item.type) {
+                    "live" -> recordNowOn(item)
+                    "vod" -> RecordMedia.film(this, item.id)
+                    "series" -> RecordMedia.series(this, item.id)
+                    else -> Toast.makeText(this, "Det går inte att spela in.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            else -> return false
+        }
+        return true
+    }
+
+    /** Spelar in programmet som sänds nu på kanalen. */
+    private fun recordNowOn(channel: Item) {
+        Api.arr("/device/epg/${Api.enc(channel.id)}") { result ->
+            result.onSuccess { array ->
+                val now = System.currentTimeMillis() / 1000
+                val program = (0 until array.length()).mapNotNull { array.optJSONObject(it) }
+                    .firstOrNull { it.optLong("start") <= now && it.optLong("end") > now }
+                if (program == null) {
+                    GuideActivity.start(this, channel.id, channel.name)
+                    return@onSuccess
+                }
+                val title = program.optString("title")
+                Look.confirm(this, "● Spela in?", "${channel.name}: $title\n" +
+                    "${timeFormat.format(Date(program.optLong("start") * 1000))}–${timeFormat.format(Date(program.optLong("end") * 1000))}",
+                    "Spela in") {
+                    val body = JSONObject().put("stream_id", channel.id).put("title", title)
+                        .put("start", program.optLong("start")).put("end", program.optLong("end"))
+                    Api.obj("POST", "/device/recordings", body) { r ->
+                        r.onSuccess {
+                            RecScheduler.sync(this)
+                            Toast.makeText(this, "● Spelar in \"$title\" till USB-minnet.", Toast.LENGTH_LONG).show()
+                        }.onFailure { Toast.makeText(this, Api.friendly(it), Toast.LENGTH_LONG).show() }
+                    }
+                }
+            }.onFailure { Toast.makeText(this, Api.friendly(it), Toast.LENGTH_LONG).show() }
+        }
+    }
+
+    private fun showFavorites() {
+        val favorites = Item.list(home?.optJSONArray("favorites"))
+        if (favorites.isEmpty() || privateMode()) {
+            Toast.makeText(this, "Inga favoriter ännu. Håll in OK på en titel (eller tryck ★) för att lägga till.", Toast.LENGTH_LONG).show()
+            return
+        }
+        Look.choose(this, "★ Favoriter", favorites.map { listOfNotNull(it.name, it.typeLabel.ifEmpty { null }).joinToString("  ·  ") }) {
+            openItem(favorites[it], favorites)
+        }
+    }
+
+    private fun showNew() {
+        Api.obj("GET", "/device/new?type=all&limit=80") { result ->
+            result.onSuccess { data ->
+                val items = Item.list(data.optJSONArray("items"))
+                if (items.isEmpty()) {
+                    Toast.makeText(this, "Inget nytt ännu.", Toast.LENGTH_SHORT).show()
+                    return@onSuccess
+                }
+                val labels = items.map { item ->
+                    listOfNotNull(item.name, item.typeLabel.ifEmpty { null }, item.added?.let { Format.addedLabel(it) }).joinToString("  ·  ")
+                }
+                Look.choose(this, "Nytt tillagt", labels) { openItem(items[it], items) }
+            }.onFailure { Toast.makeText(this, Api.friendly(it), Toast.LENGTH_LONG).show() }
+        }
+    }
+
+    /** Sifferknapparna: kanalen med numret. Spelas med kanallistan om den är öppen. */
+    private fun onDigits(text: String) {
+        DigitEntry.lookup(this, text) { channel ->
+            val list = livePage?.channels()?.takeIf { l -> current == "live" && l.any { it.id == channel.id } } ?: listOf(channel)
+            openItem(channel, list)
+        }
     }
 
     @Deprecated("Deprecated in Java")

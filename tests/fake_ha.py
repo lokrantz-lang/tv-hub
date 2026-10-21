@@ -36,6 +36,14 @@ TOKENS = {"admin-token": "u-admin", "app-token-0123456789abcdef": "u-tvhub", "gu
 SUPERVISOR_TOKEN = "sup-token"
 INGRESS = "INGRESSTOK"
 SESSIONS = {}  # session -> (user_id, valid_until)
+SUBSCRIBERS = []  # (conn, id) för subscribe_events tv_hub_command
+SCRIPTS = {}  # skript skapade via config/script/config
+STATES = [
+    {"entity_id": "media_player.vardagsrum_tv", "state": "off",
+     "attributes": {"friendly_name": "Samsung 65", "source_list": ["TV", "HDMI 1", "HDMI 2"]}},
+    {"entity_id": "light.kok", "state": "on", "attributes": {"friendly_name": "Kök"}},
+]
+CALLS = []
 STATS = {"sessions": 0, "proxied": 0}
 ADMIN_PORT = 0
 
@@ -135,7 +143,12 @@ def handle_ws(conn, headers, supervisor):
     while True:
         msg = conn.ws_recv()
         mid, kind = msg.get("id"), msg.get("type")
-        if kind == "config/auth/list" and uid == "supervisor":
+        if kind == "subscribe_events" and uid == "supervisor":
+            SUBSCRIBERS.append((conn, mid, msg.get("event_type")))
+            conn.ws_send({"id": mid, "type": "result", "success": True, "result": None})
+        elif kind == "ping":
+            conn.ws_send({"id": mid, "type": "pong"})
+        elif kind == "config/auth/list" and uid == "supervisor":
             conn.ws_send({"id": mid, "type": "result", "success": True, "result": USERS}, split=True)
         elif kind == "auth/current_user" and uid != "supervisor":
             u = user(uid)
@@ -154,7 +167,44 @@ def handle_ws(conn, headers, supervisor):
                           "error": {"code": "unauthorized", "message": "Unauthorized"}})
 
 
+def handle_core(conn, method, path, headers):
+    """Supervisorns proxy till Home Assistants REST-API (/core/api/...)."""
+    if headers.get("authorization") != f"Bearer {SUPERVISOR_TOKEN}":
+        return respond(conn, 401, b'{"message":"401"}')
+    length = int(headers.get("content-length") or 0)
+    body = json.loads(conn.read_exact(length) or b"null") if length else None
+    sub = path[len("/core/api/"):]
+    CALLS.append((method, sub))
+    if sub.startswith("config/script/config/"):
+        sid = sub.rsplit("/", 1)[1]
+        if method == "POST":
+            if not isinstance(body, dict) or "sequence" not in body or "alias" not in body:
+                return respond(conn, 400, b'{"message":"Message malformed"}')
+            SCRIPTS[sid] = body
+            return respond(conn, 200, b'{"result":"ok"}')
+        if method == "DELETE":
+            SCRIPTS.pop(sid, None)
+            return respond(conn, 200, b'{"result":"ok"}')
+    if sub == "states" and method == "GET":
+        return respond(conn, 200, json.dumps(STATES).encode())
+    if sub.startswith(("services/", "events/")) and method == "POST":
+        return respond(conn, 200, b"[]")
+    return respond(conn, 404, b'{"message":"not found"}')
+
+
 def handle_http(conn, method, path, headers):
+    if path.startswith("/__fire"):
+        cid = path.split("=", 1)[1] if "=" in path else "0"
+        sent = 0
+        for c, sid, etype in list(SUBSCRIBERS):
+            try:
+                c.ws_send({"id": sid, "type": "event", "event": {"event_type": etype, "data": {"command_id": int(cid)}}})
+                sent += 1
+            except OSError:
+                SUBSCRIBERS.remove((c, sid, etype))
+        return respond(conn, 200, json.dumps({"sent": sent}).encode())
+    if path == "/__scripts":
+        return respond(conn, 200, json.dumps(SCRIPTS).encode())
     if path == "/__stats":
         return respond(conn, 200, json.dumps(STATS).encode())
     if path == "/__expire":
@@ -207,6 +257,8 @@ def serve(port, context, supervisor):
                     if path != want:
                         return respond(conn, 404, b"{}")
                     handle_ws(conn, headers, supervisor)
+                elif supervisor and path.startswith("/core/api/"):
+                    handle_core(conn, method, path, headers)
                 elif not supervisor:
                     handle_http(conn, method, path, headers)
             except (EOFError, ConnectionError, OSError, ValueError):

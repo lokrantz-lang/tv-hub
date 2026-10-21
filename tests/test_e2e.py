@@ -76,7 +76,8 @@ def main():
                     "-days", "2", "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost"],
                    check=True, capture_output=True)
     env.update(HA_WS_URL=f"ws://127.0.0.1:{HA_WS}/core/websocket", SUPERVISOR_TOKEN="sup-token",
-               INGRESS_ENTRY="/api/hassio_ingress/INGRESSTOK", REMOTE_CA_FILE=cert)
+               INGRESS_ENTRY="/api/hassio_ingress/INGRESSTOK", REMOTE_CA_FILE=cert,
+               SUPERVISOR_API=f"http://127.0.0.1:{HA_WS}")
     fake_ha = subprocess.Popen([sys.executable, FAKE_HA, str(HA_TLS), str(HA_WS), str(ADMIN), cert, key])
     fake = subprocess.Popen([sys.executable, FAKE, str(FAKE_PORT)])
     hub = subprocess.Popen([sys.executable, APP], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -266,6 +267,8 @@ def main():
         media_recordings(ta, tb, pa, pb)
         episode_favorites(ta)
         film_night(ta, pa)
+        categories_and_new(ta)
+        remote_control(ta, tb, pa, pb, cert)
         remote_access(ta, pa, cert)
 
         s, res = call("GET", f"{A}/", raw=True)
@@ -904,6 +907,154 @@ def film_night(ta, pa):
     s, n10 = call("GET", f"{D}/device/night?viewer={adult_id}&limit=10", token=ta)
     check("utan AI fungerar filmkväll ändå", s == 200 and n10["items"], n10)
     fake_mode("ok", dupes=0)
+
+
+def categories_and_new(ta):
+    """2.0: egna kategorinamn, startkategori, Nytt med datum, direkt uppdateringskoll."""
+    print("Kategorinamn, startkategori och Nytt")
+    s, res = call("POST", f"{A}/api/categories/prefs", {"type": "vod", "changes": [{"category_id": "10", "display_name": "Premiär"}]})
+    s, cats = call("GET", f"{A}/api/categories?type=vod")
+    c10 = next(c for c in cats if c["category_id"] == "10")
+    check("eget kategorinamn sparas", c10["name"] == "Premiär" and c10["original_name"] == "Filmer 2026", c10)
+    s, b = call("GET", f"{D}/device/browse?type=vod&category_id=10", token=ta)
+    check("eget namn syns i appen", b["items"] and all(i["category_name"] == "Premiär" for i in b["items"]), b["items"][:1])
+    s, home = call("GET", f"{D}/device/home", token=ta)
+    check("eget namn i appens kategorilista", any(c["name"] == "Premiär" for c in home["categories"]["vod"]), home["categories"]["vod"])
+    s, res = call("PUT", f"{A}/api/categories/start", {"type": "vod", "category_id": "10"})
+    s, home = call("GET", f"{D}/device/home", token=ta)
+    check("startkategori skickas till appen", home["start_categories"].get("vod") == "10", home.get("start_categories"))
+    s, cats = call("GET", f"{A}/api/categories?type=vod")
+    check("startkategori markeras i webbadminen", next(c for c in cats if c["category_id"] == "10")["start"], cats[:2])
+    s, res = call("PUT", f"{A}/api/categories/start", {"type": "vod", "category_id": "nope"})
+    check("okänd startkategori nekas", s == 400, res)
+    s, res = call("PUT", f"{A}/api/categories/start", {"type": "vod", "category_id": None})
+    s, home = call("GET", f"{D}/device/home", token=ta)
+    check("startkategori kan tas bort", "vod" not in home["start_categories"], home.get("start_categories"))
+    s, res = call("POST", f"{A}/api/categories/prefs", {"type": "vod", "changes": [{"category_id": "10", "display_name": ""}]})
+    s, cats = call("GET", f"{A}/api/categories?type=vod")
+    check("tomt namn = Toucans namn igen", next(c for c in cats if c["category_id"] == "10")["name"] == "Filmer 2026", cats[:2])
+    s, new = call("GET", f"{D}/device/new?type=all", token=ta)
+    seen = [i.get("first_seen") or 0 for i in new["items"]]
+    check("Nytt: nyaste först med datum", s == 200 and new["items"] and seen == sorted(seen, reverse=True) and seen[0] > 0, new["items"][:2])
+    s, new = call("GET", f"{D}/device/new?type=nope", token=ta)
+    check("Nytt: okänd typ nekas", s == 400, new)
+    s, up = call("GET", f"{D}/device/app-update?code=1&force=1", token=ta)
+    check("sök efter uppdatering direkt", s == 200 and up["available"], up)
+    # Fjärrkontrollens knappar
+    s, ch = call("GET", f"{D}/device/channel-by-num?num=3", token=ta)
+    check("sifferknappar: kanal med nummer", s == 200 and ch["id"] == "103" and ch["num"] == 3, ch)
+    s, ch = call("GET", f"{D}/device/channel-by-num?num=90", token=ta)
+    check("sifferknappar: vuxenkanal syns inte i vanligt läge", s == 404, ch)
+    s, ch = call("GET", f"{D}/device/channel-by-num?num=abc", token=ta)
+    check("sifferknappar: ogiltigt nummer nekas", s == 400, ch)
+    s, f1 = call("POST", f"{D}/device/favorites", {"type": "live", "id": "104", "toggle": True}, token=ta)
+    s, f2 = call("POST", f"{D}/device/favorites", {"type": "live", "id": "104", "toggle": True}, token=ta)
+    check("★-knappen växlar favorit", f1.get("favorite") is True and f2.get("favorite") is False, (f1, f2))
+
+
+def _poll(token, results, wait=8):
+    s, res = call("GET", f"{D}/device/commands?wait={wait}", token=token)
+    results.append((s, res))
+
+
+def remote_control(ta, tb, pa, pb, cert):
+    """2.0: fjärrstart, röstkommandon och skript i Home Assistant."""
+    import ssl
+    import threading
+    print("Fjärrstart och röstkommandon")
+    ctx = ssl.create_default_context(cafile=cert)
+    ok = wait_for(lambda: call("GET", f"{A}/api/voice")[1]["listener"]["connected"], timeout=20)
+    check("lyssnar på Home Assistant", ok, call("GET", f"{A}/api/voice")[1]["listener"])
+    s, boxes = call("GET", f"{D}/device/boxes", token=ta)
+    check("telefonen ser de andra boxarna", [b["id"] for b in boxes] == [pb["device_id"]], boxes)
+
+    results = []
+    t = threading.Thread(target=_poll, args=(tb, results)); t.start(); time.sleep(0.5)
+    s, res = call("POST", f"{A}/api/play-on", {"device_id": pb["device_id"], "type": "vod", "id": "501"})
+    t.join()
+    cmds = results[0][1]["commands"]
+    check("spela på box från webbadminen når boxen direkt", s == 200 and cmds and cmds[0]["action"] == "play"
+          and cmds[0]["id"] == "501" and cmds[0]["auto_resume"], (res, results))
+    s, boxes = call("GET", f"{D}/device/boxes", token=ta)
+    check("boxen syns som påslagen", boxes[0]["online"], boxes)
+    results = []
+    t = threading.Thread(target=_poll, args=(tb, results, 1)); t.start(); t.join()
+    check("utan kommando: tom lista efter väntan", results[0][1]["commands"] == [], results)
+
+    s, mp = call("GET", f"{A}/api/voice/media-players")
+    check("TV-apparater från Home Assistant", mp["available"] and mp["entities"][0]["entity_id"] == "media_player.vardagsrum_tv"
+          and "HDMI 1" in mp["entities"][0]["sources"] and len(mp["entities"]) == 1, mp)
+    # Något att fortsätta titta på
+    s, p = call("POST", f"{D}/device/play", {"type": "vod", "id": "502"}, token=ta)
+    call("POST", f"{D}/device/stop", {"session_id": p["session_id"], "metrics": {"position_ms": 600000, "duration_ms": 10800000}}, token=ta)
+    s, cmd = call("POST", f"{A}/api/voice", {"name": "Fortsätt titta i sovrummet", "action": "continue", "device_id": pb["device_id"],
+                                             "params": {"tv_entity": "media_player.vardagsrum_tv", "tv_source": "HDMI 1", "tv_delay": 8}})
+    check("röstkommando sparas och skript skapas", s == 201 and cmd["script_status"] == "ok" and cmd["entity_id"].startswith("script.tv_hub_"), cmd)
+    scripts = json.loads(urllib.request.urlopen(urllib.request.Request(f"https://localhost:{HA_TLS}/__scripts"), context=ctx).read())
+    sc = scripts.get(cmd["script_id"]) or {}
+    seq = sc.get("sequence") or []
+    check("skriptet slår på TV:n, byter källa och skickar händelsen",
+          sc.get("alias") == "Fortsätt titta i sovrummet" and seq[0]["then"][0]["action"] == "media_player.turn_on"
+          and seq[0]["then"][1]["delay"]["seconds"] == 8 and seq[1]["data"]["source"] == "HDMI 1"
+          and seq[2] == {"event": "tv_hub_command", "event_data": {"command_id": cmd["id"]}}, sc)
+    results = []
+    t = threading.Thread(target=_poll, args=(tb, results)); t.start(); time.sleep(0.5)
+    fired = json.loads(urllib.request.urlopen(f"https://localhost:{HA_TLS}/__fire?command_id={cmd['id']}", context=ctx).read())
+    t.join()
+    cmds = results[0][1]["commands"]
+    check("Google → skript → händelse → boxen spelar", fired["sent"] >= 1 and cmds and cmds[0]["id"] == "502"
+          and cmds[0]["type"] == "vod", (fired, results))
+    s, res = call("POST", f"{A}/api/voice/{cmd['id']}/run")
+    check("testa kommandot från webbadminen", s == 200 and res["description"].startswith("Film:"), res)
+    call("GET", f"{D}/device/commands?wait=0", token=tb)
+
+    s, ser = call("POST", f"{A}/api/voice", {"name": "Bonusfamiljen i sovrummet", "action": "series", "device_id": pb["device_id"],
+                                             "params": {"query": "bonusfam"}})
+    s, res = call("POST", f"{A}/api/voice/{ser['id']}/run")
+    c = res.get("command") or {}
+    check("serie: avsnitt med kö, fortsätter där ni var", s == 200 and c.get("type") == "episode" and c.get("series_id") == "900"
+          and c.get("queue_ids") and c["queue_ids"][c["queue_index"]] == c["id"] and c.get("auto_resume"), res)
+    s, prog = call("POST", f"{A}/api/voice", {"name": "Senaste programmet", "action": "program", "device_id": pb["device_id"],
+                                              "params": {"query": "Program", "channel_id": "101"}})
+    s, res = call("POST", f"{A}/api/voice/{prog['id']}/run")
+    c = res.get("command") or {}
+    check("senaste programmet ur arkivet", s == 200 and c.get("type") == "catchup" and "Program -1" in c.get("name", "")
+          and c.get("catchup_minutes") == 60, res)
+    s, bad = call("POST", f"{A}/api/voice", {"name": "Fel", "action": "program", "device_id": pb["device_id"], "params": {"query": "Rapport"}})
+    check("program utan kanal nekas", s == 400, bad)
+    s, nope = call("POST", f"{A}/api/voice", {"name": "Finns inte", "action": "series", "device_id": pb["device_id"], "params": {"query": "xyzzy"}})
+    s, res = call("POST", f"{A}/api/voice/{nope['id']}/run")
+    check("okänd titel förklaras", s == 400 and "Hittade inget" in res.get("error", ""), res)
+    s, ch = call("POST", f"{A}/api/voice", {"name": "SVT1", "action": "channel", "device_id": pb["device_id"], "params": {"query": "svt1"}})
+    s, res = call("POST", f"{A}/api/voice/{ch['id']}/run")
+    check("kanal via namn", res.get("command", {}).get("id") == "101", res)
+    s, pa_cmd = call("POST", f"{A}/api/voice", {"name": "Pausa sovrummet", "action": "pause", "device_id": pb["device_id"],
+                                                "params": {"tv_entity": "media_player.vardagsrum_tv"}})
+    scripts = json.loads(urllib.request.urlopen(urllib.request.Request(f"https://localhost:{HA_TLS}/__scripts"), context=ctx).read())
+    check("paus slår inte på TV:n", len(scripts[pa_cmd["script_id"]]["sequence"]) == 1, scripts.get(pa_cmd["script_id"]))
+    s, res = call("POST", f"{A}/api/voice/defaults", {"device_id": pa["device_id"]})
+    names = [c["name"] for c in res["created"]]
+    check("standardkommandon för en box", len(names) == 4 and names[0].startswith("Fortsätt titta i "), names)
+    s, res = call("POST", f"{A}/api/voice/defaults", {"device_id": pa["device_id"]})
+    check("standardkommandon skapas inte två gånger", res["created"] == [], res)
+    s, res = call("POST", f"{A}/api/voice/{cmd['id']}/script")
+    check("skriptet kan skapas om och visas som text", res["status"] == "ok" and "tv_hub_command" in res["yaml"], res)
+    s, _ = call("DELETE", f"{A}/api/voice/{cmd['id']}")
+    scripts = json.loads(urllib.request.urlopen(urllib.request.Request(f"https://localhost:{HA_TLS}/__scripts"), context=ctx).read())
+    check("ta bort kommandot tar bort skriptet", cmd["script_id"] not in scripts, list(scripts))
+    call("GET", f"{D}/device/commands?wait=0", token=tb)
+
+    # Telefonen: spela på TV:n
+    s, res = call("POST", f"{D}/device/send", {"device_id": pb["device_id"], "type": "episode", "id": "9001", "series_id": "900"}, token=ta)
+    results = []
+    _poll(tb, results, 1)
+    c = (results[0][1]["commands"] or [{}])[0]
+    check("spela på TV:n från telefonen", s == 200 and c.get("type") == "episode" and c.get("series_id") == "900", (res, results))
+    s, res = call("POST", f"{D}/device/send", {"device_id": pb["device_id"], "type": "vod", "id": "599"}, token=ta)
+    check("vuxeninnehåll skickas inte till en box", s == 400, res)
+    s, res = call("POST", f"{D}/device/send", {"device_id": 999, "type": "vod", "id": "501"}, token=ta)
+    check("okänd box nekas", s == 400, res)
+    call("GET", f"{D}/device/commands?wait=0", token=tb)
 
 
 def remote_access(ta, pa, cert):

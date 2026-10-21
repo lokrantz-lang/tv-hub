@@ -36,6 +36,12 @@
                 android:layout_weight="1" />
 
             <TextView
+                android:id="@+id/t_cast"
+                style="@style/TouchPill"
+                android:text="Casta"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/t_audio"
                 style="@style/TouchPill"
                 android:text="Ljud" />

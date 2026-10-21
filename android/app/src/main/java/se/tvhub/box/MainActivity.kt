@@ -115,6 +115,8 @@ class MainActivity : Activity() {
             Session.recordingsSynced = true
             RecScheduler.sync(this)
         }
+        // Röststyrning och fjärrstart (bara TV-boxarna).
+        Control.start(this)
         if (FormFactor.isMobile(this)) {
             // Telefonen: mobilläget (samma app, eget utseende).
             startActivity(Intent(this, MobileActivity::class.java))
@@ -1166,6 +1168,9 @@ class MainActivity : Activity() {
             "Hämta listor igen",
             "Para om den här boxen",
             "Om TV Hub",
+            "Fjärrkontrollens knappar",
+            "Röststyrning när appen är stängd",
+            "Mobilläge (för telefon)",
         )
         AlertDialog.Builder(this)
             .setTitle("Inställningar")
@@ -1186,6 +1191,13 @@ class MainActivity : Activity() {
                     }
                     5 -> confirmRepair()
                     6 -> showAbout()
+                    7 -> Keys.showSettings(this)
+                    8 -> Control.showSettings(this)
+                    9 -> {
+                        prefs.layoutMode = "mobile"
+                        startActivity(Intent(this, MobileActivity::class.java))
+                        finish()
+                    }
                 }
             }
             .show()

@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Röststyrning: starta uppspelning när appen är stängd (Android 10 och senare) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -46,6 +48,10 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".MListActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".FilmNightActivity"
             android:configChanges="keyboard|keyboardHidden|navigation"
             android:exported="false" />
@@ -79,8 +85,18 @@
 
         <activity
             android:name=".PlayerActivity"
-            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize"
+            android:supportsPictureInPicture="true"
             android:exported="false" />
+
+        <service
+            android:name=".ControlService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="se.tvhub.box.CastOptionsProvider" />
 
         <service
             android:name=".RecordService"

@@ -197,7 +197,11 @@ class RecordReceiver : BroadcastReceiver() {
         if (!Prefs(context).paired) return
         when (action) {
             RecScheduler.ACTION_START -> RecScheduler.send(context, RecScheduler.ACTION_START, intent.getIntExtra("id", 0))
-            else -> RecScheduler.sync(context)
+            else -> {
+                RecScheduler.sync(context)
+                // Efter omstart eller uppdatering: lyssna efter röststyrning igen.
+                if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED) Control.start(context)
+            }
         }
     }
 }

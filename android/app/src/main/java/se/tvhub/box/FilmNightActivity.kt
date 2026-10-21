@@ -25,12 +25,15 @@ import org.json.JSONObject
  */
 class FilmNightActivity : Activity(), CardListener {
     companion object {
-        fun start(context: Context) {
-            context.startActivity(Intent(context, FilmNightActivity::class.java))
+        fun start(context: Context, viewerId: Int = 0) {
+            val intent = Intent(context, FilmNightActivity::class.java).putExtra("viewer", viewerId)
+            if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
         }
     }
 
     private lateinit var prefs: Prefs
+    private var pendingViewer: Int? = null
     private lateinit var viewersList: RecyclerView
     private lateinit var filtersList: RecyclerView
     private lateinit var list: RecyclerView
@@ -94,6 +97,11 @@ class FilmNightActivity : Activity(), CardListener {
             list.adapter = cardAdapter
         }
         viewerId = prefs.activeViewer
+        // Röststyrning: "Filmkväll med döttrarna" väljer tittarläget direkt.
+        intent.getIntExtra("viewer", 0).takeIf { it > 0 }?.let {
+            viewerId = it
+            pendingViewer = it
+        }
         status.text = "Hämtar förslag…"
         renderFilters()
     }
@@ -136,6 +144,10 @@ class FilmNightActivity : Activity(), CardListener {
 
     private fun show(data: JSONObject, keepFocus: Boolean) {
         val viewers = Taste.parseViewers(data.optJSONArray("viewers"))
+        pendingViewer?.let { id ->
+            pendingViewer = null
+            viewers.firstOrNull { it.id == id }?.let { prefs.setActiveViewer(it.id, it.name) }
+        }
         val v = data.optJSONObject("viewer")
         viewerAdapter.submit(viewers.map { Chip("v:${it.id}", it.name, it.id == (viewerId ?: -1)) })
         val filters = data.optJSONObject("filters")

@@ -35,6 +35,9 @@ Appen startar i det **moderna utseendet**: meny med ikoner till vänster, Hem me
 Live-TV, Filmer, Serier, Sök och Inspelningar. Det **klassiska utseendet** med tre kolumner finns kvar:
 välj **Inställningar → Utseende** i appen. Valet sparas per box.
 
+Under **Kategorier** i webbadminen kan en kategori få ett eget namn (*Eget namn*) och väljas som
+**Start**: Filmer, Serier eller Live öppnar då i den kategorin, både på TV:n och i telefonen.
+
 ## Inspelning
 
 Inspelningarna sparas på ett USB-minne i boxen. Webbadminen håller schemat och visar status.
@@ -81,6 +84,56 @@ Välj vem som tittar och få tio förslag. TV: *Filmkväll* i menyn. Telefon: kn
 - **Import:** IMDb (*Your Ratings → Export*) eller Letterboxd (*Settings → Data → Export*). Matchas på titel och årtal.
 - **AI (valfritt):** OpenAI, Anthropic eller egen server som följer OpenAI:s standard (t.ex. Ollama: adress `http://<dator>:11434/v1`, ingen nyckel). Tjänsten får tittarlägets namn och smaktext, titlar ni betygsatt och sett, och ett urval kandidater. Utan tjänst: *Kopiera underlag* och klistra in svaret.
 
+## Fjärrkontrollens knappar
+
+| Knapp | I menyerna | Under uppspelning |
+|---|---|---|
+| ☰ Meny | Val för det markerade (som att hålla in OK) | Val i spelaren |
+| ★ Favorit | Favorit på/av för det markerade | Favorit på/av (avsnitt: serien) |
+| Röd | Filmkväll | Spela in programmet |
+| Grön | Sök | Förra kanalen |
+| Gul | Favoriter | Från programmets början |
+| Blå | Nytt tillagt | Tillbaka till direkt |
+| Info | Detaljer för det markerade | Programinfo |
+| Guide | Programguide för markerad kanal | Programguide |
+| ● Inspelning | Spela in det markerade | Spela in programmet |
+| Siffror | Byt till kanalnumret (som i kanallistan) | Samma. Bara 0 = förra kanalen |
+| Grupper (lär in den först) | Välj kategori i en lista | Kanallistan (eller avsnitten) |
+
+Knapparna fungerar i det moderna utseendet och i spelaren. Olika fjärrar skickar olika koder för
+★, Grupper och prickknapparna. Lär in dem under **Inställningar → Fjärrkontrollens knappar → Lär in en knapp**
+och välj vad knappen ska göra i menyerna och under uppspelning.
+
+## Röststyrning och fjärrstart
+
+Säg till Google (eller tryck i telefonen eller webbadminen) och boxen startar uppspelningen.
+
+- **Telefonen:** *📺 Spela på TV:n* på en film, serie, kanal eller ett avsnitt (håll in, eller knappen på detaljsidan).
+- **Webbadminen:** *Spela på box* i Biblioteket.
+- **Röstkommandon:** *Boxar → Röststyrning och fjärrstart*. Varje kommando blir ett skript i Home Assistant
+  (`script.tv_hub_…`) som först kan slå på TV:n och byta källa och sedan säger åt boxen vad den ska göra:
+  fortsätta titta, en serie där ni var, senaste programmet ur arkivet (t.ex. Rapport på SVT1), en kanal,
+  en film, Filmkväll, pausa, fortsätta eller stänga. *Lägg till standardkommandon* skapar
+  "Fortsätt titta i …", "Pausa …", "Spela vidare i …" och "Stäng TV Hub i …" för en box.
+
+**Ställ in Google en gång:**
+
+1. Exponera skripten mot Google Assistant i Home Assistant: *Inställningar → Röstassistenter → Exponera*
+   (med Nabu Casa), eller lägg till dem i `google_assistant:` om du kör egen koppling.
+2. Säg *"Hej Google, synka mina enheter"* (eller vänta en stund).
+3. Skripten blir scener hos Google: *"Hej Google, aktivera Fortsätt titta i sovrummet"*. Vill du kunna säga
+   bara *"Fortsätt titta i sovrummet"*: skapa en rutin i Google Home-appen med den frasen som startar scenen.
+
+**Boxen måste vara på** (eller i standby med nätverket igång). Den lyssnar efter kommandon i bakgrunden.
+
+- **Z10 Pro (Android 10):** för att kunna starta uppspelning när appen är stängd behövs behörigheten
+  *Visa ovanpå andra appar*: *Inställningar → Röststyrning när appen är stängd* i appen. Utan den fungerar
+  kommandona bara medan TV Hub är öppen.
+- **Z Alpha (Android 7):** behöver ingenting.
+- **TV:n:** skriptet kan slå på TV:n och byta källa om den finns i Home Assistant (t.ex. Samsung-integrationen).
+  Slås en Samsung-TV inte på från avstängt läge: lägg till Wake on LAN enligt Samsung-integrationens dokumentation.
+- Fjärrstart startar aldrig vuxeninnehåll, och boxen slår av vuxenläget innan den spelar.
+
 ## Telefonen och utanför hemmet
 
 Samma app fungerar på en Android-telefon. På telefonen väljs mobilläget automatiskt.
@@ -101,6 +154,14 @@ Hemma pratar appen direkt med Home Assistant. Utanför hemmet går den via Nabu 
 - Bara anrop till TV Hub går via Nabu Casa. Videon kommer direkt från Toucan (2–4 GB per timme i HD på mobildata).
 - Toucan ser telefonens IP-adress när du tittar borta, och tittandet räknas som en anslutning.
 - Användaren `tvhub` är inte administratör. Ta bort nyckeln i Home Assistant om telefonen försvinner.
+
+**Chromecast:** tryck på bilden under en film eller ett avsnitt och välj *Casta*. Chromecasten hämtar videon
+direkt från Toucan och telefonen blir fjärrkontroll (paus, spola, sluta casta). Fortsätt titta sparas som vanligt.
+
+- Fungerar med MP4-filer. MKV fungerar bara på vissa enheter (oftast Chromecast med Google TV). Kanaler och arkiv kan inte castas.
+- Telefonen och Chromecasten måste vara på samma wifi. På hotell blockeras det ofta. Toucan ser då hotellets IP-adress.
+- Telefonen kan låsas medan den castar. Stäng spelaren för att sluta.
+- **Bild-i-bild:** tryck på hemknappen under uppspelning så fortsätter den i ett litet fönster.
 
 ## Säkerhet
 

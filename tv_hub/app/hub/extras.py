@@ -256,7 +256,7 @@ def notify_home_assistant(hits):
     for path, body in calls:
         try:
             request = urllib.request.Request(
-                f"http://supervisor/core/api/{path}", data=json.dumps(body).encode(), method="POST",
+                f"{os.environ.get('SUPERVISOR_API', 'http://supervisor')}/core/api/{path}", data=json.dumps(body).encode(), method="POST",
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             )
             urllib.request.urlopen(request, timeout=10).read()

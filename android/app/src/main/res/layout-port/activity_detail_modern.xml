@@ -144,6 +144,19 @@
                     android:textColor="@color/m_on_focus"
                     android:textSize="14sp"
                     android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/play_on_tv"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/m_button"
+                    android:text="📺  TV"
+                    android:textAllCaps="false"
+                    android:textColor="@color/m_on_focus"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
             </LinearLayout>
 
             <TextView

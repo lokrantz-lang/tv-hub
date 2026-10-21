@@ -112,6 +112,13 @@ class Prefs(context: Context) {
     }
 
     /** Utseende: modernt (standard) eller klassiskt (tre kolumner som tidigare). Mobilen är alltid modern. */
+    /** Egna val för fjärrkontrollens knappar (JSON), se [Keys]. */
+    var keyMap: String
+        get() = sp.getString("key_map", "") ?: ""
+        set(value) {
+            sp.edit().putString("key_map", value).apply()
+        }
+
     var modern: Boolean
         get() = sp.getBoolean("modern_ui", true) || FormFactor.isMobile(appContext)
         set(value) {

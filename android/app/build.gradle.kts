@@ -66,4 +66,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.media3:media3-extractor:$media3")
     implementation("androidx.media3:media3-ui:$media3")
+    // Chromecast från telefonen. Utan Google Play-tjänster (vissa boxar) gör de ingenting.
+    implementation("com.google.android.gms:play-services-cast-framework:21.4.0")
+    implementation("androidx.mediarouter:mediarouter:1.6.0")
 }

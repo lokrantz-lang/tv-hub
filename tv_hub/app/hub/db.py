@@ -338,6 +338,21 @@ SCHEMA = [
     );
     ALTER TABLE sessions ADD COLUMN viewer_id INTEGER
     """,
+    # version 9: egna visningsnamn på kategorier, röstkommandon (fjärrstart via Home Assistant)
+    """
+    ALTER TABLE category_prefs ADD COLUMN display_name TEXT;
+    CREATE TABLE voice_commands (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        device_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        params TEXT NOT NULL DEFAULT '{}',
+        script_id TEXT,
+        script_status TEXT,
+        created TEXT NOT NULL,
+        updated TEXT NOT NULL
+    )
+    """,
 ]
 
 

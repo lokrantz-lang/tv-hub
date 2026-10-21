@@ -31,7 +31,8 @@ def _apk_path(version_code):
 def latest(force=False):
     """{"version_code", "version_name"} eller None. Cachas en halvtimme."""
     with _lock:
-        if not force and time.time() - _cache["checked"] < CHECK_EVERY_S:
+        age = time.time() - _cache["checked"]
+        if age < (20 if force else CHECK_EVERY_S):
             return _cache["latest"]
         _cache["checked"] = time.time()
         url = _url("version.json")

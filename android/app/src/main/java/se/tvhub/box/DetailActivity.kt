@@ -80,6 +80,13 @@ class DetailActivity : Activity(), CardListener {
             }
             Look.focusGrow(button, 1.05f)
         }
+        findViewById<Button?>(R.id.play_on_tv)?.let { button ->
+            // Telefonen: starta filmen på en TV-box.
+            if (FormFactor.isMobile(this) && !prefs.adultMode) {
+                button.visibility = View.VISIBLE
+                button.setOnClickListener { BoxSend.choose(this, JSONObject().put("type", "vod").put("id", vodId)) }
+            }
+        }
         findViewById<Button?>(R.id.versions)?.let { button ->
             button.setOnClickListener { chooseVersion() }
             Look.focusGrow(button, 1.05f)

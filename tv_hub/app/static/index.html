@@ -298,7 +298,7 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
         <form id="ai-form" class="viewer-grid" style="align-items:end">
           <label class="f">Tjänst<select id="ai-provider"><option value="off">Av</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic (Claude)</option><option value="custom">Egen server (OpenAI-standard, t.ex. Ollama)</option></select></label>
           <label class="f">Modell<input id="ai-model" placeholder="t.ex. gpt-4o-mini, claude-haiku-5-5, llama3.1"></label>
-          <label class="f">Adress (bara egen server, annars tom)<input id="ai-url" placeholder="http://192.168.86.20:11434/v1"></label>
+          <label class="f">Adress (bara egen server, annars tom)<input id="ai-url" placeholder="http://192.168.1.20:11434/v1"></label>
           <label class="f">Nyckel<input id="ai-key" type="password" autocomplete="off"></label>
           <label class="f" style="display:flex; gap:6px; align-items:center; color:var(--text)"><input type="checkbox" id="ai-nightly" style="width:auto; min-height:0"> Räkna om varje natt</label>
           <div class="row"><button class="btn primary" type="submit">Spara</button><button class="btn" type="button" id="ai-test">Testa</button><button class="btn" type="button" id="ai-run">Räkna förslag nu</button></div>
@@ -398,6 +398,7 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
       <div class="hd"><h2>Kategorier i boxarna</h2><span class="small muted" id="cat-summary"></span></div>
       <div class="bd" style="display:grid; gap:12px">
         <p class="small muted" style="margin:0">Dölj kategorier du aldrig använder, till exempel kanaler på andra språk. Dolda kategorier syns inte i boxarnas listor eller sök. Favoriter och grupper påverkas inte. Ordningen här är ordningen i boxarna.<br>
+          <strong>Eget namn</strong> visas i alla appar. <strong>Start</strong>: kategorin som Filmer, Serier eller Live öppnar med i stället för Alla.<br>
           <strong>18+:</strong> kategorier med "For Adults", "Porn" eller "XXX" i namnet visas bara i boxarnas dolda vuxenläge. Välj <em>Alltid 18+</em> eller <em>Aldrig 18+</em> om regeln har fel för en kategori.</p>
         <div class="row">
           <div class="seg" id="cat-type">
@@ -522,6 +523,28 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
       <div class="bd">
         <p class="small muted" style="margin-top:0">En nyckel för REST-sensorerna i <span class="mono">tv_hub_package.yaml</span>. Den visas bara en gång.</p>
         <div id="ha-token" class="mono hidden" style="word-break:break-all; padding:10px; background:var(--panel-2); border-radius:8px"></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Röststyrning och fjärrstart</h2><span id="vc-status" class="small"></span></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Varje röstkommando blir ett skript i Home Assistant. Exponera skriptet mot Google som du gör med dina andra skript och säg "Hej Google, aktivera" och skriptets namn (eller gör en rutin i Google Home med frasen du vill säga). Skriptet kan slå på TV:n och byta källa först. Boxen måste vara påslagen.</p>
+        <div id="vc-defaults" class="row" style="margin-bottom:8px"></div>
+        <ul class="list" id="vc-list"></ul>
+        <h3 style="font-size:14px; margin:16px 0 8px" id="vc-form-title">Nytt röstkommando</h3>
+        <form id="vc-form" class="viewer-grid" style="align-items:end">
+          <label class="f">Namn (det du säger)<input id="vc-name" placeholder="t.ex. Rapport i vardagsrummet"></label>
+          <label class="f">Box<select id="vc-box"></select></label>
+          <label class="f">Vad ska hända<select id="vc-action"></select></label>
+          <label class="f" id="vc-query-wrap">Titel<input id="vc-query" placeholder="t.ex. Robinson"></label>
+          <label class="f" id="vc-channel-wrap">Kanal<input id="vc-channel" list="vc-channels" placeholder="t.ex. SVT1"><datalist id="vc-channels"></datalist></label>
+          <label class="f" id="vc-viewer-wrap">Tittarläge<select id="vc-viewer"></select></label>
+          <label class="f">Slå på TV:n först<select id="vc-tv"><option value="">Nej</option></select></label>
+          <label class="f">Källa på TV:n<select id="vc-source"><option value="">Ändra inte</option></select></label>
+          <label class="f">Vänta efter påslag (sek)<input id="vc-delay" type="number" min="0" max="60" value="10"></label>
+          <div class="row"><button class="btn primary" type="submit">Spara</button><button class="btn" type="button" id="vc-cancel" hidden>Avbryt</button></div>
+        </form>
+        <div id="vc-yaml" class="hidden" style="margin-top:10px"><p class="small muted">Skriptet kunde inte skapas automatiskt. Klistra in det här under <em>Inställningar → Automationer och scener → Skript → ⋮ → Redigera i YAML</em>:</p><pre class="mono answer" id="vc-yaml-text"></pre></div>
       </div>
     </div>
     <div class="panel" style="margin-top:16px">
@@ -848,6 +871,7 @@ function renderDetail(it, series) {
         <button class="btn ${it.favorite ? "" : "primary"} star-btn" data-act="fav" aria-pressed="${!!it.favorite}" data-type="${it.type}" data-id="${esc(it.id)}">${it.favorite ? "★ Favorit" : "☆ Lägg till i favoriter"}</button>
         ${groupsCache.length ? `<select data-act="group" style="width:auto"><option value="">+ Lägg i grupp</option>${groupOpts}</select>` : ""}
         ${it.type === "live" ? `<button class="btn" data-act="record">Spela in från guiden…</button>` : ""}
+        ${!it.adult && boxesCache.length ? `<select data-act="playbox" style="width:auto"><option value="">▶ Spela på box…</option>${boxesCache.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}</select>` : ""}
         ${it.type !== "live" && boxesCache.length ? `<select data-act="recbox" style="width:auto"><option value="">⬇ ${it.type === "series" ? "Spela in hela serien" : "Spela in"} på box…</option>${boxesCache.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}</select>` : ""}
       </div>
       ${(it.type === "vod" || it.type === "series") && !it.adult ? `<div class="taste-box" id="taste-box" data-type="${it.type}" data-id="${esc(it.id)}"></div>` : ""}
@@ -898,6 +922,16 @@ $("lib-detail").addEventListener("click", (e) => {
   }
 });
 $("lib-detail").addEventListener("change", (e) => {
+  const play = e.target.closest("select[data-act=playbox]");
+  if (play && play.value) {
+    const favBtn = $("lib-detail").querySelector("[data-act=fav]");
+    guarded(async () => {
+      const r = await api("play-on", { method: "POST", body: { device_id: Number(play.value), type: favBtn.dataset.type, id: favBtn.dataset.id } });
+      toast(`${r.description}${r.online ? "" : " – boxen svarar inte just nu (är den på och har TV Hub 2.0?)"}`);
+    });
+    play.value = "";
+    return;
+  }
   const rec = e.target.closest("select[data-act=recbox]");
   if (rec && rec.value) {
     const favBtn = $("lib-detail").querySelector("[data-act=fav]");
@@ -1174,7 +1208,7 @@ loaders.categories = async () => {
 };
 function catMatches() {
   const q = $("cat-q").value.trim().toLowerCase();
-  return catRows.filter((c) => !q || c.name.toLowerCase().includes(q));
+  return catRows.filter((c) => !q || `${c.name} ${c.original_name || ""}`.toLowerCase().includes(q));
 }
 function renderCategories() {
   const rows = catMatches();
@@ -1182,7 +1216,9 @@ function renderCategories() {
   $("cat-summary").textContent = `${catRows.length - hidden} visas, ${hidden} dolda`;
   $("cat-list").innerHTML = rows.slice(0, 400).map((c) => `<li data-id="${esc(c.category_id)}">
       <input type="checkbox" data-act="toggle" ${c.hidden ? "" : "checked"} aria-label="Visa i boxarna" style="width:20px; min-height:20px">
-      <div class="grow"><div class="ellipsis" style="${c.hidden ? "opacity:.55" : ""}">${c.adult ? "🔞 " : ""}${esc(c.name)}</div><div class="small muted">${c.count} st${c.hidden ? " · dold" : ""}</div></div>
+      <div class="grow"><div class="ellipsis" style="${c.hidden ? "opacity:.55" : ""}">${c.adult ? "🔞 " : ""}${esc(c.name)}${c.start ? ' <span class="pill accent">start</span>' : ""}</div><div class="small muted">${c.count} st${c.hidden ? " · dold" : ""}${c.display_name ? ` · heter ${esc(c.original_name)} hos Toucan` : ""}</div></div>
+      <input data-act="name" value="${esc(c.display_name || "")}" placeholder="Eget namn" title="Eget visningsnamn (tomt = Toucans namn)" style="width:150px; min-height:34px">
+      <button class="btn small ${c.start ? "primary" : "ghost"}" data-act="start" title="Öppnas först i appen i stället för Alla">${c.start ? "★ Start" : "Start"}</button>
       <select data-act="adult" title="Vuxeninnehåll" aria-label="Vuxeninnehåll" style="width:auto; min-height:34px">
         <option value="auto" ${c.adult_override == null ? "selected" : ""}>Auto (${c.auto_adult ? "18+" : "vanlig"})</option>
         <option value="1" ${c.adult_override === 1 ? "selected" : ""}>Alltid 18+</option>
@@ -1204,6 +1240,15 @@ $("cat-type").addEventListener("click", (e) => {
 });
 $("cat-q").addEventListener("input", renderCategories);
 $("cat-list").addEventListener("change", (e) => {
+  const nameInput = e.target.closest("input[data-act=name]");
+  if (nameInput) {
+    const id = nameInput.closest("li").dataset.id;
+    guarded(async () => {
+      await api("categories/prefs", { method: "POST", body: { type: catType, changes: [{ category_id: id, display_name: nameInput.value }] } });
+      toast(nameInput.value.trim() ? "Namnet sparat" : "Toucans namn används igen"); loaders.categories();
+    });
+    return;
+  }
   const sel = e.target.closest("select[data-act=adult]");
   if (sel) {
     const id = sel.closest("li").dataset.id;
@@ -1222,6 +1267,14 @@ $("cat-list").addEventListener("change", (e) => {
 $("cat-list").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-act]"); if (!b) return;
   const id = b.closest("li").dataset.id; const i = catRows.findIndex((x) => x.category_id === id);
+  if (b.dataset.act === "start") {
+    const on = !catRows[i].start;
+    guarded(async () => {
+      await api("categories/start", { method: "PUT", body: { type: catType, category_id: on ? id : null } });
+      toast(on ? "Appen öppnar den här kategorin först" : "Appen öppnar Alla först"); loaders.categories();
+    });
+    return;
+  }
   const j = b.dataset.act === "up" ? i - 1 : b.dataset.act === "down" ? i + 1 : 0;
   if (j < 0 || j >= catRows.length || j === i) return;
   const [moved] = catRows.splice(i, 1); catRows.splice(j, 0, moved);
@@ -1423,6 +1476,7 @@ function sparkline(svg, points) {
 let pairTimer;
 loaders.devices = async () => {
   loadRemote();
+  if (!vc.data) loadVoice();
   const list = await api("devices").catch((e) => (toast(e.message), []));
   if (!groupList.length) groupList = (await api("groups").catch(() => [])).map((g) => ({ id: g.id, name: g.name }));
   $("device-list").innerHTML = list.map((d) => {
@@ -1465,6 +1519,98 @@ $("ha-token-btn").addEventListener("click", (e) => guarded(async () => {
   $("ha-token").classList.remove("hidden"); $("ha-token").textContent = r.token;
   loaders.devices();
 }, e.currentTarget));
+
+/* ---------- röststyrning ---------- */
+const vc = { data: null, players: [], editing: null, channels: {} };
+const VC_NEEDS = { series: ["query"], vod: ["query"], channel: ["channel"], program: ["query", "channel"], night: ["viewer"] };
+async function loadVoice() {
+  try { vc.data = await api("voice"); } catch (e) { return toast(e.message); }
+  const d = vc.data;
+  $("vc-status").innerHTML = d.listener.connected ? '<span class="pill ok">ansluten till Home Assistant</span>'
+    : `<span class="pill warn">inte ansluten</span> <span class="muted">${esc(d.listener.error || "")}</span>`;
+  $("vc-defaults").innerHTML = d.boxes.map((b) => `<div class="row" style="flex-basis:100%; gap:8px; align-items:center">
+    <span class="small" style="min-width:200px">${esc(b.name)} ${b.online ? '<span class="pill ok">på</span>' : '<span class="pill">inte nåbar</span>'}</span>
+    <input data-room="${b.id}" value="${esc(b.room)}" style="width:180px; min-height:32px" title="Så här kallas boxen i kommandona">
+    <button class="btn small" data-defaults="${b.id}">Lägg till standardkommandon</button></div>`).join('');
+  $("vc-list").innerHTML = d.commands.map((c) => `<li data-id="${c.id}"><div class="grow"><div><strong>${esc(c.name)}</strong> <span class="small muted">· ${esc(c.device_name || "?")}</span></div>
+      <div class="small muted">${esc(c.action_label)}${c.params.query ? ": " + esc(c.params.query) : ""}${c.params.tv_entity ? " · slår på TV:n" : ""} ·
+      ${c.script_status === "ok" ? `<span style="color:var(--ok)">skript ${esc(c.entity_id)}</span>` : `<span style="color:var(--bad)">skriptet saknas: ${esc(c.script_status || "")}</span>`}</div></div>
+      <button class="btn small" data-act="run">Testa</button><button class="btn ghost small" data-act="edit">Ändra</button>
+      ${c.script_status === "ok" ? "" : '<button class="btn ghost small" data-act="yaml">Visa som text</button>'}
+      <button class="btn ghost small danger" data-act="del">Ta bort</button></li>`).join("") || '<li class="empty">Inga röstkommandon än. Börja med standardkommandona ovan.</li>';
+  $("vc-box").innerHTML = d.boxes.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join("");
+  $("vc-action").innerHTML = Object.entries(d.actions).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+  if (!night.viewers.length) { try { night.viewers = await api("viewers"); } catch (_) {} }
+  $("vc-viewer").innerHTML = night.viewers.map((v) => `<option value="${v.id}">${esc(v.name)}</option>`).join("");
+  const mp = await api("voice/media-players").catch(() => ({ entities: [] }));
+  vc.players = mp.entities || [];
+  $("vc-tv").innerHTML = '<option value="">Nej</option>' + vc.players.map((p) => `<option value="${p.entity_id}">${esc(p.name)} (${esc(p.entity_id)})</option>`).join("");
+  vcShowFields();
+}
+function vcShowFields() {
+  const need = VC_NEEDS[$("vc-action").value] || [];
+  $("vc-query-wrap").hidden = !need.includes("query");
+  $("vc-channel-wrap").hidden = !need.includes("channel");
+  $("vc-viewer-wrap").hidden = !need.includes("viewer");
+  $("vc-query-wrap").firstChild.textContent = $("vc-action").value === "program" ? "Programnamn" : "Titel";
+  const p = vc.players.find((x) => x.entity_id === $("vc-tv").value);
+  const keep = $("vc-source").value;
+  $("vc-source").innerHTML = '<option value="">Ändra inte</option>' + (p ? p.sources.map((x) => `<option ${x === keep ? "selected" : ""}>${esc(x)}</option>`).join("") : "");
+}
+$("vc-action").addEventListener("change", vcShowFields);
+$("vc-tv").addEventListener("change", vcShowFields);
+$("vc-channel").addEventListener("input", async () => {
+  const q = $("vc-channel").value.trim(); if (q.length < 2) return;
+  const list = await api(`search?q=${encodeURIComponent(q)}&type=live&limit=20`).catch(() => []);
+  list.forEach((c) => (vc.channels[c.name] = c.id));
+  $("vc-channels").innerHTML = list.map((c) => `<option value="${esc(c.name)}">`).join("");
+});
+function vcReset() {
+  vc.editing = null; $("vc-form").reset(); $("vc-delay").value = 10; $("vc-cancel").hidden = true;
+  $("vc-form-title").textContent = "Nytt röstkommando"; vcShowFields();
+}
+$("vc-cancel").addEventListener("click", vcReset);
+$("vc-form").addEventListener("submit", (e) => { e.preventDefault(); guarded(async () => {
+  const action = $("vc-action").value;
+  const params = { query: $("vc-query").value.trim(), viewer_id: action === "night" ? Number($("vc-viewer").value) : undefined,
+    tv_entity: $("vc-tv").value, tv_source: $("vc-source").value, tv_delay: Number($("vc-delay").value) || 10 };
+  if ((VC_NEEDS[action] || []).includes("channel")) {
+    const name = $("vc-channel").value.trim();
+    const old = vc.editing ? (vc.data.commands.find((x) => x.id === vc.editing) || {}).params || {} : {};
+    params.channel_id = vc.channels[name] || (!name ? old.channel_id : undefined);
+    if (!params.channel_id) { if (action === "channel") params.query = name; else throw new Error("Välj kanalen i listan som visas när du skriver."); }
+  }
+  const body = { name: $("vc-name").value, device_id: Number($("vc-box").value), action, params };
+  const r = vc.editing ? await api(`voice/${vc.editing}`, { method: "PUT", body }) : await api("voice", { method: "POST", body });
+  toast(r.script_status === "ok" ? `Sparat. Exponera ${r.entity_id} mot Google.` : "Sparat, men skriptet kunde inte skapas.");
+  vcReset(); loadVoice();
+}); });
+$("vc-list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const id = Number(b.closest("li").dataset.id); const c = vc.data.commands.find((x) => x.id === id);
+  if (b.dataset.act === "run") return guarded(async () => { const r = await api(`voice/${id}/run`, { method: "POST" }); toast(`${r.description}${r.online ? "" : " (boxen svarar inte just nu)"}`); }, b);
+  if (b.dataset.act === "del") { if (confirm(`Ta bort "${c.name}"? Skriptet i Home Assistant tas också bort.`)) guarded(async () => { await api(`voice/${id}`, { method: "DELETE" }); loadVoice(); }); return; }
+  if (b.dataset.act === "yaml") return guarded(async () => {
+    const r = await api(`voice/${id}/script`, { method: "POST" });
+    if (r.status === "ok") { toast("Skriptet skapades nu."); loadVoice(); return; }
+    $("vc-yaml").classList.remove("hidden"); $("vc-yaml-text").textContent = r.yaml;
+  });
+  if (b.dataset.act === "edit") {
+    vc.editing = id; $("vc-form-title").textContent = `Ändra: ${c.name}`; $("vc-cancel").hidden = false;
+    $("vc-name").value = c.name; $("vc-box").value = c.device_id; $("vc-action").value = c.action;
+    $("vc-query").value = c.params.query || ""; $("vc-tv").value = c.params.tv_entity || ""; vcShowFields();
+    $("vc-source").value = c.params.tv_source || ""; $("vc-delay").value = c.params.tv_delay || 10;
+    if (c.params.viewer_id) $("vc-viewer").value = c.params.viewer_id;
+    $("vc-channel").value = ""; $("vc-channel").placeholder = c.params.channel_id ? "behåll kanalen (skriv för att byta)" : "t.ex. SVT1";
+    $("vc-form").scrollIntoView({ behavior: "smooth" });
+  }
+});
+$("vc-defaults").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-defaults]"); if (!b) return;
+  const room = document.querySelector(`[data-room="${b.dataset.defaults}"]`).value;
+  guarded(async () => { const r = await api("voice/defaults", { method: "POST", body: { device_id: Number(b.dataset.defaults), room } });
+    toast(r.created.length ? `${r.created.length} kommandon skapade` : "Finns redan"); loadVoice(); }, b);
+});
 
 /* ---------- telefon utanför hemmet ---------- */
 let rmDirty = false;

@@ -95,8 +95,13 @@ class PlayerActivity : Activity() {
             if (queueIds != null) intent.putStringArrayListExtra("queue_ids", queueIds)
             if (queueNames != null) intent.putStringArrayListExtra("queue_names", queueNames)
             if (queueExts != null) intent.putStringArrayListExtra("queue_exts", queueExts)
+            // Fjärrstart: startas från tjänsten i bakgrunden, inte från en skärm.
+            if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
         }
+
+        /** Spelaren som visas just nu (för röststyrning: pausa, fortsätt, stäng). */
+        var current: java.lang.ref.WeakReference<PlayerActivity>? = null
 
         private const val DEFAULT_HEARTBEAT_MS = 10_000L
         private const val STALL_REPORT_MIN_MS = 700L
@@ -192,9 +197,18 @@ class PlayerActivity : Activity() {
     // Telefonen: knappar på skärmen, tryck på bilden visar/döljer dem
     private var mobile = false
     private var touchControls: View? = null
+    private var touchLayer: View? = null
     private var touchPlay: TextView? = null
     private var touchSeek: SeekBar? = null
     private var seeking = false
+
+    // Chromecast (telefonen, film och avsnitt)
+    private var currentUrl: String? = null
+    private var casting = false
+    private var castButton: TextView? = null
+
+    // Sifferknapparna: byt till kanalnummer
+    private val digits by lazy { DigitEntry(this) { onDigits(it) } }
     private val hideTouch = Runnable {
         touchControls?.visibility = View.GONE
         if (!seeking) overlay.visibility = View.GONE
@@ -302,6 +316,7 @@ class PlayerActivity : Activity() {
             finish()
             return
         }
+        current = java.lang.ref.WeakReference(this)
         if (mobile) setupTouch()
         if (type == "file") playFile() else requestPlay()
         if (modern) handler.post(barTicker)
@@ -330,6 +345,7 @@ class PlayerActivity : Activity() {
         val root = playerView.parent as ViewGroup
         val layer = LayoutInflater.from(this).inflate(R.layout.player_touch, root, false)
         root.addView(layer, root.indexOfChild(playerView) + 1)
+        touchLayer = layer
         touchControls = layer.findViewById(R.id.touch_controls)
         touchPlay = layer.findViewById(R.id.t_play)
         val left = layer.findViewById<TextView>(R.id.t_left)
@@ -346,8 +362,20 @@ class PlayerActivity : Activity() {
         layer.findViewById<View>(R.id.t_audio).setOnClickListener { showTrackDialog(C.TRACK_TYPE_AUDIO) }
         layer.findViewById<View>(R.id.t_subs).setOnClickListener { showTrackDialog(C.TRACK_TYPE_TEXT) }
         layer.findViewById<View>(R.id.t_more).setOnClickListener { showOptions() }
+        castButton = layer.findViewById(R.id.t_cast)
+        if ((type == "vod" || type == "episode") && Cast.available(this)) {
+            castButton?.visibility = View.VISIBLE
+            castButton?.setOnClickListener { if (casting) stopCasting(resumeLocal = true) else chooseCast() }
+        }
         touchPlay?.setOnClickListener {
-            if (type == "live") togglePause() else toggleVod(null)
+            when {
+                casting -> {
+                    Cast.togglePause(this)
+                    handler.postDelayed({ updateBar() }, 400)
+                }
+                type == "live" -> togglePause()
+                else -> toggleVod(null)
+            }
             showTouch()
         }
         if (type == "live") {
@@ -367,8 +395,8 @@ class PlayerActivity : Activity() {
             left.contentDescription = "10 sekunder bakåt"
             right.text = "+30"
             right.contentDescription = "30 sekunder framåt"
-            left.setOnClickListener { seekVod(-1, 0); showTouch() }
-            right.setOnClickListener { seekVod(1, 0); showTouch() }
+            left.setOnClickListener { if (casting) Cast.seekBy(this, -10_000) else seekVod(-1, 0); showTouch() }
+            right.setOnClickListener { if (casting) Cast.seekBy(this, 30_000) else seekVod(1, 0); showTouch() }
             // Reglage i stället för förloppsstapeln: dra för att spola.
             val bar = seekProgress
             val parent = bar?.parent as? LinearLayout
@@ -381,7 +409,7 @@ class PlayerActivity : Activity() {
                 seek.visibility = View.GONE
                 seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                        val duration = player?.duration ?: return
+                        val duration = vodState()?.second ?: return
                         if (fromUser && duration > 0) timePos?.text = Format.clock(duration * progress / 1000)
                     }
 
@@ -393,8 +421,13 @@ class PlayerActivity : Activity() {
                     override fun onStopTrackingTouch(seekBar: SeekBar) {
                         seeking = false
                         val p = player
-                        val duration = p?.duration ?: 0L
-                        if (p != null && duration > 0 && p.isCurrentMediaItemSeekable) p.seekTo(duration * seekBar.progress / 1000)
+                        val duration = vodState()?.second ?: 0L
+                        if (casting && duration > 0) {
+                            val pos = Cast.position(this@PlayerActivity)?.first ?: 0L
+                            Cast.seekBy(this@PlayerActivity, duration * seekBar.progress / 1000 - pos)
+                        } else if (p != null && duration > 0 && p.isCurrentMediaItemSeekable) {
+                            p.seekTo(duration * seekBar.progress / 1000)
+                        }
                         showTouch()
                     }
                 })
@@ -409,8 +442,8 @@ class PlayerActivity : Activity() {
         overlay.visibility = View.VISIBLE
         handler.removeCallbacks(hideOverlay)
         handler.removeCallbacks(hideTouch)
-        val playing = player?.playWhenReady ?: true
-        if (playing && pausedAt == 0L) handler.postDelayed(hideTouch, 4_000)
+        val playing = vodState()?.third ?: player?.playWhenReady ?: true
+        if (playing && pausedAt == 0L && !casting) handler.postDelayed(hideTouch, 4_000)
         if (type == "live") loadEpg()
         updateBar()
     }
@@ -420,6 +453,38 @@ class PlayerActivity : Activity() {
         window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
             View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
+    }
+
+    /** Telefonen: hemknappen under uppspelning ger bild-i-bild (Android 8 och senare). */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (!mobile || Build.VERSION.SDK_INT < 26 || player == null || closing || fatalShown || casting) return
+        try {
+            val size = player?.videoSize
+            val ratio = if (size != null && size.width > 0 && size.height > 0) {
+                android.util.Rational(size.width, size.height).let { r ->
+                    if (r.toFloat() > 2.39f) android.util.Rational(239, 100) else if (r.toFloat() < 0.42f) android.util.Rational(42, 100) else r
+                }
+            } else {
+                android.util.Rational(16, 9)
+            }
+            enterPictureInPictureMode(android.app.PictureInPictureParams.Builder().setAspectRatio(ratio).build())
+        } catch (_: Exception) {
+            // Bild-i-bild avstängt i telefonens inställningar: då stängs strömmen som vanligt.
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (isInPictureInPictureMode) {
+            handler.removeCallbacks(hideTouch)
+            touchControls?.visibility = View.GONE
+            overlay.visibility = View.GONE
+            nextCard?.visibility = View.GONE
+            touchLayer?.visibility = View.GONE
+        } else {
+            touchLayer?.visibility = View.VISIBLE
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -434,6 +499,9 @@ class PlayerActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
+        // Castar telefonen: fortsätt även när telefonen låses eller man byter app.
+        // Spelaren ligger kvar som fjärrkontroll tills man stänger den.
+        if (casting && !isFinishing) return
         // Lämnar man spelaren (Tillbaka, Hem) stängs strömmen direkt, så att den
         // inte ligger kvar som en andra anslutning hos Toucan.
         close("closed")
@@ -442,6 +510,7 @@ class PlayerActivity : Activity() {
 
     override fun onDestroy() {
         close("closed")
+        if (current?.get() === this) current = null
         super.onDestroy()
     }
 
@@ -450,14 +519,18 @@ class PlayerActivity : Activity() {
         closing = true
         conflictDialog?.dismiss()
         // Filmkväll: en film som setts (nästan) klart ger frågan "Vad tyckte ni?" när man kommer tillbaka.
-        player?.let { p ->
-            val duration = p.duration
+        vodState()?.let { (position, duration) ->
             if (type == "vod" && !prefs.adultMode && duration > 0 &&
-                (p.currentPosition >= duration * 0.9 || duration - p.currentPosition < 3 * 60_000)) {
+                (position >= duration * 0.9 || duration - position < 3 * 60_000)) {
                 Session.pendingRating = Triple("vod", itemId, itemName)
             }
         }
         stopSession(reason)
+        if (casting) {
+            casting = false
+            Cast.end(this)
+        }
+        if (castButton?.visibility == View.VISIBLE) Cast.release(this)
         releasePlayer()
         handler.removeCallbacksAndMessages(null)
     }
@@ -575,6 +648,7 @@ class PlayerActivity : Activity() {
 
     private fun startPlayer(url: String, positionMs: Long) {
         releasePlayer()
+        currentUrl = url
         wasReady = false
         stallStart = 0L
         val http = DefaultHttpDataSource.Factory()
@@ -660,6 +734,16 @@ class PlayerActivity : Activity() {
         o.put("stalls", stalls)
         o.put("stall_ms", stallMsTotal)
         o.put("portal", portalName)
+        if (casting) {
+            Cast.position(this)?.let { (position, duration) ->
+                if (position > 0) lastPositionMs = position
+                o.put("position_ms", position)
+                if (duration > 0) o.put("duration_ms", duration)
+            }
+            o.put("cast", true)
+        } else if (player == null && type != "live" && lastPositionMs > 0) {
+            o.put("position_ms", lastPositionMs)
+        }
         player?.let { p ->
             o.put("buffered_ms", p.totalBufferedDuration)
             o.put("position_ms", p.currentPosition)
@@ -814,6 +898,11 @@ class PlayerActivity : Activity() {
 
     private fun onRemoteStop(reason: String, message: String) {
         stopSession(if (reason == "takeover") "takeover" else "remote_stop")
+        if (casting) {
+            casting = false
+            Cast.end(this)
+            castButton?.text = "Casta"
+        }
         releasePlayer()
         val text = if (reason == "takeover") {
             "En annan box tog över.\nToucan tillåter bara en ström åt gången."
@@ -1111,6 +1200,10 @@ class PlayerActivity : Activity() {
                 retryAll()
                 return true
             }
+            if (event.repeatCount == 0) {
+                if (type == "live" && digits.onKey(code)) return true
+                Keys.playAction(prefs, code)?.let { if (runKey(it)) return true }
+            }
             if (code == KeyEvent.KEYCODE_MENU) {
                 showOptions()
                 return true
@@ -1284,7 +1377,7 @@ class PlayerActivity : Activity() {
     private fun updateBar() {
         if (!modern) return
         val p = player
-        touchPlay?.text = if (if (type == "live") pausedAt == 0L else p?.playWhenReady != false) "❚❚" else "▶"
+        touchPlay?.text = if (if (type == "live") pausedAt == 0L else vodState()?.third != false) "❚❚" else "▶"
         val bar = seekProgress ?: return
         if (type == "live") {
             val program = currentProgram
@@ -1307,15 +1400,15 @@ class PlayerActivity : Activity() {
             return
         }
         liveBadge?.visibility = View.GONE
-        if (p == null) return
-        val duration = p.duration
+        val state = vodState() ?: return
+        val duration = state.second
         if (duration <= 0) {
             bar.visibility = View.GONE
             touchSeek?.visibility = View.GONE
             times?.visibility = View.GONE
             return
         }
-        val position = if (vodSeekTarget >= 0) vodSeekTarget else p.currentPosition
+        val position = if (vodSeekTarget >= 0 && !casting) vodSeekTarget else state.first
         bar.progress = (position * 1000 / duration).toInt().coerceIn(0, 1000)
         if (!seeking) timePos?.text = Format.clock(position)
         touchSeek?.let { seek ->
@@ -1329,13 +1422,212 @@ class PlayerActivity : Activity() {
         // "Nästa avsnitt" de sista 20 sekunderna (som Netflix).
         val hasNext = type == "episode" && queueIndex >= 0 && queueIndex + 1 < queueIds.size
         val card = nextCard ?: return
-        if (hasNext && duration - position in 1..20_000 && p.playWhenReady) {
+        if (hasNext && !casting && duration - position in 1..20_000 && state.third) {
             val left = ((duration - position) / 1000).coerceAtLeast(1)
             card.text = "Nästa avsnitt om $left s\n${queueNames.getOrNull(queueIndex + 1) ?: ""}\n" + if (mobile) "Tryck: spela nu" else "OK: spela nu"
             card.visibility = View.VISIBLE
         } else {
             card.visibility = View.GONE
         }
+    }
+
+    /** (position, längd, spelar) för film/avsnitt, från telefonen eller Chromecasten. */
+    private fun vodState(): Triple<Long, Long, Boolean>? {
+        if (casting) {
+            val (position, duration) = Cast.position(this) ?: return null
+            return Triple(position, duration, Cast.isPlaying(this))
+        }
+        val p = player ?: return null
+        return Triple(p.currentPosition, p.duration, p.playWhenReady)
+    }
+
+    // ---------------------------------------------------------------- fjärrkontrollens knappar
+
+    /** Färgknappar, Info, Guide m.fl. under uppspelning, se [Keys]. */
+    private fun runKey(action: String): Boolean {
+        val live = type == "live"
+        val shifted = pausedAt > 0 || shiftStart > 0 || behindMs > 0
+        when (action) {
+            "options" -> showOptions()
+            "favorite" -> toggleFavorite()
+            "groups" -> showQueue()
+            "record" -> when {
+                mobile || !live -> hint("Inspelning görs från direktsänd TV på TV-boxen.")
+                currentProgram != null -> recordCurrentProgram()
+                else -> recordNow()
+            }
+            "prev_channel" -> if (live) previousChannel() else return false
+            "program_start" -> {
+                val startMs = (currentProgram?.optLong("start") ?: 0L) * 1000
+                when {
+                    !live -> return false
+                    archiveDays <= 0 -> hint("Kanalen har inget arkiv hos Toucan, så det går inte att börja om.")
+                    startMs in 1 until System.currentTimeMillis() -> goToProgramStart(startMs)
+                    else -> hint("Programguiden saknas för kanalen.")
+                }
+            }
+            "live" -> if (live && shifted) goLive() else if (live) hint("Du ser redan direktsändningen.") else return false
+            "info" -> {
+                showOverlay(6_000)
+                if (live) loadEpg()
+            }
+            "guide" -> if (live || type == "catchup") GuideActivity.start(this, itemId, itemName) else return false
+            "night" -> FilmNightActivity.start(this)
+            else -> return false
+        }
+        return true
+    }
+
+    private fun hint(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+
+    /** ★: kanalen, filmen eller serien (för avsnitt) som favorit på/av. */
+    private fun toggleFavorite() {
+        if (prefs.adultMode && !prefs.adultHistory) return
+        val (favType, favId) = when (type) {
+            "live", "catchup" -> "live" to itemId
+            "vod" -> "vod" to itemId
+            "episode" -> "series" to (seriesId ?: return)
+            else -> return
+        }
+        val body = JSONObject().put("type", favType).put("id", favId).put("toggle", true)
+        Api.obj("POST", "/device/favorites", body) { result ->
+            result.onSuccess {
+                val what = if (favType == "series") "Serien" else itemName
+                hint(if (it.optBoolean("favorite")) "★ $what är nu en favorit" else "$what borttagen ur favoriter")
+            }.onFailure { hint(Api.friendly(it)) }
+        }
+    }
+
+    /** Grupper-knappen: kanallistan (eller avsnitten) som spelaren startades med. */
+    private fun showQueue() {
+        if (queueIds.size < 2) {
+            hint(if (type == "live") "Ingen kanallista. Starta kanalen från en lista." else "Ingen lista att visa.")
+            return
+        }
+        val names = queueIds.indices.map { queueNames.getOrNull(it) ?: queueIds[it] }
+        Look.choose(this, if (type == "live") "Kanaler" else "Avsnitt", names, checked = queueIndex) { which ->
+            if (which == queueIndex) return@choose
+            if (type == "live") {
+                moveTo(which)
+                switchSoon()
+            } else {
+                stopSession("closed")
+                moveTo(which)
+                releasePlayer()
+                lastPositionMs = 0L
+                requestPlay()
+            }
+        }
+    }
+
+    /** Siffror: kanalnummer. Bara "0" är som förut: förra kanalen. */
+    private fun onDigits(text: String) {
+        if (text == "0") {
+            previousChannel()
+            return
+        }
+        DigitEntry.lookup(this, text) { channel ->
+            if (closing || channel.id == itemId) return@lookup
+            val index = queueIds.indexOf(channel.id)
+            if (index >= 0) {
+                moveTo(index)
+            } else {
+                itemId = channel.id
+                itemName = channel.name
+                ext = null
+                queueIndex = -1
+            }
+            icon = channel.icon
+            switchSoon()
+        }
+    }
+
+    // ---------------------------------------------------------------- röststyrning
+
+    /** Kommando från röststyrning eller fjärrstart: pause, resume, stop. */
+    fun remote(action: String) {
+        if (closing) return
+        when (action) {
+            "pause" -> if (type == "live") togglePause(wantPlay = false) else toggleVod(false)
+            "resume" -> if (type == "live") togglePause(wantPlay = true) else toggleVod(true)
+            "stop" -> finish()
+        }
+    }
+
+    // ---------------------------------------------------------------- Chromecast
+
+    private fun chooseCast() {
+        castButton?.text = "Letar…"
+        Cast.discover(this) { devices ->
+            if (closing) return@discover
+            castButton?.text = "Casta"
+            if (devices.isEmpty()) {
+                Toast.makeText(this, "Hittade ingen Chromecast. Telefonen och Chromecasten måste vara på samma Wi-Fi.",
+                    Toast.LENGTH_LONG).show()
+                return@discover
+            }
+            Look.choose(this, "Casta till", devices.map { it.name }) { which ->
+                val device = devices[which]
+                castButton?.text = "Ansluter…"
+                Cast.connect(this, device,
+                    onStarted = { session -> if (!closing && !casting) beginCast(session) },
+                    onEnded = { onCastEnded() },
+                    onFailed = {
+                        if (!closing) {
+                            castButton?.text = "Casta"
+                            Toast.makeText(this, "Kunde inte ansluta till ${device.name}.", Toast.LENGTH_LONG).show()
+                        }
+                    })
+            }
+        }
+    }
+
+    private fun beginCast(session: com.google.android.gms.cast.framework.CastSession) {
+        val url = currentUrl ?: return
+        val position = player?.currentPosition?.takeIf { it > 0 } ?: lastPositionMs
+        // Stäng telefonens ström först: Toucan ska aldrig se två samtidiga anslutningar.
+        releasePlayer()
+        val device = Cast.deviceName(session)
+        statusView.text = "Startar på $device…"
+        statusView.visibility = View.VISIBLE
+        Cast.load(session, url, ext, itemName, icon, position) { ok ->
+            if (closing) return@load
+            if (!ok) {
+                Cast.end(this)
+                castButton?.text = "Casta"
+                statusView.visibility = View.GONE
+                Toast.makeText(this, "$device kunde inte spela den här filen (${(ext ?: "okänt format").uppercase()}). " +
+                    "Fortsätter på telefonen.", Toast.LENGTH_LONG).show()
+                startPlayer(url, position)
+                return@load
+            }
+            casting = true
+            castButton?.text = "Sluta casta"
+            nextCard?.visibility = View.GONE
+            statusView.text = "📺 Spelas på $device\nTelefonen är fjärrkontroll"
+            statusView.visibility = View.VISIBLE
+            // Sessionen hos TV Hub lever vidare: position och "Fortsätt titta" fungerar som vanligt.
+            handler.removeCallbacks(heartbeat)
+            handler.postDelayed(heartbeat, heartbeatMs)
+            showTouch()
+        }
+    }
+
+    /** Tillbaka till telefonen (knappen) eller avsluta (castningen stoppades på annat håll). */
+    private fun stopCasting(resumeLocal: Boolean) {
+        if (!casting) return
+        val position = Cast.position(this)?.first ?: lastPositionMs
+        casting = false
+        lastPositionMs = position
+        Cast.end(this)
+        castButton?.text = "Casta"
+        statusView.visibility = View.GONE
+        val url = currentUrl
+        if (resumeLocal && url != null) startPlayer(url, position) else finish()
+    }
+
+    private fun onCastEnded() {
+        if (casting && !closing) stopCasting(resumeLocal = false)
     }
 
     private fun showOverlay(durationMs: Long) {

@@ -19,7 +19,9 @@ object Updater {
 
     /** Frågar TV Hub om en nyare version finns. quiet = visa inget om allt är aktuellt. */
     fun check(activity: Activity, prefs: Prefs, quiet: Boolean) {
-        Api.obj("GET", "/device/app-update?code=${BuildConfig.VERSION_CODE}") { result ->
+        // Söker man själv frågar TV Hub GitHub direkt (annars högst var 30:e minut).
+        val force = if (quiet) "" else "&force=1"
+        Api.obj("GET", "/device/app-update?code=${BuildConfig.VERSION_CODE}$force") { result ->
             if (activity.isFinishing) return@obj
             result.onSuccess { response ->
                 val latest = response.optJSONObject("latest")

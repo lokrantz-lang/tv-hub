@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import VERSION, ai, catalog, db, devices, diagnostics, extras, info, portals, recordings, remote, taste, updates
+from . import VERSION, ai, catalog, control, db, devices, diagnostics, extras, info, portals, recordings, remote, taste, updates
 from .config import CFG
 from .xtream import XtreamError
 
@@ -577,6 +577,12 @@ def admin_category_prefs(h):
     return 200, catalog.categories(kind)
 
 
+@route(ADMIN, "PUT", r"/api/categories/start")
+def admin_category_start(h):
+    data = h.read_json()
+    return 200, catalog.set_start_category(data.get("type"), data.get("category_id"))
+
+
 @route(ADMIN, "POST", r"/api/categories/prefs")
 def admin_category_prefs_set(h):
     data = h.read_json()
@@ -791,6 +797,7 @@ def dev_home(h):
         "saved_filters": [] if group_only else extras.saved_filters(scope.adult),
         "watch_hits": [] if group_only or scope.adult else extras.recent_hits(scope),
         "categories": {kind: catalog.categories(kind, scope) for kind in catalog.TYPES},
+        "start_categories": {kind: catalog.start_category(kind) for kind in catalog.TYPES if catalog.start_category(kind)},
         "recent_vod": [] if group_only else catalog.recent("vod", 40, scope),
         # Rader för den nya hemskärmen
         "recent_series": [] if group_only else catalog.recent("series", 30, scope),
@@ -967,7 +974,11 @@ def dev_favorite(h):
         return 200, {"favorite": on}
     if not catalog.in_scope(data.get("type"), data.get("id"), scope):
         raise HttpError(404, "Finns inte.")
-    on = catalog.set_favorite(data.get("type"), data.get("id"), bool(data.get("on", True)))
+    on = bool(data.get("on", True))
+    if data.get("toggle"):
+        # Favoritknappen på fjärrkontrollen: växla.
+        on = (data.get("type"), str(data.get("id"))) not in catalog.favorite_keys()
+    on = catalog.set_favorite(data.get("type"), data.get("id"), on)
     return 200, {"favorite": on}
 
 
@@ -1053,7 +1064,8 @@ def dev_recording_delete(h, rid):
 def dev_app_update(h):
     h.device()
     current = _int_arg(h.query, "code", 0, 0, 10**9)
-    latest = updates.latest()
+    # force=1 när man själv väljer "Sök efter uppdatering": fråga GitHub direkt (högst var 20:e sekund).
+    latest = updates.latest(force=(h.query.get("force") or ["0"])[0] == "1")
     available = bool(latest and latest["version_code"] > current)
     return 200, {"available": available, "latest": latest, "current": current}
 
@@ -1148,6 +1160,125 @@ def dev_summary(h):
         "active_cons": account["active_cons"] if account else None,
         "max_connections": account["max_connections"] if account else None,
     }
+
+
+# ----- Fjärrstart och röstkommandon -----
+@route(DEVICE, "GET", r"/device/commands")
+def dev_commands(h):
+    """Boxen väntar här (long-poll) på kommandon: spela, pausa, Filmkväll …"""
+    dev = h.device()
+    timeout = _int_arg(h.query, "wait", 25, 0, 55)
+    return 200, {"commands": control.wait(dev["id"], timeout)}
+
+
+@route(DEVICE, "GET", r"/device/boxes")
+def dev_boxes(h):
+    dev = h.device()
+    return 200, control.boxes(exclude=dev["id"])
+
+
+@route(DEVICE, "POST", r"/device/send")
+def dev_send(h):
+    """Telefonen: spela en titel på en box ("Spela på TV:n")."""
+    dev, scope = h.context()
+    data = h.read_json()
+    try:
+        return 200, control.send_item(data.get("device_id"), data)
+    except control.ControlError as exc:
+        raise HttpError(400, str(exc))
+
+
+@route(ADMIN, "GET", r"/api/voice")
+def admin_voice(h):
+    return 200, {
+        "commands": control.commands(),
+        "actions": control.ACTIONS,
+        "boxes": [dict(b, room=control.spoken_room(b["name"])) for b in control.boxes()],
+        "listener": control.listener_status(),
+    }
+
+
+@route(ADMIN, "GET", r"/api/voice/media-players")
+def admin_voice_players(h):
+    return 200, control.media_players()
+
+
+@route(ADMIN, "POST", r"/api/voice")
+def admin_voice_create(h):
+    return 201, control.save_command(h.read_json())
+
+
+@route(ADMIN, "PUT", r"/api/voice/(\d+)")
+def admin_voice_update(h, cid):
+    return 200, control.save_command(h.read_json(), int(cid))
+
+
+@route(ADMIN, "DELETE", r"/api/voice/(\d+)")
+def admin_voice_delete(h, cid):
+    control.delete_command(int(cid))
+    return 200, {"ok": True}
+
+
+@route(ADMIN, "POST", r"/api/voice/(\d+)/run")
+def admin_voice_run(h, cid):
+    try:
+        return 200, control.run_command(int(cid))
+    except control.ControlError as exc:
+        raise HttpError(400, str(exc))
+
+
+@route(ADMIN, "POST", r"/api/voice/(\d+)/script")
+def admin_voice_script(h, cid):
+    status = control.sync_script(int(cid))
+    cmd = control.command(int(cid))
+    return 200, {"status": status, "yaml": control.script_yaml(cmd)}
+
+
+@route(ADMIN, "POST", r"/api/voice/defaults")
+def admin_voice_defaults(h):
+    data = h.read_json()
+    return 200, {"created": control.add_defaults(data.get("device_id"), data.get("room"))}
+
+
+@route(ADMIN, "POST", r"/api/play-on")
+def admin_play_on(h):
+    """Webbadminen: spela en titel på en box."""
+    data = h.read_json()
+    try:
+        return 200, control.send_item(data.get("device_id"), data)
+    except control.ControlError as exc:
+        raise HttpError(400, str(exc))
+
+
+# ----- Nytt tillagt (med datum) -----
+@route(DEVICE, "GET", r"/device/new")
+def dev_new(h):
+    """Titlar som dykt upp i listorna, nyaste först, med TV Hubs datum (first_seen)."""
+    dev, scope = h.context()
+    kind = (h.query.get("type") or ["all"])[0]
+    limit = _int_arg(h.query, "limit", 150, 1, 500)
+    kinds = catalog.TYPES if kind == "all" else [kind]
+    if any(k not in catalog.TYPES for k in kinds):
+        raise HttpError(400, "Okänd typ")
+    items = []
+    for k in kinds:
+        found, _ = catalog.browse(k, scope, None, {"sort": "added", "new_only": "1"}, 0, limit)
+        items += found
+    items.sort(key=lambda i: -(i.get("first_seen") or 0))
+    return 200, {"items": items[:limit]}
+
+
+@route(DEVICE, "GET", r"/device/channel-by-num")
+def dev_channel_by_num(h):
+    """Sifferknapparna på fjärrkontrollen: kanalen med det numret (samma nummer som i kanallistan)."""
+    dev, scope = h.context()
+    num = _int_arg(h.query, "num", 0, 0, 10_000_000)
+    if num <= 0:
+        raise HttpError(400, "Ange ett kanalnummer")
+    found, _ = catalog.browse("live", scope, None, {"num": num}, 0, 1)
+    if not found:
+        raise HttpError(404, f"Ingen kanal har nummer {num}.")
+    return 200, found[0]
 
 
 # ----- Filmkväll -----
@@ -1419,7 +1550,7 @@ def dev_remote(h):
 
 
 # Anrop som inte behövs (eller inte ska gå) via Nabu Casa.
-NOT_VIA_INGRESS = {dev_pair, dev_speedtest, dev_remote}
+NOT_VIA_INGRESS = {dev_pair, dev_speedtest, dev_remote, dev_commands}
 DEVICE_VIA_INGRESS = [r for r in DEVICE if r[2] not in NOT_VIA_INGRESS]
 
 DENIED_PAGE = """<!doctype html><html lang="sv"><meta charset="utf-8">

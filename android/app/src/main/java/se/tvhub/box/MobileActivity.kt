@@ -304,6 +304,15 @@ class MobileActivity : Activity(), CardListener {
 
     override fun onCardFocus(card: Card, shelf: Shelf?, shelfIndex: Int, cardIndex: Int) {}
 
+    override fun onShelfTitle(shelf: Shelf) {
+        when (shelf.key) {
+            "continue" -> Unit
+            "new_vod" -> MListActivity.startNew(this, "vod")
+            "new_series" -> MListActivity.startNew(this, "series")
+            else -> MListActivity.startShelf(this, shelf.title, shelf.cards.mapNotNull { it.payload as? Item })
+        }
+    }
+
     override fun onCardLongClick(card: Card, shelf: Shelf?) {
         (card.payload as? Item)?.let { showItemOptions(it) }
     }
@@ -346,6 +355,7 @@ class MobileActivity : Activity(), CardListener {
             options.add((if (item.favorite) "Ta bort från favoriter" else "Lägg till i favoriter") to { toggleFavorite(item) })
         }
         options.addAll(Taste.options(this, item) { loadHome() })
+        options.addAll(BoxSend.options(this, item))
         Look.choose(this, item.name, options.map { it.first }) { options[it].second() }
     }
 
@@ -419,6 +429,7 @@ class MobileActivity : Activity(), CardListener {
         init {
             list.layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             list.layoutManager = LinearLayoutManager(this@MobileActivity)
+            adapter.titleClicks = true
             list.adapter = adapter
             list.itemAnimator = null
             list.clipToPadding = false
@@ -527,11 +538,41 @@ class MobileActivity : Activity(), CardListener {
         }
     }
 
+    // ================================================================ kategorival
+
+    private fun categoryRows(data: JSONObject, type: String): List<Row> {
+        val out = ArrayList<Row>()
+        val cats = data.optJSONObject("categories")?.optJSONArray(type) ?: JSONArray()
+        for (i in 0 until cats.length()) {
+            val c = cats.optJSONObject(i) ?: continue
+            out.add(Row(c.optString("name"), subtitle = c.optInt("count").takeIf { it > 0 }?.toString(),
+                key = "cat:${c.optString("category_id")}", payload = c.optString("category_id")))
+        }
+        return out
+    }
+
+    /** Startkategorin från webbadminen (Kategorier → Start), om den finns i listan. */
+    private fun startCategory(data: JSONObject, type: String, rows: List<Row>): Row? {
+        val id = data.optJSONObject("start_categories")?.optStringOrNull(type) ?: return null
+        return rows.firstOrNull { it.key == "cat:$id" }
+    }
+
+    private fun pickCategory(title: String, rows: List<Row>, selected: String, onPick: (Row) -> Unit) {
+        val pinned = rows.filter { !it.key.startsWith("cat:") }
+        val cats = rows.filter { it.key.startsWith("cat:") }
+        Sheet.choose(this, title,
+            pinned.map { Sheet.Entry(it.key, it.title, it.subtitle, it) },
+            cats.map { Sheet.Entry(it.key, it.title, it.subtitle, it) }, selected) { entry ->
+            onPick(entry.payload as Row)
+        }
+    }
+
     // ================================================================ Filmer och Serier
 
     private inner class BrowsePage(private val type: String) : MPage(), CardListener {
         override val view: View = LayoutInflater.from(this@MobileActivity).inflate(R.layout.page_m_list, pages, false)
         private val chips: RecyclerView = view.findViewById(R.id.chips)
+        private val catButton: TextView = view.findViewById(R.id.cat_button)
         private val info: TextView = view.findViewById(R.id.info)
         private val sort: TextView = view.findViewById(R.id.sort)
         private val viewToggle: TextView = view.findViewById(R.id.view_toggle)
@@ -550,7 +591,15 @@ class MobileActivity : Activity(), CardListener {
         private var built = false
 
         init {
-            chips.visibility = View.VISIBLE
+            // Kategorier väljs i en lista med sökruta (knappen), inte genom att svepa.
+            chips.visibility = View.GONE
+            catButton.visibility = View.VISIBLE
+            catButton.text = "Kategori: Alla  ▾"
+            catButton.setOnClickListener {
+                pickCategory(if (type == "vod") "Filmer" else "Serier", chipAdapter.rows, chipKey) { row ->
+                    if (row.key == "new") MListActivity.startNew(this@MobileActivity, type) else selectChip(row)
+                }
+            }
             view.findViewById<View>(R.id.bar).visibility = View.VISIBLE
             viewToggle.visibility = View.VISIBLE
             chips.layoutManager = LinearLayoutManager(this@MobileActivity, LinearLayoutManager.HORIZONTAL, false)
@@ -615,20 +664,22 @@ class MobileActivity : Activity(), CardListener {
             val rows = ArrayList<Row>()
             rows.add(Row("Alla", key = "all"))
             rows.add(Row("Favoriter", key = "fav"))
-            rows.add(Row("Nytt tillagt", key = "new"))
-            val cats = data.optJSONObject("categories")?.optJSONArray(type) ?: JSONArray()
-            for (i in 0 until cats.length()) {
-                val c = cats.optJSONObject(i) ?: continue
-                rows.add(Row(c.optString("name"), key = "cat:${c.optString("category_id")}", payload = c.optString("category_id")))
-            }
+            rows.add(Row("Nytt tillagt (med datum)", key = "new"))
+            rows.addAll(categoryRows(data, type))
             chipAdapter.submit(rows)
+            startCategory(data, type, rows)?.let { start ->
+                chipKey = start.key
+                categoryId = start.payload as? String
+            }
             chipAdapter.select(chipKey)
+            catButton.text = "Kategori: ${rows.firstOrNull { it.key == chipKey }?.title ?: "Alla"}  ▾"
             load(reset = true)
         }
 
         private fun selectChip(row: Row) {
             if (row.key == chipKey) return
             chipKey = row.key
+            catButton.text = "Kategori: ${row.title}  ▾"
             chipAdapter.select(row.key)
             categoryId = row.payload as? String
             if (row.key == "new") {
@@ -719,6 +770,7 @@ class MobileActivity : Activity(), CardListener {
     private inner class LivePage : MPage() {
         override val view: View = LayoutInflater.from(this@MobileActivity).inflate(R.layout.page_m_list, pages, false)
         private val chips: RecyclerView = view.findViewById(R.id.chips)
+        private val catButton: TextView = view.findViewById(R.id.cat_button)
         private val list: RecyclerView = view.findViewById(R.id.list)
         private val chipAdapter = Chips { selectChip(it) }
         private val channels = ItemRows(live = true)
@@ -730,10 +782,14 @@ class MobileActivity : Activity(), CardListener {
         private var built = false
 
         init {
-            chips.visibility = View.VISIBLE
-            chips.layoutManager = LinearLayoutManager(this@MobileActivity, LinearLayoutManager.HORIZONTAL, false)
-            chips.adapter = chipAdapter
-            chips.itemAnimator = null
+            chips.visibility = View.GONE
+            catButton.visibility = View.VISIBLE
+            catButton.text = "Kategori: Alla kanaler  ▾"
+            catButton.setOnClickListener {
+                pickCategory("Kanaler", chipAdapter.rows, chipKey) { row ->
+                    if (row.key == "new") MListActivity.startNew(this@MobileActivity, "live") else selectChip(row)
+                }
+            }
             list.layoutManager = LinearLayoutManager(this@MobileActivity)
             list.adapter = channels
             list.itemAnimator = null
@@ -758,19 +814,22 @@ class MobileActivity : Activity(), CardListener {
             val rows = ArrayList<Row>()
             rows.add(Row("Alla kanaler", key = "all"))
             if (Item.list(data.optJSONArray("favorites")).any { it.type == "live" }) rows.add(Row("Favoriter", key = "fav"))
-            val cats = data.optJSONObject("categories")?.optJSONArray("live") ?: JSONArray()
-            for (i in 0 until cats.length()) {
-                val c = cats.optJSONObject(i) ?: continue
-                rows.add(Row(c.optString("name"), key = "cat:${c.optString("category_id")}", payload = c.optString("category_id")))
-            }
+            rows.add(Row("Nytt tillagt (med datum)", key = "new"))
+            rows.addAll(categoryRows(data, "live"))
             chipAdapter.submit(rows)
+            startCategory(data, "live", rows)?.let { start ->
+                chipKey = start.key
+                categoryId = start.payload as? String
+            }
             chipAdapter.select(chipKey)
+            catButton.text = "Kategori: ${rows.firstOrNull { it.key == chipKey }?.title ?: "Alla kanaler"}  ▾"
             load(reset = true)
         }
 
         private fun selectChip(row: Row) {
             if (row.key == chipKey) return
             chipKey = row.key
+            catButton.text = "Kategori: ${row.title}  ▾"
             chipAdapter.select(row.key)
             categoryId = row.payload as? String
             load(reset = true)

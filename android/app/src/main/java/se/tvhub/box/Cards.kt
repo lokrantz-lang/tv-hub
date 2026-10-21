@@ -95,6 +95,9 @@ interface CardListener {
     fun onCardClick(card: Card, shelf: Shelf?)
     fun onCardFocus(card: Card, shelf: Shelf?, shelfIndex: Int, cardIndex: Int)
     fun onCardLongClick(card: Card, shelf: Shelf?) {}
+
+    /** Telefonen: tryck på radens rubrik = Visa alla. */
+    fun onShelfTitle(shelf: Shelf) {}
 }
 
 /** Kort i en vågrät rad eller i ett rutnät. */
@@ -218,6 +221,9 @@ class ShelfAdapter(private val listener: CardListener) : RecyclerView.Adapter<Sh
     private val pool = RecyclerView.RecycledViewPool()
     private val scroll = HashMap<String, Int>()
 
+    /** Telefonen: rubrikerna går att trycka på ("Visa alla"). */
+    var titleClicks = false
+
     class Holder(view: View) : RecyclerView.ViewHolder(view) {
         val title: TextView = view.findViewById(R.id.title)
         val cards: RecyclerView = view.findViewById(R.id.cards)
@@ -257,7 +263,11 @@ class ShelfAdapter(private val listener: CardListener) : RecyclerView.Adapter<Sh
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val shelf = shelves[position]
-        holder.title.text = shelf.title
+        holder.title.text = if (titleClicks && shelf.key != "continue") "${shelf.title}  ›" else shelf.title
+        if (titleClicks) holder.title.setOnClickListener {
+            val p = holder.bindingAdapterPosition
+            if (p != RecyclerView.NO_POSITION) listener.onShelfTitle(shelves[p])
+        }
         holder.adapter?.let {
             it.shelf = shelf
             it.shelfIndex = position

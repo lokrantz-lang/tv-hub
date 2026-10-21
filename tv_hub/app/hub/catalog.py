@@ -447,7 +447,8 @@ def categories(kind, scope=ADMIN):
         return []
     cond, args = scope.sql("i", hide=False)
     rows = db.rows(db.q(
-        f"""SELECT c.category_id, c.name, c.sort, c.adult, p.adult_override,
+        f"""SELECT c.category_id, COALESCE(NULLIF(p.display_name, ''), c.name) AS name, c.name AS original_name,
+                   p.display_name, c.sort, c.adult, p.adult_override,
                    COALESCE(p.hidden, 0) AS hidden, p.position,
                    (SELECT COUNT(*) FROM items i WHERE i.type = c.type AND i.category_id = c.category_id{cond}) AS count
             FROM categories c LEFT JOIN category_prefs p ON p.type = c.type AND p.category_id = c.category_id
@@ -458,7 +459,8 @@ def categories(kind, scope=ADMIN):
     for c in rows:
         c["adult"] = bool(c["adult"])
         c["hidden"] = bool(c["hidden"])
-        c["auto_adult"] = is_adult_name(c["name"])
+        c["auto_adult"] = is_adult_name(c["original_name"])
+        c["start"] = start_category(kind) == c["category_id"]
     if scope is ADMIN:
         return rows
     return [c for c in rows if c["count"] > 0 and not (scope.hide_hidden and c["hidden"])]
@@ -478,10 +480,12 @@ SORTS = {
 BROWSE_FROM = """(SELECT i.type, i.item_id, i.name, i.name_norm, i.category_id, i.icon, i.ext, i.rating,
                          COALESCE(i.first_seen, i.added) AS added, i.first_seen, i.num, i.epg_id, i.adult, i.archive_days,
                          COALESCE(i.year, f.year) AS year, COALESCE(i.rating_num, f.rating) AS rating_num,
-                         f.duration_min, f.genre, f.backdrop, f.plot, c.name AS category_name
+                         f.duration_min, f.genre, f.backdrop, f.plot,
+                         COALESCE(NULLIF(pn.display_name, ''), c.name) AS category_name
                   FROM items i
                   LEFT JOIN item_info f ON f.type = i.type AND f.item_id = i.item_id
-                  LEFT JOIN categories c ON c.type = i.type AND c.category_id = i.category_id) i"""
+                  LEFT JOIN categories c ON c.type = i.type AND c.category_id = i.category_id
+                  LEFT JOIN category_prefs pn ON pn.type = i.type AND pn.category_id = i.category_id) i"""
 
 
 def _filters(params):
@@ -505,6 +509,10 @@ def _filters(params):
         if value is not None:
             conds.append(f"{column} {op} ?")
             args.append(value)
+    channel_num = num("num", int)
+    if channel_num is not None:
+        conds.append("i.num = ?")
+        args.append(channel_num)
     genre = (params.get("genre") or "").strip()
     if genre:
         conds.append("i.genre LIKE ?")
@@ -577,8 +585,9 @@ def search(query, kind=None, limit=100, offset=0, scope=ADMIN):
 
 def get_item(kind, item_id):
     row = db.q1(
-        f"""SELECT {ITEM_COLS}, c.name AS category_name FROM {FROM_ITEMS}
+        f"""SELECT {ITEM_COLS}, COALESCE(NULLIF(pn.display_name, ''), c.name) AS category_name FROM {FROM_ITEMS}
             LEFT JOIN categories c ON c.type = i.type AND c.category_id = i.category_id
+            LEFT JOIN category_prefs pn ON pn.type = i.type AND pn.category_id = i.category_id
             WHERE i.type = ? AND i.item_id = ?""",
         (kind, str(item_id)),
     )
@@ -623,6 +632,25 @@ def neighbours(kind, item_id):
 # ====================================================================
 # Kategoriinställningar (dölj, ordning)
 # ====================================================================
+def start_category(kind):
+    """Kategorin som Filmer/Serier/Live öppnar med i stället för Alla (None = Alla)."""
+    return (db.get_setting("start_categories") or {}).get(kind)
+
+
+def set_start_category(kind, category_id):
+    if kind not in TYPES:
+        raise ValueError("Okänd typ")
+    starts = db.get_setting("start_categories") or {}
+    if category_id in (None, ""):
+        starts.pop(kind, None)
+    else:
+        if not db.q1("SELECT 1 FROM categories WHERE type = ? AND category_id = ?", (kind, str(category_id))):
+            raise LookupError("Kategorin finns inte.")
+        starts[kind] = str(category_id)
+    db.set_setting("start_categories", starts)
+    return starts
+
+
 def set_category_prefs(kind, changes):
     if kind not in TYPES:
         raise ValueError("Okänd typ")
@@ -630,9 +658,13 @@ def set_category_prefs(kind, changes):
         for change in changes:
             cid = str(change.get("category_id"))
             current = conn.execute(
-                "SELECT hidden, position, adult_override FROM category_prefs WHERE type = ? AND category_id = ?",
+                "SELECT hidden, position, adult_override, display_name FROM category_prefs WHERE type = ? AND category_id = ?",
                 (kind, cid),
             ).fetchone()
+            if "display_name" in change:
+                display = str(change.get("display_name") or "").strip()[:80] or None
+            else:
+                display = current["display_name"] if current else None
             hidden = int(bool(change["hidden"])) if "hidden" in change else (current["hidden"] if current else 0)
             position = change["position"] if "position" in change else (current["position"] if current else None)
             if "adult" in change:
@@ -641,9 +673,9 @@ def set_category_prefs(kind, changes):
             else:
                 override = current["adult_override"] if current else None
             conn.execute(
-                """INSERT OR REPLACE INTO category_prefs (type, category_id, hidden, position, adult_override)
-                   VALUES (?,?,?,?,?)""",
-                (kind, cid, hidden, position, override),
+                """INSERT OR REPLACE INTO category_prefs (type, category_id, hidden, position, adult_override, display_name)
+                   VALUES (?,?,?,?,?,?)""",
+                (kind, cid, hidden, position, override, display),
             )
     if any("adult" in change for change in changes):
         mark_adult()

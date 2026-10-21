@@ -242,12 +242,16 @@ class SeriesActivity : Activity() {
             if (isFavorite) "★  Ta bort från favoriter" else "☆  Lägg till i favoriter",
             "⬇  Spela in avsnittet till USB-minnet",
             "⬇  Spela in hela säsong ${episode.season}",
-        ).let { if (mobile) it.take(2) else it }
+        ).let { if (mobile) it.take(2) + "📺  Spela på TV…" else it }
         Look.choose(this, episode.title, labels) { which ->
             when (which) {
                 0 -> play(episode, 0L)
                 1 -> toggleEpisodeFavorite(episode, !isFavorite)
-                2 -> RecordMedia.episode(this, episode.id, episode.title, episode.ext, seriesId)
+                2 -> if (mobile) {
+                    BoxSend.choose(this, JSONObject().put("type", "episode").put("id", episode.id).put("series_id", seriesId))
+                } else {
+                    RecordMedia.episode(this, episode.id, episode.title, episode.ext, seriesId)
+                }
                 3 -> RecordMedia.series(this, seriesId, episode.season)
             }
         }

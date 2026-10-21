@@ -128,4 +128,9 @@ object Look {
     fun confirm(activity: Activity, title: String, message: String, yes: String, onYes: () -> Unit) {
         choose(activity, title, listOf(yes, "Avbryt"), subtitle = message) { which -> if (which == 0) onYes() }
     }
+
+    /** Bara information, med en OK-knapp. */
+    fun message(activity: Activity, title: String, message: String) {
+        choose(activity, title, listOf("OK"), subtitle = message) {}
+    }
 }

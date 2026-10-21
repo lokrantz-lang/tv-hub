@@ -114,7 +114,7 @@ def chat(system, user, max_tokens=1800):
     provider = cfg["provider"]
     base = (cfg["url"] or DEFAULT_URL[provider]).rstrip("/")
     if not base:
-        raise AiError("Ange adressen till din server, t.ex. http://192.168.86.20:11434/v1")
+        raise AiError("Ange adressen till din server, t.ex. http://192.168.1.20:11434/v1")
     if provider == "anthropic":
         data = _post(f"{base}/messages",
                      {"x-api-key": cfg["key"], "anthropic-version": "2023-06-01"},

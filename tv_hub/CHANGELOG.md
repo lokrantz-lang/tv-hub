@@ -1,5 +1,27 @@
 # Ändringar
 
+## 2.0.0
+
+- **Röststyrning och fjärrstart.** Säg till Google "Fortsätt titta i sovrummet", "Spela senaste Rapport i
+  vardagsrummet" eller "Pausa vardagsrummet". Kommandona skapas i webbadminen (*Boxar → Röststyrning och
+  fjärrstart*) och blir skript i Home Assistant som kan slå på TV:n och byta källa först.
+  - Telefonen: *📺 Spela på TV:n* på filmer, serier, avsnitt och kanaler.
+  - Webbadminen: *Spela på box* i Biblioteket.
+  - Boxen lyssnar i bakgrunden. Z10 Pro behöver behörigheten "Visa ovanpå andra appar" för att starta när
+    appen är stängd (Inställningar → Röststyrning när appen är stängd).
+- **Fjärrkontrollens knappar:** Meny, ★, färgknapparna, Info, Guide, Inspelning och siffror för
+  kanalnummer. Lär in andra knappar under Inställningar → Fjärrkontrollens knappar.
+- **Chromecast från telefonen** för filmer och avsnitt (MP4; MKV på vissa enheter).
+- **Bild-i-bild** på telefonen: hemknappen under uppspelning.
+- **Kategorier:** egna visningsnamn och startkategori (t.ex. "Premiere Cinemas") i webbadminen, *Kategorier*.
+  Gäller både TV:n och telefonen.
+- **Telefonen:**
+  - Grupper väljs i en sökbar lista i stället för att svepa.
+  - *Nytt tillagt* med datum (Idag, Igår, 18 okt) för filmer, serier och kanaler.
+  - *Visa alla* på raderna på Hem (tryck på radens rubrik).
+- Mobilläge kan väljas även i det klassiska utseendet.
+- *Sök efter uppdatering* i appen frågar GitHub direkt i stället för att vänta upp till 30 minuter.
+
 ## 1.9.0
 
 - Filmkväll: välj vem som tittar (Själv, Med döttrarna, Med vuxen eller egna) och få tio förslag
