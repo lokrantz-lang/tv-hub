@@ -104,7 +104,7 @@ Se `homeassistant/tv_hub_package.yaml`. Ger status, svarstid, vem som tittar, n√
 ## Utveckling
 
 ```
-python3 tests/test_e2e.py     # 355 kontroller mot en simulerad Xtream-server
+python3 tests/test_e2e.py     # 356 kontroller mot en simulerad Xtream-server
 sh tests/dlna/run.sh          # appens DLNA-klient mot en simulerad Synology
 python3 tests/demo.py         # demodata: admin p√• http://127.0.0.1:28080
 ```

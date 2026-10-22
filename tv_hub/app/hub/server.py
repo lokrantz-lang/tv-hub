@@ -968,6 +968,17 @@ def dev_neighbours(h, item_id):
     return 200, {"prev": prev_id, "next": next_id}
 
 
+@route(DEVICE, "GET", r"/device/favorite")
+def dev_favorite_state(h):
+    """Är titeln en favorit? (spelarens meny visar Lägg till eller Ta bort)."""
+    dev, scope = h.context()
+    kind = (h.query.get("type") or [""])[0]
+    item_id = (h.query.get("id") or [""])[0]
+    if scope.private or not catalog.in_scope(kind, item_id, scope):
+        return 200, {"favorite": False}
+    return 200, {"favorite": (kind, str(item_id)) in catalog.favorite_keys()}
+
+
 @route(DEVICE, "POST", r"/device/favorites")
 def dev_favorite(h):
     dev, scope = h.context()

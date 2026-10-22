@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="updates" path="updates/" />
+    <!-- Mina media: filer på USB-disken som öppnas i VLC -->
+    <root-path name="root" path="." />
 </paths>

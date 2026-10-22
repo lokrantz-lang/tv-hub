@@ -634,6 +634,7 @@ class PlayerActivity : Activity() {
                 }
                 startPlayer(response.getString("url"), position)
                 startMs = 0L
+                loadFavoriteState()
                 showOverlay(4_000)
                 updateShiftView()
                 if (type == "live") loadEpg()
@@ -831,7 +832,21 @@ class PlayerActivity : Activity() {
     private fun onError(error: PlaybackException) {
         val p = player
         if (type == "file") {
+            val format = formatInfo()
             releasePlayer()
+            // Mina media: boxen kan inte läsa eller avkoda filen (t.ex. gammal DivX/Xvid). Öppna i VLC i stället.
+            val decodeProblem = error.errorCode in 3000..5999
+            if (decodeProblem && !isRecordingFile()) {
+                ExternalPlayer.markNeedsVlc(this, itemId)
+                if (ExternalPlayer.openInVlc(this, itemId, itemName, lastPositionMs)) {
+                    close("external")
+                    finish()
+                    return
+                }
+                showFatal("Boxen kan inte avkoda den här filen" + (format?.let { " ($it)" } ?: "") + ".\n" +
+                    "Installera VLC från Play Butik, så öppnas sådana filer där automatiskt.", canRetry = false)
+                return
+            }
             showFatal("Filen går inte att spela.\n${describe(error)}")
             return
         }
@@ -885,6 +900,37 @@ class PlayerActivity : Activity() {
         }
         releasePlayer()
         showFatal("Det går inte att spela just nu.\n${describe(error)}")
+    }
+
+    /** "MPEG-4 (DivX/Xvid), MP3" för felrutan. Null om spelaren inte hann läsa filen. */
+    private fun formatInfo(): String? {
+        val p = player ?: return null
+        val names = LinkedHashSet<String>()
+        for (group in p.currentTracks.groups) {
+            for (i in 0 until group.length) {
+                val mime = group.getTrackFormat(i).sampleMimeType ?: continue
+                names.add(
+                    when (mime) {
+                        "video/mp4v-es" -> "MPEG-4 (DivX/Xvid)"
+                        "video/avc" -> "H.264"
+                        "video/hevc" -> "H.265/HEVC"
+                        "video/dolby-vision" -> "Dolby Vision"
+                        "video/mpeg2" -> "MPEG-2"
+                        "video/x-vnd.on2.vp8" -> "VP8"
+                        "video/x-vnd.on2.vp9" -> "VP9"
+                        "video/av01" -> "AV1"
+                        "audio/ac3" -> "Dolby Digital"
+                        "audio/eac3" -> "Dolby Digital Plus"
+                        "audio/vnd.dts", "audio/vnd.dts.hd" -> "DTS"
+                        "audio/true-hd" -> "Dolby TrueHD"
+                        "audio/mpeg" -> "MP3"
+                        "audio/mp4a-latm" -> "AAC"
+                        else -> mime.substringAfter('/')
+                    },
+                )
+            }
+        }
+        return names.joinToString(", ").ifEmpty { null }
     }
 
     private fun describe(error: PlaybackException): String = when (error.errorCode) {
@@ -1003,6 +1049,13 @@ class PlayerActivity : Activity() {
 
     private fun playFile() {
         titleView.text = itemName
+        // Filer som tidigare krävt VLC öppnas där direkt (t.ex. nästa fil i mappen).
+        if (!isRecordingFile() && ExternalPlayer.needsVlc(this, itemId) &&
+            ExternalPlayer.openInVlc(this, itemId, itemName, prefs.recordingPosition(itemId))) {
+            close("external")
+            finish()
+            return
+        }
         val remote = itemId.startsWith("http://") || itemId.startsWith("https://")
         val uri = if (remote) itemId else {
             val file = File(itemId)
@@ -1575,19 +1628,42 @@ class PlayerActivity : Activity() {
     private fun hint(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
     /** ★: kanalen, filmen eller serien (för avsnitt) som favorit på/av. */
-    private fun toggleFavorite() {
-        if (prefs.adultMode && !prefs.adultHistory) return
-        val (favType, favId) = when (type) {
+    /** Vad ★ gäller: kanalen, filmen eller serien (för avsnitt). Null för inspelningar och filer. */
+    private fun favoriteTarget(): Pair<String, String>? {
+        if (prefs.adultMode && !prefs.adultHistory) return null
+        return when (type) {
             "live", "catchup" -> "live" to itemId
             "vod" -> "vod" to itemId
-            "episode" -> "series" to (seriesId ?: return)
-            else -> return
+            "episode" -> seriesId?.let { "series" to it }
+            else -> null
         }
+    }
+
+    /** Om det som spelas är en favorit (för spelarmenyn). Null = vet inte ännu. */
+    private var isFavorite: Boolean? = null
+    private var favoriteFor: String? = null
+
+    private fun loadFavoriteState() {
+        val (favType, favId) = favoriteTarget() ?: return
+        val key = "$favType:$favId"
+        if (favoriteFor == key) return
+        favoriteFor = key
+        isFavorite = null
+        Api.obj("GET", "/device/favorite?type=$favType&id=${Api.enc(favId)}") { result ->
+            if (favoriteFor == key) isFavorite = result.getOrNull()?.optBoolean("favorite")
+        }
+    }
+
+    private fun toggleFavorite() {
+        val (favType, favId) = favoriteTarget() ?: return
         val body = JSONObject().put("type", favType).put("id", favId).put("toggle", true)
         Api.obj("POST", "/device/favorites", body) { result ->
             result.onSuccess {
-                val what = if (favType == "series") "Serien" else itemName
-                hint(if (it.optBoolean("favorite")) "★ $what är nu en favorit" else "$what borttagen ur favoriter")
+                val on = it.optBoolean("favorite")
+                isFavorite = on
+                favoriteFor = "$favType:$favId"
+                val what = if (favType == "series") "Serien" else if (type == "catchup") "Kanalen" else itemName
+                hint(if (on) "★ $what är nu en favorit" else "$what borttagen ur favoriter")
             }.onFailure { hint(Api.friendly(it)) }
         }
     }
@@ -1764,6 +1840,14 @@ class PlayerActivity : Activity() {
             Session.previousChannel?.takeIf { it.first != itemId }?.let { prev ->
                 options.add("Förra kanalen: ${prev.second}" to { previousChannel() })
             }
+        }
+        if (favoriteTarget() != null) {
+            val what = when {
+                type == "episode" -> "serien"
+                type == "live" || type == "catchup" -> "kanalen"
+                else -> "filmen"
+            }
+            options.add((if (isFavorite == true) "★ Ta bort $what ur favoriter" else "☆ Lägg till $what i favoriter") to { toggleFavorite() })
         }
         options.add(sleepLabel() to { chooseSleep() })
         Look.choose(this, itemName, options.map { it.first }) { which -> options[which].second() }

@@ -1,5 +1,21 @@
 # Ändringar
 
+## 2.4.0
+
+- **USB-disken syns bara i vuxenläget** (i Mina media). I vanligt läge visas den inte alls, och ingen ruta visas när den sätts i.
+  Inspelningar påverkas inte.
+- **Favoriter från Mina media:** håll in OK på en mapp, video eller bild → ☆ Lägg till i favoriter. Under Favoriter finns
+  grupperna **NAS** och **USB-disk**. Favoriterna sparas bara på boxen. USB-favoriter syns bara i vuxenläget med historik påslagen.
+
+## 2.3.0
+
+- **Filer boxen inte kan avkoda** (t.ex. gamla DivX/Xvid-filmer) i Mina media öppnas automatiskt i VLC-appen, om den finns
+  på boxen. Nästa gång öppnas samma fil direkt i VLC. Utan VLC visar felrutan filens format och föreslår VLC.
+- **Favorit under uppspelning:** "☆ Lägg till kanalen i favoriter" / "★ Ta bort …" i spelarens meny (OK två gånger
+  på TV:n, Mer på telefonen). Gäller kanaler, filmer och serier (för avsnitt).
+- **Alla videor, nyast först** i Mina media: videorna i en mapp och alla dess undermappar i en lista, i datumordning.
+  Under Sortera, eller håll in OK på en mapp. Datum läses ur filnamnet (VID_20190612…, 2019-06-12 …) när det finns.
+
 ## 2.2.0
 
 - **Mina media** på boxarna: filmer, hemvideo och bilder från NAS:en (DLNA, t.ex. Synologys Media Server) och från en USB-disk.

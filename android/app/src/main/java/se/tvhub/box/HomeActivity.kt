@@ -153,7 +153,7 @@ class HomeActivity : Activity(), CardListener {
     /** USB-disk i eller ur: Mina media uppdateras. */
     private val mountReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
-            if (intent.action == Intent.ACTION_MEDIA_MOUNTED) {
+            if (intent.action == Intent.ACTION_MEDIA_MOUNTED && Media.usbAllowed(this@HomeActivity)) {
                 Toast.makeText(this@HomeActivity, "USB-disk ansluten. Den finns under Mina media.", Toast.LENGTH_LONG).show()
             }
             handler.postDelayed({ mediaPage?.refreshSources(discover = false) }, 800)
@@ -878,7 +878,10 @@ class HomeActivity : Activity(), CardListener {
         private fun buildFavoriteChips(data: JSONObject, reload: Boolean) {
             val all = Item.list(data.optJSONArray("favorites"))
             val rows = favoriteKinds.filter { (kind, _) -> all.any { it.type == kind } }
-                .map { (kind, label) -> Row("$label (${all.count { it.type == kind }})", key = "fav:$kind") }
+                .map { (kind, label) -> Row("$label (${all.count { it.type == kind }})", key = "fav:$kind") }.toMutableList()
+            // Mina media: favoriter från NAS:en och (i vuxenläget) USB-disken. Sparade på boxen.
+            Media.visibleFavorites(this@HomeActivity, usb = false).takeIf { it.isNotEmpty() }?.let { rows.add(Row("NAS (${it.size})", key = "fav:nas")) }
+            Media.visibleFavorites(this@HomeActivity, usb = true).takeIf { it.isNotEmpty() }?.let { rows.add(Row("USB-disk (${it.size})", key = "fav:usb")) }
             chipAdapter.submit(rows)
             if (rows.none { it.key == chipKey }) chipKey = rows.firstOrNull()?.key ?: "fav:vod"
             chipAdapter.select(chipKey)
@@ -946,6 +949,22 @@ class HomeActivity : Activity(), CardListener {
         private fun cardFor(item: Item): Card = if (item.type == "live") Card.channel(item) else Card.poster(item)
 
         private fun load(reset: Boolean, focusFirst: Boolean = false) {
+            if (favoritesOnly && (chipKey == "fav:nas" || chipKey == "fav:usb")) {
+                val favs = Media.visibleFavorites(this@HomeActivity, usb = chipKey == "fav:usb")
+                token++
+                total = favs.size
+                applyStyle()
+                gridAdapter.submit(favs.map { f ->
+                    val e = f.entry
+                    Card(Card.POSTER, e.key, (if (e.folder) "📁 " else if (e.kind == "image") "🖼 " else "") + e.name,
+                        if (e.folder) "Mapp · ${f.sourceLabel}" else f.sourceLabel, e.thumb, payload = f)
+                })
+                grid.scrollToPosition(0)
+                info.text = "${favs.size} favoriter  ·  Håll in OK för att ta bort"
+                if (focusFirst && favs.isNotEmpty()) focusEntry()
+                updateButtons()
+                return
+            }
             if (favoritesOnly || chipKey == "fav") {
                 // Favoriter: finns redan i hemdatan.
                 val kind = if (favoritesOnly) chipKey.removePrefix("fav:") else type
@@ -994,6 +1013,7 @@ class HomeActivity : Activity(), CardListener {
         }
 
         override fun onCardClick(card: Card, shelf: Shelf?) {
+            (card.payload as? Media.Fav)?.let { openMediaFavorite(it) ; return }
             val item = card.payload as? Item
             if (item?.type == "live") {
                 // Kanaler: zappa bland kanalerna i listan.
@@ -1003,7 +1023,45 @@ class HomeActivity : Activity(), CardListener {
             }
         }
 
-        override fun onCardLongClick(card: Card, shelf: Shelf?) = this@HomeActivity.onCardLongClick(card, shelf)
+        override fun onCardLongClick(card: Card, shelf: Shelf?) {
+            val fav = card.payload as? Media.Fav
+            if (fav == null) {
+                this@HomeActivity.onCardLongClick(card, shelf)
+                return
+            }
+            Look.choose(this@HomeActivity, fav.entry.name, listOf("Öppna", "★ Ta bort ur favoriter")) { which ->
+                if (which == 0) openMediaFavorite(fav) else {
+                    Media.removeFavorite(this@HomeActivity, fav.entry.key)
+                    home?.let { buildFavoriteChips(it, reload = true) }
+                }
+            }
+        }
+
+        /** Mapp: öppnas i Mina media. Video: spelas. Bild: bildspel bland bildfavoriterna. */
+        private fun openMediaFavorite(f: Media.Fav) {
+            val e = f.entry
+            if (f.usb && !Media.usbDrives(this@HomeActivity).any { e.ref.startsWith(it.root.absolutePath) }) {
+                Toast.makeText(this@HomeActivity, "Sätt i USB-disken först.", Toast.LENGTH_LONG).show()
+                return
+            }
+            when (e.kind) {
+                "folder" -> {
+                    showPage("media")
+                    mediaPage?.openFolder(f.sourceId, e.ref, e.name)
+                }
+                "video" -> {
+                    val url = e.url ?: return
+                    if (ExternalPlayer.needsVlc(this@HomeActivity, url) &&
+                        ExternalPlayer.openInVlc(this@HomeActivity, url, e.name, prefs.recordingPosition(url))) return
+                    PlayerActivity.start(this@HomeActivity, type = "file", id = url, name = e.name, ext = null,
+                        subtitle = e.subtitle, label = f.sourceLabel)
+                }
+                "image" -> {
+                    val images = gridAdapter.cards.mapNotNull { (it.payload as? Media.Fav)?.entry }.filter { it.kind == "image" }
+                    ImageViewerActivity.start(this@HomeActivity, images, images.indexOfFirst { it.key == e.key }.coerceAtLeast(0))
+                }
+            }
+        }
 
         override fun onCardFocus(card: Card, shelf: Shelf?, shelfIndex: Int, cardIndex: Int) {
             val item = card.payload as? Item ?: return
@@ -1629,6 +1687,15 @@ class HomeActivity : Activity(), CardListener {
         private var token = 0
         private var searching = false
         private var lastDiscover = 0L
+        private val allCache = HashMap<String, List<Media.Entry>>()
+
+        /** Visar "Alla videor" (alla undermappar, nyast först) just nu? */
+        private fun flat(): Boolean = stack.lastOrNull()?.first?.startsWith("flat:") == true
+
+        private fun openAll(ref: String, name: String) {
+            stack.add("flat:$ref" to "Alla videor i $name")
+            load(focusFirst = true)
+        }
 
         init {
             pageTitle.text = "Mina media"
@@ -1651,9 +1718,15 @@ class HomeActivity : Activity(), CardListener {
                 }
             }
             sortButton.setOnClickListener {
-                Look.choose(this@HomeActivity, "Sortera", listOf("Namn", "Datum (nyast först)"), if (byDate) 1 else 0) { which ->
-                    byDate = which == 1
-                    render()
+                val labels = listOf("Namn", "Datum (nyast först)", "Alla videor i undermapparna, nyast först")
+                Look.choose(this@HomeActivity, "Sortera", labels, if (flat()) 2 else if (byDate) 1 else 0) { which ->
+                    when (which) {
+                        2 -> if (!flat()) stack.lastOrNull()?.let { (ref, name) -> openAll(ref, name) }
+                        else -> {
+                            byDate = which == 1
+                            if (flat()) onBack() else render()
+                        }
+                    }
                 }
             }
             viewButton.setOnClickListener {
@@ -1722,7 +1795,8 @@ class HomeActivity : Activity(), CardListener {
         fun refreshSources(discover: Boolean) {
             val list = ArrayList<Media.Source>()
             Media.savedServers(this@HomeActivity).forEach { list.add(Media.DlnaSource(this@HomeActivity, it)) }
-            val drives = Media.usbDrives(this@HomeActivity)
+            // USB-disken visas bara i vuxenläget.
+            val drives = if (Media.usbAllowed(this@HomeActivity)) Media.usbDrives(this@HomeActivity) else emptyList()
             val usbAllowed = Media.hasReadPermission(this@HomeActivity)
             if (usbAllowed) drives.forEach { list.add(Media.UsbSource(this@HomeActivity, it)) }
             sources = list
@@ -1732,6 +1806,7 @@ class HomeActivity : Activity(), CardListener {
             chipAdapter.submit(rows)
             val keep = source?.id?.let { id -> list.firstOrNull { it.id == id } }
             if (keep == null) {
+                allCache.clear()
                 source = list.firstOrNull()
                 stack.clear()
                 source?.let { stack.add(it.rootRef to it.label) }
@@ -1743,7 +1818,7 @@ class HomeActivity : Activity(), CardListener {
                 info.text = when {
                     searching -> "Letar efter NAS i hemnätet…"
                     drives.isNotEmpty() && !usbAllowed -> "Välj \"USB-disk: ge TV Hub läsrätt\" och tryck Tillåt."
-                    else -> "Ingen NAS hittades, och ingen USB-disk sitter i. Har NAS:en en mediaserver (Synology: Media Server)? " +
+                    else -> "Ingen NAS hittades. Har NAS:en en mediaserver (Synology: Media Server)? " +
                         "Välj Lägg till NAS… uppe till höger och skriv in dess IP-adress."
                 }
             }
@@ -1806,6 +1881,7 @@ class HomeActivity : Activity(), CardListener {
             val s = sources.firstOrNull { "src:${it.id}" == row.key } ?: return
             if (s.id != source?.id) {
                 source = s
+                allCache.clear()
                 stack.clear()
                 stack.add(s.rootRef to s.label)
                 chipAdapter.select(row.key)
@@ -1832,7 +1908,23 @@ class HomeActivity : Activity(), CardListener {
             val (ref, _) = stack.lastOrNull() ?: return
             val t = ++token
             info.text = "Hämtar…"
-            Api.async({ s.list(ref) }) { result ->
+            val all = ref.startsWith("flat:")
+            val cached = if (all) allCache[ref] else null
+            if (cached != null) {
+                entries = cached
+                render()
+                if (focusFirst) focusEntry()
+                return
+            }
+            Api.async({
+                if (all) {
+                    Media.allVideos(this@HomeActivity, s, ref.removePrefix("flat:")) { done, known ->
+                        handler.post { if (t == token) info.text = "Hämtar alla videor: $done av $known mappar…" }
+                    }.also { allCache[ref] = it }
+                } else {
+                    s.list(ref)
+                }
+            }) { result ->
                 if (t != token) return@async
                 result.onSuccess { list ->
                     entries = list
@@ -1848,7 +1940,7 @@ class HomeActivity : Activity(), CardListener {
         }
 
         private fun render() {
-            val visible = Media.sort(entries.filter { Media.visible(this@HomeActivity, it) }, byDate)
+            val visible = if (flat()) entries else Media.sort(entries.filter { Media.visible(this@HomeActivity, it) }, byDate)
             applyStyle()
             gridAdapter.submit(visible.map { card(it) })
             grid.scrollToPosition(0)
@@ -1866,7 +1958,10 @@ class HomeActivity : Activity(), CardListener {
         }
 
         private fun card(e: Media.Entry): Card {
+            val dateText = e.date?.let { java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale("sv", "SE")).format(java.util.Date(it * 1000)) }
             val sub = when {
+                e.parent != null -> listOfNotNull(dateText, e.durationMs?.let { Format.minutes((it / 60_000).toInt().coerceAtLeast(1)) },
+                    e.parent).joinToString("  ·  ")
                 e.folder -> "Mapp"
                 e.kind == "video" -> e.durationMs?.let { Format.minutes((it / 60_000).toInt().coerceAtLeast(1)) }
                     ?: e.date?.let { java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale("sv", "SE")).format(java.util.Date(it * 1000)) }
@@ -1875,6 +1970,7 @@ class HomeActivity : Activity(), CardListener {
             val badge = when {
                 e.hidden -> "Dold"
                 e.kind == "video" && e.url != null && Media.isSeen(this@HomeActivity, e.url) -> "✓"
+                Media.isFavorite(this@HomeActivity, e.key) -> "★"
                 else -> null
             }
             return Card(Card.POSTER, e.key, (if (e.folder) "📁 " else if (e.kind == "image") "🖼 " else "") + e.name, sub, e.thumb,
@@ -1891,7 +1987,7 @@ class HomeActivity : Activity(), CardListener {
         }
 
         private fun updateButtons() {
-            sortButton.text = "Sortera: " + if (byDate) "Datum" else "Namn"
+            sortButton.text = "Sortera: " + if (flat()) "Alla videor" else if (byDate) "Datum" else "Namn"
         }
 
         private fun shown(): List<Media.Entry> = gridAdapter.cards.mapNotNull { it.payload as? Media.Entry }
@@ -1913,6 +2009,9 @@ class HomeActivity : Activity(), CardListener {
 
         private fun play(e: Media.Entry, fromStart: Boolean) {
             val url = e.url ?: return
+            // Filer som boxen inte kan avkoda (t.ex. gamla DivX-filmer) öppnas direkt i VLC.
+            if (ExternalPlayer.needsVlc(this@HomeActivity, url) &&
+                ExternalPlayer.openInVlc(this@HomeActivity, url, e.name, if (fromStart) 0L else prefs.recordingPosition(url))) return
             val videos = shown().filter { it.kind == "video" && it.url != null }
             if (fromStart) prefs.setRecordingPosition(url, 0L)
             PlayerActivity.start(
@@ -1929,6 +2028,7 @@ class HomeActivity : Activity(), CardListener {
             when (e.kind) {
                 "folder" -> {
                     options.add("Öppna" to { onCardClick(card, shelf) })
+                    options.add("Alla videor här, nyast först" to { openAll(e.ref, e.name) })
                     options.add("Bildspel av mappen" to { slideshow(e) })
                     if (e.hidden) {
                         if (!Media.isAdultName(e.name)) options.add("Visa mappen igen" to {
@@ -1962,8 +2062,36 @@ class HomeActivity : Activity(), CardListener {
                     })
                 }
             }
+            source?.let { src ->
+                val fav = Media.isFavorite(this@HomeActivity, e.key)
+                options.add((if (fav) "★ Ta bort ur favoriter" else "☆ Lägg till i favoriter") to {
+                    val on = Media.toggleFavorite(this@HomeActivity, e, src)
+                    val group = if (src is Media.UsbSource) "USB-disk" else "NAS"
+                    Toast.makeText(this@HomeActivity, if (on) "★ Finns under Favoriter → $group" else "Borttagen ur favoriter",
+                        Toast.LENGTH_SHORT).show()
+                    render()
+                })
+            }
             if (options.isEmpty()) return
             Look.choose(this@HomeActivity, e.name, options.map { it.first }) { options[it].second() }
+        }
+
+        /** Från Favoriter: öppna en favoritmapp. */
+        fun openFolder(sourceId: String, ref: String, name: String) {
+            refreshSources(discover = false)
+            val s = sources.firstOrNull { it.id == sourceId }
+            if (s == null) {
+                Toast.makeText(this@HomeActivity, if (sourceId.startsWith("usb:")) "Sätt i USB-disken först." else "NAS:en hittas inte just nu.",
+                    Toast.LENGTH_LONG).show()
+                return
+            }
+            source = s
+            allCache.clear()
+            stack.clear()
+            stack.add(s.rootRef to s.label)
+            if (ref != s.rootRef) stack.add(ref to name)
+            chipAdapter.select("src:${s.id}")
+            load(focusFirst = true)
         }
 
         /** Bildspel av alla bilder i en mapp (inte undermappar). */

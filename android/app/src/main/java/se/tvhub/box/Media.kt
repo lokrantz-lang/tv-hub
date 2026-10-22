@@ -32,6 +32,8 @@ object Media {
         val durationMs: Long?,
         val date: Long?,           // sekunder
         val hidden: Boolean = false,
+        /** "Alla videor": mappen filen ligger i. */
+        val parent: String? = null,
     )
 
     interface Source {
@@ -76,6 +78,75 @@ object Media {
         if (seen) Prefs(context).setRecordingPosition(url, 0L)
     }
 
+    // ---------------------------------------------------------------- favoriter
+
+    /**
+     * Favoriter från Mina media. Sparas bara på boxen (inte i Home Assistant).
+     * NAS-favoriter syns som andra favoriter. USB-favoriter bara i vuxenläget med historik påslagen.
+     */
+    data class Fav(val entry: Entry, val sourceId: String, val sourceLabel: String, val usb: Boolean)
+
+    private fun favJson(f: Fav): JSONObject {
+        val e = f.entry
+        return JSONObject().put("key", e.key).put("name", e.name).put("folder", e.folder).put("kind", e.kind).put("ref", e.ref)
+            .put("url", e.url).put("view", e.viewUrl).put("thumb", e.thumb).put("sub", e.subtitle).put("dur", e.durationMs ?: 0L)
+            .put("date", e.date ?: 0L).put("source", f.sourceId).put("label", f.sourceLabel).put("usb", f.usb)
+    }
+
+    private fun favFrom(o: JSONObject): Fav {
+        fun str(k: String) = o.optString(k).takeIf { it.isNotEmpty() && it != "null" }
+        val e = Entry(
+            key = o.optString("key"), name = o.optString("name"), folder = o.optBoolean("folder"), kind = o.optString("kind"),
+            ref = o.optString("ref"), url = str("url"), viewUrl = str("view"), thumb = str("thumb"), subtitle = str("sub"),
+            durationMs = o.optLong("dur").takeIf { it > 0 }, date = o.optLong("date").takeIf { it > 0 },
+        )
+        return Fav(e, o.optString("source"), o.optString("label"), o.optBoolean("usb"))
+    }
+
+    fun favorites(context: Context): List<Fav> = try {
+        val a = JSONArray(prefs(context).getString("favorites", "[]"))
+        (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { favFrom(it) }
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    private fun saveFavorites(context: Context, list: List<Fav>) {
+        val a = JSONArray()
+        list.forEach { a.put(favJson(it)) }
+        prefs(context).edit().putString("favorites", a.toString()).apply()
+    }
+
+    fun isFavorite(context: Context, key: String): Boolean = favorites(context).any { it.entry.key == key }
+
+    /** Lägger till eller tar bort. Returnerar true om den nu är favorit. */
+    fun toggleFavorite(context: Context, entry: Entry, source: Source): Boolean {
+        val list = favorites(context).toMutableList()
+        val existing = list.indexOfFirst { it.entry.key == entry.key }
+        if (existing >= 0) {
+            list.removeAt(existing)
+            saveFavorites(context, list)
+            return false
+        }
+        list.add(0, Fav(entry.copy(parent = null), source.id, source.label, source is UsbSource))
+        saveFavorites(context, list)
+        return true
+    }
+
+    fun removeFavorite(context: Context, key: String) {
+        saveFavorites(context, favorites(context).filter { it.entry.key != key })
+    }
+
+    /** USB-disken visas bara i vuxenläget. */
+    fun usbAllowed(context: Context): Boolean = Prefs(context).adultMode
+
+    /** Favoriterna som får visas nu. usb = USB-disken, annars NAS:en. */
+    fun visibleFavorites(context: Context, usb: Boolean): List<Fav> {
+        val p = Prefs(context)
+        val ok = if (usb) p.adultMode && p.adultHistory else (!p.adultMode || p.adultHistory)
+        if (!ok) return emptyList()
+        return favorites(context).filter { it.usb == usb }
+    }
+
     // ---------------------------------------------------------------- NAS (DLNA)
 
     class DlnaSource(private val context: Context, val server: Dlna.Server) : Source {
@@ -91,12 +162,21 @@ object Media {
                     e.container -> Entry(key, e.title, true, "folder", e.id, null, null, e.art, null, null, null,
                         hidden = key in hidden || isAdultName(e.title))
                     e.isVideo -> Entry(key, cleanTitle(e.title), false, "video", e.id, e.mainUrl, null, e.thumbUrl, e.subtitle,
-                        e.durationMs, parseDate(e.date))
-                    e.isImage -> Entry(key, e.title, false, "image", e.id, e.mainUrl, e.viewUrl, e.thumbUrl, null, null, parseDate(e.date))
+                        e.durationMs, nameDate(e.title) ?: parseDate(e.date))
+                    e.isImage -> Entry(key, e.title, false, "image", e.id, e.mainUrl, e.viewUrl, e.thumbUrl, null, null,
+                        nameDate(e.title) ?: parseDate(e.date))
                     else -> null
                 }
             }.filter { it.url != null || it.folder }
         }
+    }
+
+    /** Datum i filnamnet (kameror och mobiler) går före filens datum, som ofta är när den kopierades. */
+    fun nameDate(name: String): Long? {
+        val (y, m, d) = MediaNames.dateFromName(name) ?: return null
+        val cal = java.util.Calendar.getInstance()
+        cal.set(y, m - 1, d, 12, 0, 0)
+        return cal.timeInMillis / 1000
     }
 
     private fun parseDate(s: String?): Long? {
@@ -186,13 +266,13 @@ object Media {
                         val own = listOf("jpg", "png").map { File(dir, "$base.$it") }.firstOrNull { it.isFile }?.absolutePath
                         val sub = SUB.map { File(dir, "$base.$it") }.firstOrNull { it.isFile }?.absolutePath
                         out.add(Entry("$id:${f.absolutePath}", cleanTitle(name), false, "video", f.absolutePath, f.absolutePath, null,
-                            own ?: "frame:${f.absolutePath}", sub, null, f.lastModified() / 1000))
+                            own ?: "frame:${f.absolutePath}", sub, null, nameDate(name) ?: (f.lastModified() / 1000)))
                     }
                     ext in IMAGE && name.lowercase() !in setOf("poster.jpg", "folder.jpg", "cover.jpg") -> {
                         // En bild med samma namn som en video är videons omslag, inte ett foto.
                         if (VIDEO.any { File(dir, "$base.$it").isFile }) continue
                         out.add(Entry("$id:${f.absolutePath}", name, false, "image", f.absolutePath, f.absolutePath, f.absolutePath,
-                            f.absolutePath, null, null, f.lastModified() / 1000))
+                            f.absolutePath, null, null, nameDate(name) ?: (f.lastModified() / 1000)))
                     }
                 }
             }
@@ -207,6 +287,40 @@ object Media {
             }
             return out
         }
+    }
+
+    /**
+     * "Alla videor": videorna i mappen och alla undermappar (dolda mappar bara i vuxenläget), nyast först.
+     * Blockerar. progress(klara mappar, kända mappar).
+     */
+    fun allVideos(context: Context, source: Source, ref: String, progress: (Int, Int) -> Unit): List<Entry> {
+        val adult = Prefs(context).adultMode
+        val queue = ArrayDeque<Pair<String, String?>>()
+        queue.add(ref to null)
+        val videos = ArrayList<Entry>()
+        var done = 0
+        var known = 1
+        while (queue.isNotEmpty() && done < 400 && videos.size < 5000) {
+            val (folder, folderName) = queue.removeFirst()
+            val list = try {
+                source.list(folder)
+            } catch (_: Exception) {
+                emptyList()
+            }
+            for (e in list) {
+                if (e.folder) {
+                    if (adult || !e.hidden) {
+                        queue.add(e.ref to e.name)
+                        known++
+                    }
+                } else if (e.kind == "video" && e.url != null) {
+                    videos.add(e.copy(parent = folderName))
+                }
+            }
+            done++
+            progress(done, known)
+        }
+        return videos.distinctBy { it.url }.sortedByDescending { it.date ?: 0L }
     }
 
     /** Mappar först, sedan efter namn (naturlig ordning) eller datum (nyast först). */

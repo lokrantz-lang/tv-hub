@@ -82,13 +82,19 @@ Uppspelningen går inte via Toucan och räknas inte som en anslutning där.
 - **NAS:en** hittas av sig själv om den har en mediaserver (DLNA). På en Synology: paketet **Media Server**.
   Vilka mappar som syns styrs i DSM under *Kontrollpanelen → Indexeringstjänst → Indexerad mapp*.
   Hittas den inte: *Lägg till NAS…* uppe till höger och skriv in dess IP-adress.
-- **USB-disken** dyker upp när den sätts i. Första gången frågar boxen om TV Hub får läsa filer: svara *Tillåt*.
+- **USB-disken** syns bara i **vuxenläget**. Den dyker upp när den sätts i. Första gången frågar boxen om TV Hub får läsa filer: svara *Tillåt*.
+- **Favoriter:** håll in OK på en mapp, video eller bild → *☆ Lägg till i favoriter*. De visas under *Favoriter* i grupperna
+  **NAS** och **USB-disk**. De sparas bara på den boxen. USB-favoriter syns bara i vuxenläget med historik påslagen (höger tre gånger på Inställningar).
 - **Mappar som på disken.** OK öppnar, Tillbaka går upp en mapp. *Sortera* (namn eller datum) och *Visa* fungerar som i Filmer.
 - **Film och video** spelas i TV Hubs spelare och fortsätter där du slutade. Filerna i en mapp spelas i ordning
   (t.ex. avsnitt). En `.srt` med samma namn som filmen läses in (USB).
 - **Bilder:** OK visar bilden, vänster/höger bläddrar, OK startar bildspelet. Håll in OK på en mapp för *Bildspel av mappen*.
+- **Alla videor, nyast först:** *Sortera → Alla videor i undermapparna*, eller håll in OK på en mapp. Visar videorna i mappen
+  och alla undermappar i datumordning. Datumet tas ur filnamnet (t.ex. `VID_20190612_…`) och annars från NAS:en.
+- **Filer boxen inte kan avkoda** (vanligt för gamla DivX/Xvid-filmer) öppnas automatiskt i **VLC** om den finns på boxen
+  (gratis i Play Butik). I VLC sparar TV Hub ingen position, det gör VLC själv.
 - **Ingenting härifrån visas i Fortsätt titta på Hem.**
-- **Dölj:** håll in OK på en mapp → *Dölj mappen*. Dolda mappar, och mappar med XXX, 18+, Adult eller Porn i namnet, syns bara i vuxenläget.
+- **Dölj:** håll in OK på en NAS-mapp → *Dölj mappen*. Dolda mappar, och mappar med XXX, 18+, Adult eller Porn i namnet, syns bara i vuxenläget.
 - **Begränsningar:** filerna spelas som de är (ingen omkodning). Tunga 4K-filer kan hacka över wifi och på Z Alpha.
   Filmer med bara DTS- eller TrueHD-ljud kan bli tysta: välj ett annat ljudspår. ISO-filer och Blu-ray-mappar fungerar inte.
   USB-disken: FAT32 och exFAT fungerar, NTFS beror på boxen. En 2,5"-disk kan behöva egen ström.

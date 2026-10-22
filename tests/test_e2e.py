@@ -953,6 +953,11 @@ def categories_and_new(ta):
     s, f1 = call("POST", f"{D}/device/favorites", {"type": "live", "id": "104", "toggle": True}, token=ta)
     s, f2 = call("POST", f"{D}/device/favorites", {"type": "live", "id": "104", "toggle": True}, token=ta)
     check("★-knappen växlar favorit", f1.get("favorite") is True and f2.get("favorite") is False, (f1, f2))
+    s, st = call("GET", f"{D}/device/favorite?type=live&id=104", token=ta)
+    s2, f3 = call("POST", f"{D}/device/favorites", {"type": "live", "id": "104", "toggle": True}, token=ta)
+    s, st2 = call("GET", f"{D}/device/favorite?type=live&id=104", token=ta)
+    call("POST", f"{D}/device/favorites", {"type": "live", "id": "104", "on": False}, token=ta)
+    check("spelarmenyn ser om kanalen är favorit", st == {"favorite": False} and st2 == {"favorite": True}, (st, st2))
 
 
 def _poll(token, results, wait=8):

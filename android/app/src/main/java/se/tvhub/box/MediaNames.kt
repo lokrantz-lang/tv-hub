@@ -41,4 +41,14 @@ object MediaNames {
         pa.size - pb.size
     }
 
+
+    private val NAME_DATE = Regex("(?<!\\d)((?:19|20)\\d{2})[-_. ]?(0[1-9]|1[0-2])[-_. ]?(0[1-9]|[12]\\d|3[01])(?!\\d)")
+
+    /** Datum ur filnamn från kameror och mobiler: VID_20190612_…, IMG_20190612…, PXL_…, "2019-06-12 Midsommar". */
+    fun dateFromName(name: String): Triple<Int, Int, Int>? {
+        val m = NAME_DATE.find(name) ?: return null
+        val y = m.groupValues[1].toInt()
+        if (y < 1990 || y > 2100) return null
+        return Triple(y, m.groupValues[2].toInt(), m.groupValues[3].toInt())
+    }
 }

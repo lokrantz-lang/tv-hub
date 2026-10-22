@@ -47,6 +47,12 @@ fun main(args: Array<String>) {
         "Film.utan.år.1080p.x265.mkv" to "Film utan år",
     )
     for ((raw, want) in names) check("\"$raw\" -> \"$want\"", MediaNames.cleanTitle(raw) == want, MediaNames.cleanTitle(raw))
+    val dates = mapOf(
+        "VID_20190612_123456.mp4" to Triple(2019, 6, 12), "IMG_20230701_090000.MOV" to Triple(2023, 7, 1),
+        "PXL_20240315_181920123.mp4" to Triple(2024, 3, 15), "2019-06-12 Midsommar.mp4" to Triple(2019, 6, 12),
+        "20181224_150000.mp4" to Triple(2018, 12, 24), "Frost (2013).mp4" to null, "Film 1080p.mkv" to null,
+    )
+    for ((raw, want) in dates) check("datum ur \"$raw\"", MediaNames.dateFromName(raw) == want, MediaNames.dateFromName(raw))
     val sorted = listOf("Avsnitt 10", "Avsnitt 2", "avsnitt 1", "Bonus").sortedWith(MediaNames.naturalOrder)
     check("naturlig sortering", sorted == listOf("avsnitt 1", "Avsnitt 2", "Avsnitt 10", "Bonus"), sorted)
     println(if (fails == 0) "\nALLT OK" else "\n$fails FEL")
