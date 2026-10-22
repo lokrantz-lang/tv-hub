@@ -371,7 +371,7 @@ SCHEMA = [
     """,
     # version 11: profiler (tittarlägena blir profiler), PIN per box, Mina program.
     # Favoriter, Fortsätt titta, sedda och favoritavsnitt blir per profil. Allt som fanns blir den första
-    # profilens (Själv -> Henrik).
+    # profilens (den första). Namn på personer läggs till i webbadminen, aldrig här (förrådet är publikt).
     """
     ALTER TABLE viewers ADD COLUMN color TEXT;
     ALTER TABLE viewers ADD COLUMN emoji TEXT;
@@ -379,17 +379,13 @@ SCHEMA = [
     ALTER TABLE viewers ADD COLUMN pin_hash TEXT;
     ALTER TABLE viewers ADD COLUMN allow_adult INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE viewers ADD COLUMN guest INTEGER NOT NULL DEFAULT 0;
-    UPDATE viewers SET name = 'Henrik', color = '#3B82F6' WHERE name = 'Själv';
+    UPDATE viewers SET color = '#3B82F6' WHERE name = 'Själv';
     UPDATE viewers SET name = 'Tillsammans', color = '#F59E0B' WHERE name = 'Med döttrarna';
     UPDATE viewers SET allow_adult = 1 WHERE id = (SELECT MIN(id) FROM viewers);
     DELETE FROM viewers WHERE name = 'Med vuxen'
         AND NOT EXISTS (SELECT 1 FROM ratings r WHERE r.viewer_id = viewers.id)
         AND NOT EXISTS (SELECT 1 FROM seen_log s WHERE s.viewer_id = viewers.id)
         AND NOT EXISTS (SELECT 1 FROM wishlist w WHERE w.viewer_id = viewers.id);
-    INSERT INTO viewers (name, position, rules, created, color) SELECT 'Ida', 4, '{}', datetime('now'), '#EC4899'
-        WHERE NOT EXISTS (SELECT 1 FROM viewers WHERE name = 'Ida');
-    INSERT INTO viewers (name, position, rules, created, color) SELECT 'Linn', 5, '{}', datetime('now'), '#10B981'
-        WHERE NOT EXISTS (SELECT 1 FROM viewers WHERE name = 'Linn');
     INSERT INTO viewers (name, position, rules, created, color, guest) SELECT 'Gäst', 9, '{}', datetime('now'), '#6B7280', 1
         WHERE NOT EXISTS (SELECT 1 FROM viewers WHERE name = 'Gäst');
 
@@ -502,10 +498,6 @@ SCHEMA = [
          '["minigolf", "discgolf"]', 1, 1, datetime('now')),
         ('Ridsport', 'sport', '["ridsport", "hästhoppning", "hoppning", "dressyr", "fälttävlan", "horse show", "show jumping", "global champions", "equestrian"]',
          '["trav", "galopp", "v75", "v86", "v64", "v65", "travsport"]', 1, 2, datetime('now')),
-        ('Norrköping Dolphins', 'team', '["norrköping dolphins", "dolphins + basket", "dolphins + basketligan", "dolphins + norrköping"]',
-         '["miami", "nfl"]', 0, 3, datetime('now')),
-        ('IFK Norrköping', 'team', '["ifk norrköping", "ifk + norrköping", "norrköping + allsvenskan", "norrköping + damallsvenskan", "norrköping + svenska cupen"]',
-         '["dolphins", "basket"]', 0, 4, datetime('now')),
         ('Sverige, fotbollslandslagen', 'team', '["sverige + fotboll", "sweden + football", "sverige + landskamp", "damlandslaget", "herrlandslaget", "sverige + em kval", "sverige + vm kval", "sverige + nations league", "blågult + fotboll"]',
          '["ishockey", "handboll", "bandy", "innebandy", "tre kronor", "damkronorna", "basket", "friidrott", "volleyboll"]', 0, 5, datetime('now'))
     """,

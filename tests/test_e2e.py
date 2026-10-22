@@ -739,10 +739,14 @@ def film_night(ta, pa):
     ok = wait_for(lambda: all((call("GET", f"{D}/device/vod/{i}", token=ta)[1] or {}).get("genre")
                               for i in ("506", "507", "508", "509")), timeout=30)
     check("nya filmer har fått info", ok, ok)
+    # Inga riktiga namn i testerna (förrådet är publikt): två testprofiler läggs till.
+    for name in ("Testvuxen", "Testbarn"):
+        call("POST", f"{A}/api/profiles", {"name": name})
     s, viewers = call("GET", f"{D}/device/viewers", token=ta)
     names = [v["name"] for v in viewers]
-    check("profilerna från start (tittarlägena blev profiler)", names == ["Henrik", "Tillsammans", "Ida", "Linn", "Gäst"], names)
-    self_id, kids_id, adult_id = [v["id"] for v in viewers][:3]
+    check("profilerna från start (tittarlägena blev profiler)", names == ["Själv", "Tillsammans", "Gäst", "Testvuxen", "Testbarn"], names)
+    byname = {v["name"]: v["id"] for v in viewers}
+    self_id, kids_id, adult_id = byname["Själv"], byname["Tillsammans"], byname["Testvuxen"]
     check("Med döttrarna är barnvänligt från start", viewers[1]["rules"]["kids"] is True, viewers[1])
 
     s, night = call("GET", f"{D}/device/night?viewer={self_id}&limit=20", token=ta)
@@ -1275,9 +1279,9 @@ def version_25(ta, tb, pa, pb):
     print("Version 2.5: profiler och Mina program")
     s, data = call("GET", f"{A}/api/profiles")
     profs = {p["name"]: p for p in data["profiles"]}
-    check("profiler: Henrik, Tillsammans, Ida, Linn, Gäst", list(profs) == ["Henrik", "Tillsammans", "Ida", "Linn", "Gäst"], list(profs))
-    henrik, ida, guest = profs["Henrik"]["id"], profs["Ida"]["id"], profs["Gäst"]["id"]
-    check("bara Henrik får vuxenläget, Gäst är gäst", profs["Henrik"]["allow_adult"] and not profs["Ida"]["allow_adult"]
+    check("profiler: Själv, Tillsammans, Gäst och testprofilerna", list(profs) == ["Själv", "Tillsammans", "Gäst", "Testvuxen", "Testbarn"], list(profs))
+    owner, child, guest = profs["Själv"]["id"], profs["Testbarn"]["id"], profs["Gäst"]["id"]
+    check("bara ägaren får vuxenläget, Gäst är gäst", profs["Själv"]["allow_adult"] and not profs["Testbarn"]["allow_adult"]
           and profs["Gäst"]["guest"], profs)
     check("PIN-hash lämnas aldrig ut", all("pin_hash" not in p and "pin_salt" not in p for p in data["profiles"]), data["profiles"][0])
     s, mormor = call("POST", f"{A}/api/profiles", {"name": "Mormor", "color": "#8B5CF6"})
@@ -1292,20 +1296,20 @@ def version_25(ta, tb, pa, pb):
     check("rätt profil-PIN godtas", s == 200 and res["ok"], res)
     s, res = call("DELETE", f"{A}/api/profiles/{mormor['id']}")
     check("ta bort profil", s == 200 and len(call("GET", f"{A}/api/profiles")[1]["profiles"]) == 5, res)
-    s, res = call("DELETE", f"{A}/api/profiles/{henrik}")
+    s, res = call("DELETE", f"{A}/api/profiles/{owner}")
     check("sista profilen med vuxenläge kan inte tas bort", s == 400, res)
 
     # Egna favoriter och Fortsätt titta per profil
-    call("POST", f"{D}/device/favorites", {"type": "live", "id": "102", "on": True}, token=ta, profile=ida)
-    s, hi = call("GET", f"{D}/device/home", token=ta, profile=ida)
-    s, hh = call("GET", f"{D}/device/home", token=ta, profile=henrik)
+    call("POST", f"{D}/device/favorites", {"type": "live", "id": "102", "on": True}, token=ta, profile=child)
+    s, hi = call("GET", f"{D}/device/home", token=ta, profile=child)
+    s, hh = call("GET", f"{D}/device/home", token=ta, profile=owner)
     check("favoriter är per profil", any(f["id"] == "102" for f in hi["favorites"]) and not any(f["id"] == "102" for f in hh["favorites"]),
           ([f["id"] for f in hi["favorites"]], [f["id"] for f in hh["favorites"]]))
-    check("hemdatan talar om vem som tittar", hi["active_profile"]["id"] == ida and len(hi["profiles"]) == 5, hi["active_profile"])
-    s, p = call("POST", f"{D}/device/play", {"type": "vod", "id": "508"}, token=ta, profile=ida)
+    check("hemdatan talar om vem som tittar", hi["active_profile"]["id"] == child and len(hi["profiles"]) == 5, hi["active_profile"])
+    s, p = call("POST", f"{D}/device/play", {"type": "vod", "id": "508"}, token=ta, profile=child)
     call("POST", f"{D}/device/stop", {"session_id": p["session_id"], "metrics": {"position_ms": 700000, "duration_ms": 6000000}}, token=ta)
-    s, hi = call("GET", f"{D}/device/home", token=ta, profile=ida)
-    s, hh = call("GET", f"{D}/device/home", token=ta, profile=henrik)
+    s, hi = call("GET", f"{D}/device/home", token=ta, profile=child)
+    s, hh = call("GET", f"{D}/device/home", token=ta, profile=owner)
     check("Fortsätt titta är per profil", any(c["id"] == "508" for c in hi["continue"]) and not any(c["id"] == "508" for c in hh["continue"]),
           ([c["id"] for c in hi["continue"]], [c["id"] for c in hh["continue"]]))
     s, p = call("POST", f"{D}/device/play", {"type": "vod", "id": "509"}, token=ta, profile=guest)
@@ -1316,17 +1320,17 @@ def version_25(ta, tb, pa, pb):
     check("gäst kan inte spara favoriter", s == 400, res)
 
     # Vuxenläge: profil och PIN per box
-    s, h1 = call("GET", f"{D}/device/home", token=ta, mode="adult", profile=ida)
-    check("Ida kan inte slå på vuxenläget", h1["mode"] == "normal", h1["mode"])
-    s, res = call("POST", f"{D}/device/adult-unlock", {}, token=ta, profile=ida)
-    check("Ida får ingen upplåsning", s == 403 and "profil" in res["error"], res)
-    s, h2 = call("GET", f"{D}/device/home", token=ta, mode="adult", profile=henrik)
-    check("Henrik kan (ingen kod satt)", h2["mode"] == "adult", h2["mode"])
+    s, h1 = call("GET", f"{D}/device/home", token=ta, mode="adult", profile=child)
+    check("barnets profil kan inte slå på vuxenläget", h1["mode"] == "normal", h1["mode"])
+    s, res = call("POST", f"{D}/device/adult-unlock", {}, token=ta, profile=child)
+    check("barnets profil får ingen upplåsning", s == 403 and "profil" in res["error"], res)
+    s, h2 = call("GET", f"{D}/device/home", token=ta, mode="adult", profile=owner)
+    check("ägaren kan (ingen kod satt)", h2["mode"] == "adult", h2["mode"])
     call("PUT", f"{A}/api/adult-pin", {"pin": "4321"})
-    s, h3 = call("GET", f"{D}/device/home", token=ta, mode="adult", profile=henrik)
+    s, h3 = call("GET", f"{D}/device/home", token=ta, mode="adult", profile=owner)
     check("box som kräver PIN: vanligt läge utan kod", h3["mode"] == "normal" and h3["adult_pin"], h3["mode"])
     call("PUT", f"{A}/api/devices/{pa['device_id']}", {"pin_required": False})
-    s, h4 = call("GET", f"{D}/device/home", token=ta, mode="adult", profile=henrik)
+    s, h4 = call("GET", f"{D}/device/home", token=ta, mode="adult", profile=owner)
     s, un = call("POST", f"{D}/device/adult-unlock", {}, token=ta)
     check("box utan PIN-krav: vuxenläge utan kod", h4["mode"] == "adult" and not h4["adult_pin"] and un["pin_required"] is False, (h4["mode"], un))
     s, devs = call("GET", f"{A}/api/devices")
@@ -1346,48 +1350,48 @@ def version_25(ta, tb, pa, pb):
 
     # Mina program
     fake_mode("ok", news=1)
-    s, sug = call("POST", f"{A}/api/my-programs/suggest", {"profile_id": henrik})
+    s, sug = call("POST", f"{A}/api/my-programs/suggest", {"profile_id": owner})
     names = [p["name"] for p in sug["created"]]
     check("förslagen Rapport, TV4 Nyheterna och Robinson", names == ["Rapport", "TV4 Nyheterna", "Robinson"], sug)
-    s, again = call("POST", f"{A}/api/my-programs/suggest", {"profile_id": henrik})
+    s, again = call("POST", f"{A}/api/my-programs/suggest", {"profile_id": owner})
     check("förslagen läggs inte till två gånger", again["created"] == [], again)
-    s, res = call("POST", f"{A}/api/my-programs", {"profile_id": henrik, "mode": "main", "channel_id": "101", "query": "Rapport"})
+    s, res = call("POST", f"{A}/api/my-programs", {"profile_id": owner, "mode": "main", "channel_id": "101", "query": "Rapport"})
     check("huvudsändning utan tid nekas", s == 400, res)
     now = int(_t.time())
     base = now - now % 3600
     nyh_start = base - 2 * 3600
     clock = _t.strftime("%H:%M", _t.localtime(nyh_start))
-    s, mp = call("POST", f"{A}/api/my-programs", {"profile_id": henrik, "name": "Nyheterna", "mode": "main", "channel_id": "101",
+    s, mp = call("POST", f"{A}/api/my-programs", {"profile_id": owner, "name": "Nyheterna", "mode": "main", "channel_id": "101",
                                                   "query": "tv4 nyheterna", "times": [clock]})
     check("huvudsändning sparas", s == 201 and mp["times"] == [clock], mp)
-    s, progs = call("GET", f"{D}/device/my-programs", token=ta, profile=henrik)
+    s, progs = call("GET", f"{D}/device/my-programs", token=ta, profile=owner)
     by = {p["title"]: p for p in progs["programs"]}
     rap = by.get("Rapport", {}).get("command") or {}
     check("Rapport: sänds nu -> direkt", rap.get("type") == "live", by.get("Rapport"))
     nyh = by.get("Nyheterna", {}).get("command") or {}
     check("huvudsändningen ur arkivet", nyh.get("type") == "catchup" and nyh.get("catchup_start") == nyh_start, by.get("Nyheterna"))
-    s, progs_ida = call("GET", f"{D}/device/my-programs", token=ta, profile=ida)
-    check("snabbvalen är per profil", progs_ida["programs"] == [], progs_ida)
+    s, progs_child = call("GET", f"{D}/device/my-programs", token=ta, profile=child)
+    check("snabbvalen är per profil", progs_child["programs"] == [], progs_child)
     # TV4-kanalen i testet saknar arkiv: Robinson på TV4 förklarar varför
     rob = by.get("Robinson", {})
     check("utan arkiv: förklaring i stället för fel", "error" in rob and rob["subtitle"], rob)
-    s, rob101 = call("POST", f"{A}/api/my-programs", {"profile_id": henrik, "name": "Robinson SVT", "mode": "archive",
+    s, rob101 = call("POST", f"{A}/api/my-programs", {"profile_id": owner, "name": "Robinson SVT", "mode": "archive",
                                                       "channel_id": "101", "query": "Robinson"})
-    s, progs = call("GET", f"{D}/device/my-programs", token=ta, profile=henrik)
+    s, progs = call("GET", f"{D}/device/my-programs", token=ta, profile=owner)
     r = next(p for p in progs["programs"] if p["title"] == "Robinson SVT")
     check("arkiv utan sett: senaste avsnittet", r["command"]["catchup_start"] == base - 3600, r)
     older = base - 3 * 3600
-    s, p = call("POST", f"{D}/device/play", {"type": "catchup", "id": "101", "start": older, "duration": 60}, token=ta, profile=henrik)
+    s, p = call("POST", f"{D}/device/play", {"type": "catchup", "id": "101", "start": older, "duration": 60}, token=ta, profile=owner)
     call("POST", f"{D}/device/stop", {"session_id": p["session_id"], "metrics": {"position_ms": 3590000, "duration_ms": 3600000}}, token=ta)
-    s, progs = call("GET", f"{D}/device/my-programs", token=ta, profile=henrik)
+    s, progs = call("GET", f"{D}/device/my-programs", token=ta, profile=owner)
     r = next(p for p in progs["programs"] if p["title"] == "Robinson SVT")
     check("arkiv: nästa avsnitt efter det senast sedda", r["command"]["catchup_start"] == base - 3600 and r["command"]["start_ms"] == 0, r)
-    s, p = call("POST", f"{D}/device/play", {"type": "catchup", "id": "101", "start": base - 3600, "duration": 60}, token=ta, profile=henrik)
+    s, p = call("POST", f"{D}/device/play", {"type": "catchup", "id": "101", "start": base - 3600, "duration": 60}, token=ta, profile=owner)
     call("POST", f"{D}/device/stop", {"session_id": p["session_id"], "metrics": {"position_ms": 600000, "duration_ms": 3600000}}, token=ta)
-    s, progs = call("GET", f"{D}/device/my-programs", token=ta, profile=henrik)
+    s, progs = call("GET", f"{D}/device/my-programs", token=ta, profile=owner)
     r = next(p for p in progs["programs"] if p["title"] == "Robinson SVT")
     check("arkiv: påbörjat avsnitt fortsätter där du var", r["command"]["start_ms"] == 600000 and "fortsätt" in r["subtitle"], r)
-    s, hh = call("GET", f"{D}/device/home", token=ta, profile=henrik)
+    s, hh = call("GET", f"{D}/device/home", token=ta, profile=owner)
     check("program ur arkivet hamnar inte i Fortsätt titta", all(c["type"] in ("vod", "episode") for c in hh["continue"]), hh["continue"])
     s, res = call("DELETE", f"{A}/api/my-programs/{rob101['id']}")
     check("ta bort snabbval", s == 200, res)
@@ -1412,9 +1416,12 @@ def version_26(ta, tb, pa, pb):
     urllib.request.urlopen(f"http://127.0.0.1:{FAKE_PORT}/__epg_calls").read()
     s, sp = call("GET", f"{A}/api/sports")
     names = [i["name"] for i in sp["interests"]]
-    check("intressena från början", names == ["Golf", "Ridsport", "Norrköping Dolphins", "IFK Norrköping",
-                                              "Sverige, fotbollslandslagen"], names)
-    ids = {i["name"]: i["id"] for i in sp["interests"]}
+    check("intressena från början", names == ["Golf", "Ridsport", "Sverige, fotbollslandslagen"], names)
+    # Lag läggs till av användaren (påhittade lag i testerna).
+    call("POST", f"{A}/api/sports", {"name": "Stadens Delfiner", "kind": "team",
+                                     "keywords": "stadens delfiner\ndelfiner + basket", "exclude": "miami\nnfl"})
+    call("POST", f"{A}/api/sports", {"name": "Testlaget FC", "kind": "team", "keywords": "testlaget fc\ntestlaget + allsvenskan"})
+    ids = {i["name"]: i["id"] for i in call("GET", f"{A}/api/sports")[1]["interests"]}
     check("svenska kategorier och sportkategorier söks automatiskt", {c["name"] for c in sp["categories"] if c["auto"]}
           == {"SE | Sverige", "Sport"}, sp["categories"])
     st = _scan_and_wait()
@@ -1425,25 +1432,25 @@ def version_26(ta, tb, pa, pb):
     now_t = [e["title"] for e in ov["now"]]
     up_t = [e["title"] for e in ov["upcoming"]]
     past_t = [e["title"] for e in ov["past"]]
-    check("just nu: IFK Norrköping och golf", "Fotboll: IFK Norrköping - AIK" in now_t and "Golf: Scandinavian Mixed" in now_t, now_t)
-    check("kommande: Dolphins en gång (två kanaler blir en sändning)",
-          up_t.count("Basket: Norrköping Dolphins - Borås") == 1, up_t)
-    dol = next(e for e in ov["upcoming"] if e["title"] == "Basket: Norrköping Dolphins - Borås")
+    check("just nu: Testlaget FC och golf", "Fotboll: Testlaget FC - AIK" in now_t and "Golf: Scandinavian Mixed" in now_t, now_t)
+    check("kommande: lagets match en gång (två kanaler blir en sändning)",
+          up_t.count("Basket: Stadens Delfiner - Borås") == 1, up_t)
+    dol = next(e for e in ov["upcoming"] if e["title"] == "Basket: Stadens Delfiner - Borås")
     check("… med den andra kanalen som 'även på'", len(dol["also"]) == 1, dol)
-    check("Miami Dolphins och trav räknas inte", "NFL: Miami Dolphins - New York Jets" not in up_t
+    check("laget med samma namn i annan sport och trav räknas inte", "NFL: Miami Delfiner - New York Jets" not in up_t
           and not any("Trav" in t for t in up_t), up_t)
     check("ridsport: hästhoppning", "Hästhoppning: Falsterbo Horse Show" in up_t, up_t)
     sv = next((e for e in ov["past"] if e["title"] == "Fotboll: Sverige - Danmark"), None)
     check("i efterhand: landskampen ur arkivet", sv is not None and sv["command"]["type"] == "catchup"
           and sv["command"]["id"] == "101", ov["past"])
     check("i efterhand bara det som finns i arkivet", "Golf: PGA Tour" not in past_t, past_t)
-    ifk = next(e for e in ov["now"] if e["title"].startswith("Fotboll: IFK"))
+    ifk = next(e for e in ov["now"] if e["title"].startswith("Fotboll: Testlaget"))
     check("sänds nu: spela kanalen", ifk["command"] == {"action": "play", "type": "live", "id": "105",
-          "name": "C More Fotboll", "icon": ifk["icon"]} and ifk["interests"] == ["IFK Norrköping"], ifk)
+          "name": "C More Fotboll", "icon": ifk["icon"]} and ifk["interests"] == ["Testlaget FC"], ifk)
     counts = {i["name"]: i["count"] for i in ov["interests"]}
-    check("antal per intresse", counts["Golf"] == 1 and counts["Norrköping Dolphins"] == 2, counts)
-    s, one = call("GET", f"{D}/device/sports?interest={ids['IFK Norrköping']}", token=ta)
-    check("filtrera på ett intresse", [e["title"] for e in one["now"]] == ["Fotboll: IFK Norrköping - AIK"]
+    check("antal per intresse", counts["Golf"] == 1 and counts["Stadens Delfiner"] == 2, counts)
+    s, one = call("GET", f"{D}/device/sports?interest={ids['Testlaget FC']}", token=ta)
+    check("filtrera på ett intresse", [e["title"] for e in one["now"]] == ["Fotboll: Testlaget FC - AIK"]
           and one["upcoming"] == [], one)
 
     s, w = call("GET", f"{D}/device/when?q=sverige%20danmark", token=ta)
@@ -1463,12 +1470,12 @@ def version_26(ta, tb, pa, pb):
 
     # Röststart
     s, cmd = call("POST", f"{A}/api/voice", {"name": "Matchen", "device_id": pa["device_id"], "action": "sport",
-                                             "params": {"interest_id": ids["IFK Norrköping"]}})
+                                             "params": {"interest_id": ids["Testlaget FC"]}})
     s, run = call("POST", f"{A}/api/voice/{cmd['id']}/run")
     check("röststart: matchen som sänds nu", s == 200 and run["command"]["id"] == "105" and run["command"]["type"] == "live", run)
     call("GET", f"{D}/device/commands?wait=0", token=ta)
-    s, cmd2 = call("POST", f"{A}/api/voice", {"name": "Dolphins", "device_id": pa["device_id"], "action": "sport",
-                                              "params": {"interest_id": ids["Norrköping Dolphins"]}})
+    s, cmd2 = call("POST", f"{A}/api/voice", {"name": "Delfinerna", "device_id": pa["device_id"], "action": "sport",
+                                              "params": {"interest_id": ids["Stadens Delfiner"]}})
     s, run = call("POST", f"{A}/api/voice/{cmd2['id']}/run")
     check("röststart utan match nu: säger när nästa är", s == 400 and "Nästa:" in run["error"], run)
     call("DELETE", f"{A}/api/voice/{cmd['id']}")
@@ -1480,18 +1487,18 @@ def version_26(ta, tb, pa, pb):
 
     # Notis när matchen börjar och inspelning av lagets matcher
     call("PUT", f"{A}/api/sports/settings", {"notify_devices": [pa["device_id"]], "lead_minutes": 5, "quiet_from": "", "quiet_to": ""})
-    call("PUT", f"{A}/api/sports/{ids['Norrköping Dolphins']}", {"notify": True, "record_device_id": pb["device_id"]})
+    call("PUT", f"{A}/api/sports/{ids['Stadens Delfiner']}", {"notify": True, "record_device_id": pb["device_id"]})
     _scan_and_wait()
     time.sleep(1.5)
     s, res = call("GET", f"{D}/device/commands?wait=0", token=ta)
     rem = [c for c in res["commands"] if c["action"] == "reminder"]
-    check("matchen börjar strax: boxen får frågan", len(rem) == 1 and rem[0]["title"] == "Basket: Norrköping Dolphins - Luleå", res)
+    check("matchen börjar strax: boxen får frågan", len(rem) == 1 and rem[0]["title"] == "Basket: Stadens Delfiner - Luleå", res)
     _scan_and_wait()
     time.sleep(1.5)
     s, res = call("GET", f"{D}/device/commands?wait=0", token=ta)
     check("frågan skickas bara en gång", not [c for c in res["commands"] if c["action"] == "reminder"], res)
     s, recs = call("GET", f"{D}/device/recordings", token=tb)
-    dol_recs = [r for r in recs if "Dolphins" in r["title"]]
+    dol_recs = [r for r in recs if "Delfiner" in r["title"]]
     check("lagets matcher planeras som inspelningar på vald box", len(dol_recs) == 2
           and all(r["status"] == "scheduled" for r in dol_recs), recs)
     borås = next(r for r in dol_recs if "Borås" in r["title"])
@@ -1501,9 +1508,9 @@ def version_26(ta, tb, pa, pb):
     _scan_and_wait()
     s, recs = call("GET", f"{D}/device/recordings", token=tb)
     check("borttagen inspelning planeras inte igen", not any("Borås" in r["title"] and r["status"] == "scheduled" for r in recs), recs)
-    call("PUT", f"{A}/api/sports/{ids['Norrköping Dolphins']}", {"notify": False, "record_device_id": None})
+    call("PUT", f"{A}/api/sports/{ids['Stadens Delfiner']}", {"notify": False, "record_device_id": None})
     for r in recs:
-        if "Dolphins" in r["title"]:
+        if "Delfiner" in r["title"]:
             call("DELETE", f"{D}/device/recordings/{r['id']}", token=tb)
 
     # TV-guiden

@@ -1,9 +1,14 @@
 # Ändringar
 
+## 2.6.1
+
+- Inga namn på personer eller lokala lag i koden längre (förrådet är publikt). Profiler och lag läggs till i webbadminen.
+  Den som redan uppdaterat till 2.5/2.6 påverkas inte: profilerna och lagen finns kvar.
+
 ## 2.6.0
 
 - **Mina sporter:** Sport i menyn och raden *Sport: nu och snart* på Hem. Just nu, Kommande och I efterhand
-  (ur arkivet) för Golf, Ridsport, Norrköping Dolphins, IFK Norrköping och fotbollslandslagen. Sporter, lag och
+  (ur arkivet) för sporter och lag du väljer, t.ex. golf, ridsport och fotbollslandslagen. Sporter, lag och
   sökord ändras i webbadminen under den nya fliken **Sport**.
 - **Fråga när matchen börjar:** boxarna frågar "Byt kanal?" och telefonen får en notis, för de sporter och lag du väljer.
 - **Spela in lagets matcher** automatiskt på vald box.
@@ -17,13 +22,13 @@
 
 ## 2.5.0
 
-- **Profiler:** Henrik, Tillsammans, Ida, Linn och Gäst (läggs till, ändras och tas bort i webbadminen under *Profiler*).
-  - Egna favoriter, Fortsätt titta, sedda avsnitt och snabbval per profil. Befintliga favoriter hör till Henrik.
+- **Profiler:** en per person, plus Tillsammans och Gäst (läggs till, ändras och tas bort i webbadminen under *Profiler*).
+  - Egna favoriter, Fortsätt titta, sedda avsnitt och snabbval per profil. Befintliga favoriter hör till den första profilen.
   - Byt profil med den runda bilden överst i menyn (TV) eller uppe till höger (telefon). Valfri kod per profil.
-  - Gäst sparar ingenting. Bara profiler med *Får använda vuxenläget* (Henrik) kan slå på vuxenläget.
+  - Gäst sparar ingenting. Bara profiler med *Får använda vuxenläget* kan slå på vuxenläget.
   - Tittarlägena i Filmkväll är samma sak som profilerna.
 - **Per box** (webbadminen, *Boxar*): startprofil, tillbaka till startprofilen efter X timmar utan användning,
-  och om koden för vuxenläget krävs. Vardagsrummet: Tillsammans, 4 timmar, kod. Sovrummet: Henrik, ingen kod.
+  och om koden för vuxenläget krävs. En box med "vardagsrum" i namnet: Tillsammans, 4 timmar, kod. "Sovrum": första profilen, ingen kod.
 - **Mina program:** snabbval överst på Hem och under Favoriter, t.ex. senaste Rapport, senaste huvudsändningen av
   TV4 Nyheterna (19:00/22:00) och nästa avsnitt av Robinson ur TV4:s arkiv. Fortsätter där du var.
 - **Snyggare och tydligare:** sidan bakom menyn tonas ner när menyn fälls ut, grå platshållare medan listor hämtas

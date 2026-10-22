@@ -21,9 +21,10 @@ TV Hub gör Home Assistant till navet för din IPTV:
 
 ## Profiler
 
-Fliken **Profiler** i webbadminen. Från början finns Henrik, Tillsammans, Ida, Linn och Gäst (tidigare tittarlägen blev profiler).
+Fliken **Profiler** i webbadminen. Tidigare tittarlägen blev profiler: *Själv* (ägaren, får använda vuxenläget),
+*Tillsammans* och *Gäst*. Byt namn och lägg till en profil per person i fliken.
 
-- **Egna favoriter, Fortsätt titta, sedda avsnitt och snabbval** per profil. Favoriter från tiden före 2.5 hör till Henrik.
+- **Egna favoriter, Fortsätt titta, sedda avsnitt och snabbval** per profil. Favoriter från tiden före 2.5 hör till den första profilen.
 - **Byta profil:** TV: den runda bilden överst i menyn till vänster. Telefon: den runda bilden uppe till höger.
   Ingen "Vem tittar?" vid start: boxen startar med sin *startprofil*.
 - **Kod (valfri, 4–8 siffror):** appen frågar efter den när någon byter till profilen.
@@ -33,7 +34,7 @@ Fliken **Profiler** i webbadminen. Från början finns Henrik, Tillsammans, Ida,
   tummar och snabbval.
 - **Per box** (fliken *Boxar*): *Startprofil*, *Tillbaka till startprofilen efter X h utan användning* och
   *Kräv kod för vuxenläget*. Vid uppdateringen till 2.5 fick en box med "vardagsrum" i namnet startprofilen Tillsammans,
-  4 timmar och kod; en box med "sovrum" i namnet fick Henrik och ingen kod.
+  4 timmar och kod; en box med "sovrum" i namnet fick den första profilen och ingen kod.
 
 ### Mina program (snabbval)
 
@@ -53,14 +54,14 @@ Programmets namn matchas mot programguiden (stora/små bokstäver och tecken spe
 ## Mina sporter och När går …?
 
 **Sport** i menyn på TV:n och raden *Sport: nu och snart* på Hem (TV och telefon). Sporterna och lagen ställs in i
-webbadminen under fliken **Sport**. Från början: Golf, Ridsport, Norrköping Dolphins, IFK Norrköping och
-Sveriges fotbollslandslag (dam och herr).
+webbadminen under fliken **Sport**. Från början: Golf, Ridsport och Sveriges fotbollslandslag (dam och herr).
+Lägg till egna lag med *Lägg till sport eller lag*.
 
 - **Just nu** (OK: titta), **Kommande** (OK: påminn mig eller spela in) och **I efterhand** (OK: spela ur arkivet).
   Grupperna överst visar en sport eller ett lag i taget. Samma sändning på flera kanaler visas en gång ("även på …").
 - **Sökorden** jämförs med programguidens titel (och beskrivning, om inte *Bara i titeln* är ikryssat). En rad per
-  alternativ, `dolphins + basket` betyder att båda orden måste finnas, och *Inte*-orden stoppar en träff (t.ex.
-  `miami` så att Miami Dolphins inte kommer med). *Ändra och se sändningar* visar direkt vad som hittas.
+  alternativ, `tigrarna + basket` betyder att båda orden måste finnas, och *Inte*-orden stoppar en träff (t.ex. ett
+  lag med samma namn i en annan sport). *Ändra och se sändningar* visar direkt vad som hittas.
 - **Fråga när den börjar:** de valda boxarna frågar "Byt kanal?" några minuter innan, och telefonen får en notis
   (notify-tjänsten under *Boxar → Påminnelser till telefonen*). Inte mellan 23 och 08 som standard.
 - **Spela in lagets sändningar:** kommande sändningar planeras som inspelningar på vald box, 2 minuter före till

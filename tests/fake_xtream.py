@@ -86,12 +86,12 @@ SPORT_EPG = {  # stream_id -> {timme från nu: (titel, beskrivning)}
     "101": {-3: ("Fotboll: Sverige - Danmark", "Damlandskamp i fotboll från Gamla Ullevi."),
             0: ("Golf: Scandinavian Mixed", "Dag tre."),
             2: ("Hästhoppning: Falsterbo Horse Show", "Nations Cup.")},
-    "105": {0: ("Fotboll: IFK Norrköping - AIK", "Allsvenskan, omgång 28."),
-            2: ("Basket: Norrköping Dolphins - Borås", "Basketligan."),
-            3: ("NFL: Miami Dolphins - New York Jets", "Amerikansk fotboll.")},
+    "105": {0: ("Fotboll: Testlaget FC - AIK", "Allsvenskan, omgång 28."),
+            2: ("Basket: Stadens Delfiner - Borås", "Basketligan."),
+            3: ("NFL: Miami Delfiner - New York Jets", "Amerikansk fotboll.")},
     "106": {1: ("Trav: V75 från Solvalla", "Ridsport? Nej, trav."),
             -2: ("Golf: PGA Tour", "Highlights.")},
-    "107": {2: ("Basket: Norrköping Dolphins - Borås", "Basketligan.")},
+    "107": {2: ("Basket: Stadens Delfiner - Borås", "Basketligan.")},
 }
 
 
@@ -248,7 +248,7 @@ class Handler(BaseHTTPRequestHandler):
                                      "has_archive": "1" if start + 3600 <= now else "0"})
                 if STATE.get("sport") and str(q.get("stream_id")) == "107":
                     soon = now // 60 * 60 + 180
-                    listings.append({"title": b64("Basket: Norrköping Dolphins - Luleå"), "description": b64("Basketligan."),
+                    listings.append({"title": b64("Basket: Stadens Delfiner - Luleå"), "description": b64("Basketligan."),
                                      "start_timestamp": str(soon), "stop_timestamp": str(soon + 5400), "has_archive": "0"})
                 return self.send(200, {"epg_listings": listings})
             if action == "get_short_epg":

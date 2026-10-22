@@ -66,8 +66,8 @@ call("POST", f"{D}/device/recordings/{r2['id']}/status", {"status": "done", "siz
 call("POST", f"{D}/device/recordings", {"stream_id": "102", "title": "Kvällsfilm", "start": now + 7200, "end": now + 13800}, token=alpha)
 r4 = call("POST", f"{D}/device/recordings", {"stream_id": "102", "title": "Nyheterna", "start": now + 300, "end": now + 900}, token=alpha)
 urllib.request.urlopen("http://127.0.0.1:28091/__mode?mode=ok&news=1&sport=1").read()
-henrik = call("GET", f"{A}/api/profiles")["profiles"][0]["id"]
-call("POST", f"{A}/api/my-programs/suggest", {"profile_id": henrik})
+owner = call("GET", f"{A}/api/profiles")["profiles"][0]["id"]
+call("POST", f"{A}/api/my-programs/suggest", {"profile_id": owner})
 time.sleep(1)
 call("POST", f"{A}/api/sports/scan")
 print("demo redo", flush=True)

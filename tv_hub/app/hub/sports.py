@@ -3,7 +3,7 @@
 Programguiden för svenska kanaler och sportkanaler hämtas i bakgrunden (en kanal i taget, med paus emellan,
 var fjärde timme) och sparas i tabellen epg. Kanaler med samma EPG-id (t.ex. SVT1 och SVT1 HD) hämtas en gång.
 Det gör att TV Hub kan:
-  - hitta sändningar för intressena (Golf, Ridsport, IFK Norrköping …) med sökord
+  - hitta sändningar för intressena (Golf, Ridsport, ett lag …) med sökord
   - svara på "När går …?" för vilket program som helst på de kanalerna
   - fråga på boxarna och skicka notis till telefonen när en match börjar
   - planera inspelning av lagets matcher på en vald box

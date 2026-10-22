@@ -23,7 +23,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Profiler (Henrik, Ida, Linn, Tillsammans, Gäst …). Läggs till och ändras i webbadminen under Profiler.
+ * Profiler (en per person, Tillsammans, Gäst …). Läggs till och ändras i webbadminen under Profiler.
  *
  *  - Vald profil skickas med i alla anrop (X-TVHub-Profile). Utan vald profil gäller boxens startprofil.
  *  - Varje profil har egna favoriter, Fortsätt titta och snabbval (Mina program).

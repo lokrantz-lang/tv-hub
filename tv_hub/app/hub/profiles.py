@@ -1,4 +1,4 @@
-"""Profiler: Henrik, Ida, Linn, Tillsammans, Gäst … (samma som Filmkvällens tittarlägen).
+"""Profiler: en per person, plus t.ex. Tillsammans och Gäst (samma som Filmkvällens tittarlägen).
 
 Varje profil har egna favoriter, Fortsätt titta, sedda, senaste kanaler och tummar.
 - allow_adult: profilen får slå på vuxenläget (dessutom krävs boxens PIN om boxen kräver den).
@@ -42,7 +42,7 @@ def get(profile_id):
 
 
 def owner_id():
-    """Den första profilen (Henrik). Gamla data och webbadminens favoriter hör till den."""
+    """Ägarens profil (den första som får använda vuxenläget). Gamla data och webbadminens favoriter hör till den."""
     row = db.q1("SELECT id FROM viewers WHERE allow_adult = 1 ORDER BY id LIMIT 1") or db.q1("SELECT MIN(id) AS id FROM viewers")
     return row["id"] if row and row["id"] is not None else 0
 
