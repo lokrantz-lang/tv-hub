@@ -15,9 +15,25 @@ MIN_RESUME_MS = 60 * 1000
 # ====================================================================
 # Fortsätt titta
 # ====================================================================
+def _session_profile(session):
+    """Profilen som tittade (sessions.viewer_id). None om gäst (inget sparas)."""
+    from . import profiles
+    keys = session.keys()
+    p = profiles.get(session["viewer_id"]) if "viewer_id" in keys and session["viewer_id"] else profiles.get(profiles.owner_id())
+    if p and p["guest"]:
+        return None
+    return p["id"] if p else profiles.owner_id()
+
+
+def catchup_key(channel_id, start):
+    return f"{channel_id}:{int(start)}"
+
+
 def update_progress(session, position_ms, duration_ms):
-    """Anropas vid heartbeat och stopp för filmer och avsnitt."""
-    if session["type"] not in ("vod", "episode"):
+    """Anropas vid heartbeat och stopp för filmer, avsnitt och program ur arkivet (Mina program)."""
+    keys = session.keys()
+    catchup = session["type"] == "catchup" and "catchup_start" in keys and session["catchup_start"]
+    if session["type"] not in ("vod", "episode") and not catchup:
         return
     try:
         position_ms, duration_ms = int(position_ms or 0), int(duration_ms or 0)
@@ -25,17 +41,23 @@ def update_progress(session, position_ms, duration_ms):
         return
     if position_ms <= 0:
         return
+    profile_id = _session_profile(session)
+    if profile_id is None:
+        return
     adult = session["adult"]
-    key = (adult, session["type"], session["item_id"])
+    item_id = catchup_key(session["item_id"], session["catchup_start"]) if catchup else session["item_id"]
+    key = (profile_id, adult, session["type"], item_id)
     finished = duration_ms > 0 and (position_ms >= duration_ms * FINISHED_RATIO
                                     or duration_ms - position_ms <= FINISHED_LEFT_MS)
     if finished:
         with db.tx() as conn:
-            conn.execute("DELETE FROM progress WHERE adult = ? AND type = ? AND item_id = ?", key)
+            conn.execute("DELETE FROM progress WHERE profile_id = ? AND adult = ? AND type = ? AND item_id = ?", key)
             conn.execute(
-                "INSERT OR REPLACE INTO watched (adult, type, item_id, series_id, at) VALUES (?,?,?,?,?)",
+                "INSERT OR REPLACE INTO watched (profile_id, adult, type, item_id, series_id, at) VALUES (?,?,?,?,?,?)",
                 (*key, session["series_id"], db.iso()),
             )
+        if catchup:
+            return
         # Filmkväll: loggas utanför transaktionen ovan (loggen öppnar egna anrop mot databasen).
         from . import taste
         taste.on_finished(session)
@@ -44,20 +66,27 @@ def update_progress(session, position_ms, duration_ms):
         if session["type"] == "episode" and session["series_id"]:
             # Bara senaste avsnittet per serie i "Fortsätt titta".
             conn.execute(
-                "DELETE FROM progress WHERE adult = ? AND type = 'episode' AND series_id = ? AND item_id != ?",
-                (adult, session["series_id"], session["item_id"]),
+                "DELETE FROM progress WHERE profile_id = ? AND adult = ? AND type = 'episode' AND series_id = ? AND item_id != ?",
+                (profile_id, adult, session["series_id"], session["item_id"]),
             )
         conn.execute(
-            """INSERT OR REPLACE INTO progress (adult, type, item_id, series_id, name, icon, ext,
-               position_ms, duration_ms, updated) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            """INSERT OR REPLACE INTO progress (profile_id, adult, type, item_id, series_id, name, icon, ext,
+               position_ms, duration_ms, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (*key, session["series_id"], session["item_name"], session["icon"], session["ext"],
              position_ms, duration_ms, db.iso()),
         )
 
 
-def resume_position(adult, kind, item_id):
-    row = db.q1("SELECT position_ms, duration_ms FROM progress WHERE adult = ? AND type = ? AND item_id = ?",
-                (adult, kind, str(item_id)))
+def _pid(profile_id):
+    if profile_id:
+        return profile_id
+    from . import profiles
+    return profiles.owner_id()
+
+
+def resume_position(adult, kind, item_id, profile_id=None):
+    row = db.q1("SELECT position_ms, duration_ms FROM progress WHERE profile_id = ? AND adult = ? AND type = ? AND item_id = ?",
+                (_pid(profile_id), adult, kind, str(item_id)))
     if row and row["position_ms"] >= MIN_RESUME_MS:
         return {"position_ms": row["position_ms"], "duration_ms": row["duration_ms"]}
     return None
@@ -67,8 +96,9 @@ def continue_watching(scope, limit=20):
     adult = scope.adult or 0
     out = []
     for row in db.q(
-        "SELECT * FROM progress WHERE adult = ? AND position_ms >= ? ORDER BY updated DESC LIMIT ?",
-        (adult, MIN_RESUME_MS, limit * 2),
+        """SELECT * FROM progress WHERE profile_id = ? AND adult = ? AND position_ms >= ? AND type IN ('vod', 'episode')
+           ORDER BY updated DESC LIMIT ?""",
+        (scope.pid, adult, MIN_RESUME_MS, limit * 2),
     ):
         # Kontrollera mot boxens scope via filmen eller serien.
         ref_type, ref_id = ("vod", row["item_id"]) if row["type"] == "vod" else ("series", row["series_id"])
@@ -91,26 +121,37 @@ def remove_progress(scope, kind, item_id, series_id=None):
     """Ta bort från Fortsätt titta (håll in OK). Avsnitt: hela serien försvinner ur raden."""
     adult = scope.adult or 0
     if kind == "episode" and series_id:
-        return db.x("DELETE FROM progress WHERE adult = ? AND type = 'episode' AND series_id = ?",
-                    (adult, str(series_id))).rowcount
+        return db.x("DELETE FROM progress WHERE profile_id = ? AND adult = ? AND type = 'episode' AND series_id = ?",
+                    (scope.pid, adult, str(series_id))).rowcount
     if kind in ("vod", "episode"):
-        return db.x("DELETE FROM progress WHERE adult = ? AND type = ? AND item_id = ?",
-                    (adult, kind, str(item_id or ""))).rowcount
+        return db.x("DELETE FROM progress WHERE profile_id = ? AND adult = ? AND type = ? AND item_id = ?",
+                    (scope.pid, adult, kind, str(item_id or ""))).rowcount
     raise ValueError("Okänd typ")
 
 
-def series_progress(adult, series_id):
+def series_progress(adult, series_id, profile_id=None):
+    pid = _pid(profile_id)
     progress = {r["item_id"]: {"position_ms": r["position_ms"], "duration_ms": r["duration_ms"]}
-                for r in db.q("SELECT * FROM progress WHERE adult = ? AND type = 'episode' AND series_id = ?",
-                              (adult, str(series_id)))}
+                for r in db.q("SELECT * FROM progress WHERE profile_id = ? AND adult = ? AND type = 'episode' AND series_id = ?",
+                              (pid, adult, str(series_id)))}
     watched = [r["item_id"] for r in db.q(
-        "SELECT item_id FROM watched WHERE adult = ? AND type = 'episode' AND series_id = ?", (adult, str(series_id)))]
+        "SELECT item_id FROM watched WHERE profile_id = ? AND adult = ? AND type = 'episode' AND series_id = ?",
+        (pid, adult, str(series_id)))]
     return progress, watched
 
 
-def is_watched(adult, kind, item_id):
-    return db.q1("SELECT 1 FROM watched WHERE adult = ? AND type = ? AND item_id = ?",
-                 (adult, kind, str(item_id))) is not None
+def is_watched(adult, kind, item_id, profile_id=None):
+    return db.q1("SELECT 1 FROM watched WHERE profile_id = ? AND adult = ? AND type = ? AND item_id = ?",
+                 (_pid(profile_id), adult, kind, str(item_id))) is not None
+
+
+def catchup_state(profile_id, channel_id, start):
+    """Program ur arkivet: (sett klart, position_ms)."""
+    key = catchup_key(channel_id, start)
+    pid = _pid(profile_id)
+    seen = db.q1("SELECT 1 FROM watched WHERE profile_id = ? AND type = 'catchup' AND item_id = ?", (pid, key)) is not None
+    row = db.q1("SELECT position_ms FROM progress WHERE profile_id = ? AND type = 'catchup' AND item_id = ?", (pid, key))
+    return seen, (row["position_ms"] if row else 0)
 
 
 # ====================================================================
@@ -119,9 +160,9 @@ def is_watched(adult, kind, item_id):
 def recent_channels(device_id, scope, limit=20):
     rows = db.q(
         """SELECT item_id, MAX(started) AS last FROM sessions
-           WHERE device_id = ? AND type = 'live' AND adult = ?
+           WHERE device_id = ? AND type = 'live' AND adult = ? AND viewer_id = ?
            GROUP BY item_id ORDER BY last DESC LIMIT ?""",
-        (device_id, scope.adult or 0, limit * 2),
+        (device_id, scope.adult or 0, scope.pid, limit * 2),
     )
     out = []
     for row in rows:
@@ -288,7 +329,7 @@ def set_episode_favorite(scope, episode_id, series_id, title, ext, icon, on):
         raise ValueError("Okänt avsnitt.")
     adult = 1 if scope.adult else 0
     if not on:
-        db.x("DELETE FROM fav_episodes WHERE adult = ? AND episode_id = ?", (adult, episode_id))
+        db.x("DELETE FROM fav_episodes WHERE profile_id = ? AND adult = ? AND episode_id = ?", (scope.pid, adult, episode_id))
         return False
     series_id = str(series_id or "")
     if not catalog.in_scope("series", series_id, scope):
@@ -297,16 +338,17 @@ def set_episode_favorite(scope, episode_id, series_id, title, ext, icon, on):
     ext = str(ext or "mp4")
     if not ext.isalnum() or len(ext) > 8:
         ext = "mp4"
-    db.x("""INSERT OR REPLACE INTO fav_episodes (adult, episode_id, series_id, title, ext, icon, added)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-         (adult, episode_id, series_id, (str(title or "").strip() or f"{series.get('name', 'Avsnitt')}")[:200],
+    db.x("""INSERT OR REPLACE INTO fav_episodes (profile_id, adult, episode_id, series_id, title, ext, icon, added)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+         (scope.pid, adult, episode_id, series_id, (str(title or "").strip() or f"{series.get('name', 'Avsnitt')}")[:200],
           ext, (icon or series.get("icon") or None), db.iso()))
     return True
 
 
 def episode_favorites(scope):
     out = []
-    for row in db.q("SELECT * FROM fav_episodes WHERE adult = ? ORDER BY added", (1 if scope.adult else 0,)):
+    for row in db.q("SELECT * FROM fav_episodes WHERE profile_id = ? AND adult = ? ORDER BY added",
+                    (scope.pid, 1 if scope.adult else 0)):
         if not catalog.in_scope("series", row["series_id"], scope):
             continue
         series = catalog.get_item("series", row["series_id"]) or {}
@@ -318,6 +360,7 @@ def episode_favorites(scope):
     return out
 
 
-def episode_favorite_ids(adult, series_id):
-    return [r["episode_id"] for r in db.q("SELECT episode_id FROM fav_episodes WHERE adult = ? AND series_id = ?",
-                                            (1 if adult else 0, str(series_id)))]
+def episode_favorite_ids(adult, series_id, profile_id=None):
+    return [r["episode_id"] for r in db.q(
+        "SELECT episode_id FROM fav_episodes WHERE profile_id = ? AND adult = ? AND series_id = ?",
+        (_pid(profile_id), 1 if adult else 0, str(series_id)))]

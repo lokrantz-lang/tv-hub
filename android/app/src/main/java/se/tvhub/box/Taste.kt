@@ -100,6 +100,7 @@ object Taste {
         val pending = Session.pendingRating ?: return
         Session.pendingRating = null
         if (Prefs(activity).adultMode) return
+        if (Profiles.current(activity)?.guest == true) return  // Gästen sparar inga tummar
         activity.window.decorView.postDelayed({
             if (!activity.isFinishing) rate(activity, pending.first, pending.second, pending.third, askWho = true)
         }, 400)
@@ -109,6 +110,7 @@ object Taste {
     fun options(activity: Activity, item: Item, after: () -> Unit): List<Pair<String, () -> Unit>> {
         if (item.type != "vod" && item.type != "series") return emptyList()
         if (Prefs(activity).adultMode) return emptyList()
+        if (Profiles.current(activity)?.guest == true) return emptyList()
         return listOf(
             "Betygsätt (👍👍 👍 👎)" to { rate(activity, item.type, item.id, item.name, askWho = true, done = after) },
             "Redan sett" to { send(activity, item.type, item.id, "seen", toast = "Markerad som sedd", done = after) },

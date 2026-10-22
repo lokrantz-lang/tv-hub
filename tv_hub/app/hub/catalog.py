@@ -38,16 +38,26 @@ _after_sync = []  # funktioner som körs efter varje lyckad synk (bevakningar m.
 # Scope: vad en viss box får se
 # ====================================================================
 class Scope:
-    def __init__(self, adult=None, group_id=None, hide_hidden=False, history=True):
+    def __init__(self, adult=None, group_id=None, hide_hidden=False, history=True, profile_id=None, guest=False):
         self.adult = adult            # None = alla, 0 = vanligt läge, 1 = vuxenläge
-        self.group_id = group_id      # profil "bara grupp X"
+        self.group_id = group_id      # boxprofil "bara grupp X"
         self.hide_hidden = hide_hidden
         self.history = history        # vuxenläge: visa favoriter och historik
+        self.profile_id = profile_id  # vem som tittar (None = ägaren, t.ex. webbadminen)
+        self.guest = guest            # gästprofil: inget sparas och ingen historik visas
 
     @property
     def private(self):
-        """Vuxenläge utan historik: favoriter, Fortsätt titta och sedda visas inte (men sparas)."""
-        return bool(self.adult) and not self.history
+        """Ingen historik: vuxenläge utan historik, eller gäst. Favoriter, Fortsätt titta och sedda visas inte."""
+        return (bool(self.adult) and not self.history) or self.guest
+
+    @property
+    def pid(self):
+        """Profilens id (ägaren om ingen är vald)."""
+        if self.profile_id:
+            return self.profile_id
+        from . import profiles
+        return profiles.owner_id()
 
     def sql(self, alias="i", hide=True):
         conds, args = [], []
@@ -437,8 +447,11 @@ def _item(row, favs=None):
     return item
 
 
-def favorite_keys():
-    return {(r["type"], r["item_id"]) for r in db.q("SELECT type, item_id FROM favorites")}
+def favorite_keys(profile_id=None):
+    if not profile_id:
+        from . import profiles
+        profile_id = profiles.owner_id()
+    return {(r["type"], r["item_id"]) for r in db.q("SELECT type, item_id FROM favorites WHERE profile_id = ?", (profile_id,))}
 
 
 def categories(kind, scope=ADMIN):
@@ -555,7 +568,7 @@ def browse(kind, scope=ADMIN, category_id=None, params=None, offset=0, limit=300
         f"SELECT * FROM {BROWSE_FROM} WHERE {where_sql} ORDER BY {SORTS[sort]} LIMIT ? OFFSET ?",
         (*all_args, int(limit), int(offset)),
     )
-    favs = set() if scope.private else favorite_keys()
+    favs = set() if scope.private else favorite_keys(scope.pid)
     return [_item(r, favs) for r in rows], total
 
 
@@ -744,21 +757,24 @@ def favorites(scope=ADMIN):
         f"""SELECT f0.type AS ref_type, f0.item_id AS ref_id, {ITEM_COLS}
             FROM favorites f0 LEFT JOIN items i ON i.type = f0.type AND i.item_id = f0.item_id
             LEFT JOIN item_info f ON f.type = i.type AND f.item_id = i.item_id
-            WHERE 1 = 1{cond}
+            WHERE f0.profile_id = ?{cond}
             ORDER BY CASE f0.type WHEN 'live' THEN 0 WHEN 'vod' THEN 1 ELSE 2 END, f0.added""",
-        args,
+        (scope.pid, *args),
     )
     return _resolved(rows)
 
 
-def set_favorite(kind, item_id, on):
+def set_favorite(kind, item_id, on, profile_id=None):
     if kind not in TYPES:
         raise ValueError("Okänd typ")
+    if not profile_id:
+        from . import profiles
+        profile_id = profiles.owner_id()
     if on:
-        db.x("INSERT OR IGNORE INTO favorites (type, item_id, added) VALUES (?, ?, ?)",
-             (kind, str(item_id), db.iso()))
+        db.x("INSERT OR IGNORE INTO favorites (profile_id, type, item_id, added) VALUES (?, ?, ?, ?)",
+             (profile_id, kind, str(item_id), db.iso()))
     else:
-        db.x("DELETE FROM favorites WHERE type = ? AND item_id = ?", (kind, str(item_id)))
+        db.x("DELETE FROM favorites WHERE profile_id = ? AND type = ? AND item_id = ?", (profile_id, kind, str(item_id)))
     return on
 
 
@@ -767,7 +783,7 @@ def set_favorite(kind, item_id, on):
 # ====================================================================
 def groups(with_items=False, scope=ADMIN):
     out = []
-    favs = set() if scope.private else favorite_keys()
+    favs = set() if scope.private else favorite_keys(scope.pid)
     for g in db.q("SELECT * FROM groups ORDER BY sort, name"):
         if scope.group_id is not None and g["id"] != scope.group_id:
             continue

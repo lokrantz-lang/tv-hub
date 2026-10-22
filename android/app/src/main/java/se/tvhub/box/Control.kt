@@ -111,6 +111,7 @@ object Control {
                     icon = cmd.optStringOrNull("icon"),
                     catchupStart = cmd.optLong("catchup_start", 0L),
                     catchupMinutes = cmd.optInt("catchup_minutes", 0),
+                    startMs = cmd.optLong("start_ms", 0L),
                     autoResume = cmd.optBoolean("auto_resume", false),
                 )
             }

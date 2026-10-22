@@ -102,6 +102,9 @@ class MobileActivity : Activity(), CardListener {
         routeView = findViewById(R.id.m_route)
         buildTabs()
         findViewById<View>(R.id.m_settings).setOnClickListener { showSettings() }
+        findViewById<View>(R.id.m_profile).setOnClickListener { Profiles.choose(this) { onProfileChanged() } }
+        Profiles.checkRevert(this)
+        updateProfileChip()
         findViewById<View>(R.id.m_night).setOnClickListener {
             if (prefs.adultMode) Toast.makeText(this, "Filmkväll finns bara i vanligt läge.", Toast.LENGTH_SHORT).show()
             else FilmNightActivity.start(this)
@@ -122,12 +125,22 @@ class MobileActivity : Activity(), CardListener {
     override fun onResume() {
         super.onResume()
         if (!::pages.isInitialized) return
-        if (shownAdult && !prefs.adultMode) {
+        if (Profiles.checkRevert(this) || (shownAdult && !prefs.adultMode)) {
+            updateProfileChip()
             resetAll()
             return
         }
         loadHome()
         Taste.promptPending(this)
+    }
+
+    private fun updateProfileChip() {
+        Profiles.bindAvatar(findViewById(R.id.m_profile), Profiles.current(this))
+    }
+
+    private fun onProfileChanged() {
+        updateProfileChip()
+        resetAll()
     }
 
     override fun onDestroy() {
@@ -236,6 +249,15 @@ class MobileActivity : Activity(), CardListener {
                 if (prefs.adultMode && data.optString("mode") != "adult") prefs.adultMode = false
                 shownAdult = data.optString("mode") == "adult"
                 home = data
+                Profiles.onHome(this, data)
+                updateProfileChip()
+                if (!shownAdult) {
+                    MyPrograms.load { home?.let { d -> for (page in pageCache.values) page.onHomeData(d) } }
+                    Sports.load { home?.let { d -> for (page in pageCache.values) page.onHomeData(d) } }
+                } else {
+                    MyPrograms.clear()
+                    Sports.clear()
+                }
                 status.visibility = View.GONE
                 retryTask?.let { handler.removeCallbacks(it) }
                 for (page in pageCache.values) page.onHomeData(data)
@@ -284,6 +306,7 @@ class MobileActivity : Activity(), CardListener {
         if (++titleTaps >= 3) {
             titleTaps = 0
             titleTapStart = 0L
+            if (!prefs.adultMode && Profiles.current(this)?.allowAdult == false) return
             AdultGate.toggle(this) { resetAll() }
         }
     }
@@ -297,6 +320,8 @@ class MobileActivity : Activity(), CardListener {
 
     override fun onCardClick(card: Card, shelf: Shelf?) {
         when (val p = card.payload) {
+            is MyPrograms.Program -> MyPrograms.play(this, p)
+            is Sports.Event -> Sports.open(this, p)
             is ContinueItem -> {
                 if (p.type == "episode" && p.seriesId != null) {
                     SeriesActivity.start(this, p.seriesId, p.seriesName ?: p.name, resumeEpisodeId = p.id)
@@ -320,6 +345,7 @@ class MobileActivity : Activity(), CardListener {
     }
 
     override fun onCardLongClick(card: Card, shelf: Shelf?) {
+        (card.payload as? Sports.Event)?.let { Sports.options(this, it); return }
         (card.payload as? ContinueItem)?.let { c ->
             continueOptions(this, c, open = { onCardClick(card, shelf) }, removed = { loadHome() })
             return
@@ -394,6 +420,7 @@ class MobileActivity : Activity(), CardListener {
 
     private fun showSettings() {
         val labels = listOf(
+            "Profil: ${Profiles.current(this)?.name ?: "–"} (byt)",
             "Utanför hemmet: ${Remote.describe()}",
             "Utseende: Mobil (byt till TV-läge)",
             "Sök efter uppdatering av appen",
@@ -402,8 +429,12 @@ class MobileActivity : Activity(), CardListener {
             "Om TV Hub",
             "Nytt per dag",
         )
-        Look.choose(this, "Inställningar", labels) { which ->
-            when (which) {
+        Look.choose(this, "Inställningar", labels) { picked ->
+            if (picked == 0) {
+                Profiles.choose(this) { onProfileChanged() }
+                return@choose
+            }
+            when (picked - 1) {
                 0 -> Look.choose(this, "Utanför hemmet", listOf("OK"), subtitle =
                     "Hemma på wifi pratar appen direkt med Home Assistant. Annars går den via Nabu Casa, automatiskt.\n\n" +
                         "Uppgifterna ställs in i TV Hub-adminen under Boxar och hämtas när telefonen är hemma.\n\n" +
@@ -453,7 +484,7 @@ class MobileActivity : Activity(), CardListener {
         override fun onShow() = showWelcome()
 
         override fun onHomeData(data: JSONObject) {
-            val key = data.toString().hashCode().toString()
+            val key = data.toString().hashCode().toString() + ":" + MyPrograms.cached.hashCode() + ":" + Sports.cached.hashCode()
             if (key == loadedKey) return
             loadedKey = key
             adapter.submit(homeShelves(data))
@@ -479,6 +510,12 @@ class MobileActivity : Activity(), CardListener {
 
     private fun homeShelves(data: JSONObject): List<Shelf> {
         val list = ArrayList<Shelf>()
+        MyPrograms.cached?.takeIf { it.isNotEmpty() && data.optString("mode") != "adult" }?.let { progs ->
+            list.add(Shelf("myprog", "Mina program", progs.map { MyPrograms.card(it) }))
+        }
+        Sports.homeCards(Sports.cached).takeIf { it.isNotEmpty() && data.optString("mode") != "adult" }?.let { cards ->
+            list.add(Shelf("sport", "Sport: nu och snart", cards))
+        }
         ContinueItem.list(data.optJSONArray("continue")).takeIf { it.isNotEmpty() }?.let { items ->
             list.add(Shelf("continue", "Fortsätt titta", items.map { Card.resume(it) }))
         }

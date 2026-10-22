@@ -25,7 +25,7 @@ def call(method, url, body=None, token=None):
 env = dict(os.environ, DATA_DIR=tempfile.mkdtemp(prefix="tvhub-demo-"), ADMIN_PORT="28080", DEVICE_PORT="28099",
            CHECK_INTERVAL="5", NET_CHECK_INTERVAL="5", REFERENCE_HOSTS="127.0.0.1:28091",
            OPTIONS_PATH="/nonexistent", ADMIN_ALLOWED_IPS="127.0.0.1", NO_PROXY="*", no_proxy="*",
-           INFO_START_DELAY="1", INFO_PAUSE="0.3", APP_RELEASE_BASE="http://127.0.0.1:28091/release")
+           INFO_START_DELAY="1", INFO_PAUSE="0.3", GUIDE_CACHE_S="0", SPORT_SCAN_DELAY="5", SPORT_SCAN_PAUSE="0", APP_RELEASE_BASE="http://127.0.0.1:28091/release")
 subprocess.Popen([sys.executable, os.path.join(ROOT, "tests", "fake_xtream.py"), "28091"])
 subprocess.Popen([sys.executable, os.path.join(ROOT, "tv_hub", "app", "main.py")], env=env)
 time.sleep(2)
@@ -65,6 +65,11 @@ r2 = call("POST", f"{D}/device/recordings", {"stream_id": "101", "title": "Sport
 call("POST", f"{D}/device/recordings/{r2['id']}/status", {"status": "done", "size_bytes": 1830000000}, token=z10)
 call("POST", f"{D}/device/recordings", {"stream_id": "102", "title": "Kvällsfilm", "start": now + 7200, "end": now + 13800}, token=alpha)
 r4 = call("POST", f"{D}/device/recordings", {"stream_id": "102", "title": "Nyheterna", "start": now + 300, "end": now + 900}, token=alpha)
+urllib.request.urlopen("http://127.0.0.1:28091/__mode?mode=ok&news=1&sport=1").read()
+henrik = call("GET", f"{A}/api/profiles")["profiles"][0]["id"]
+call("POST", f"{A}/api/my-programs/suggest", {"profile_id": henrik})
+time.sleep(1)
+call("POST", f"{A}/api/sports/scan")
 print("demo redo", flush=True)
 while True:
     time.sleep(5)

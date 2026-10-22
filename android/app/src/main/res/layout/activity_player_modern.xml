@@ -128,6 +128,15 @@
                         android:maxLines="1"
                         android:textColor="@color/m_text"
                         android:textSize="26sp" />
+
+                    <TextView
+                        android:id="@+id/clock"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="16dp"
+                        android:fontFamily="sans-serif-medium"
+                        android:textColor="@color/m_text2"
+                        android:textSize="22sp" />
                 </LinearLayout>
 
                 <TextView
@@ -138,6 +147,17 @@
                     android:maxLines="2"
                     android:textColor="@color/m_text2"
                     android:textSize="16sp" />
+
+                <!-- Live: hur långt programmet har kommit -->
+                <ProgressBar
+                    android:id="@+id/program_progress"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:layout_marginTop="10dp"
+                    android:max="1000"
+                    android:progressDrawable="@drawable/m_progress"
+                    android:visibility="gone" />
             </LinearLayout>
         </LinearLayout>
 

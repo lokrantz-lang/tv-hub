@@ -1,5 +1,35 @@
 # Ändringar
 
+## 2.6.0
+
+- **Mina sporter:** Sport i menyn och raden *Sport: nu och snart* på Hem. Just nu, Kommande och I efterhand
+  (ur arkivet) för Golf, Ridsport, Norrköping Dolphins, IFK Norrköping och fotbollslandslagen. Sporter, lag och
+  sökord ändras i webbadminen under den nya fliken **Sport**.
+- **Fråga när matchen börjar:** boxarna frågar "Byt kanal?" och telefonen får en notis, för de sporter och lag du väljer.
+- **Spela in lagets matcher** automatiskt på vald box.
+- **Röststart:** "matchen som sänds nu" som nytt röstkommando.
+- **Sensorer i Home Assistant:** nästa match, när den börjar och om en match pågår.
+- **När går …?** Sök på TV:n och i webbadminen letar även i programguiden: sänds nu, kommande och i efterhand.
+- **TV-guiden:** alla kanaler i en grupp på en tidslinje. OK spelar, ser i efterhand eller påminner.
+- **Ny spelarlist för live:** programmets namn, minuter kvar, förlopp, nästa program och klockan.
+- Menyn till vänster rullar om den inte får plats på höjden.
+- Webbadminen: fält som inte gäller (t.ex. Titel och Kanal i röstkommandon) döljs nu som de ska.
+
+## 2.5.0
+
+- **Profiler:** Henrik, Tillsammans, Ida, Linn och Gäst (läggs till, ändras och tas bort i webbadminen under *Profiler*).
+  - Egna favoriter, Fortsätt titta, sedda avsnitt och snabbval per profil. Befintliga favoriter hör till Henrik.
+  - Byt profil med den runda bilden överst i menyn (TV) eller uppe till höger (telefon). Valfri kod per profil.
+  - Gäst sparar ingenting. Bara profiler med *Får använda vuxenläget* (Henrik) kan slå på vuxenläget.
+  - Tittarlägena i Filmkväll är samma sak som profilerna.
+- **Per box** (webbadminen, *Boxar*): startprofil, tillbaka till startprofilen efter X timmar utan användning,
+  och om koden för vuxenläget krävs. Vardagsrummet: Tillsammans, 4 timmar, kod. Sovrummet: Henrik, ingen kod.
+- **Mina program:** snabbval överst på Hem och under Favoriter, t.ex. senaste Rapport, senaste huvudsändningen av
+  TV4 Nyheterna (19:00/22:00) och nästa avsnitt av Robinson ur TV4:s arkiv. Fortsätter där du var.
+- **Snyggare och tydligare:** sidan bakom menyn tonas ner när menyn fälls ut, grå platshållare medan listor hämtas
+  i stället för "Hämtar…", och begripliga felmeddelanden i stället för felkoder.
+- Röstkommandon i webbadminen: kanalsökningen fungerade inte (listan med kanaler blev tom). Rättat.
+
 ## 2.4.0
 
 - **USB-disken syns bara i vuxenläget** (i Mina media). I vanligt läge visas den inte alls, och ingen ruta visas när den sätts i.

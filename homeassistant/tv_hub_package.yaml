@@ -52,7 +52,30 @@ rest:
         device_class: timestamp
         value_template: >-
           {{ value_json.expires | int | as_datetime if value_json.expires else 'unavailable' }}
+      # Mina sporter: nästa (eller pågående) sändning för intressena i webbadminen (fliken Sport).
+      - name: TV Hub nästa match
+        unique_id: tv_hub_next_match
+        icon: mdi:trophy-outline
+        value_template: >-
+          {{ value_json.next_match.title[:250] if value_json.next_match else 'Ingen' }}
+        json_attributes_path: "$.next_match"
+        json_attributes:
+          - start
+          - end
+          - channel
+          - live
+          - when
+          - interests
+      - name: TV Hub nästa match börjar
+        unique_id: tv_hub_next_match_start
+        device_class: timestamp
+        value_template: >-
+          {{ value_json.next_match.start | int | as_datetime if value_json.next_match else 'unavailable' }}
     binary_sensor:
+      - name: TV Hub match pågår
+        unique_id: tv_hub_match_live
+        icon: mdi:trophy
+        value_template: "{{ value_json.next_match is not none and value_json.next_match.live }}"
       - name: TV Hub problem
         unique_id: tv_hub_problem
         device_class: problem

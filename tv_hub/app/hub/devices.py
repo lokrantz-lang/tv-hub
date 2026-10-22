@@ -75,10 +75,12 @@ def authenticate(header, ip):
 
 def list_devices():
     out = []
-    for row in db.q("""SELECT id, name, model, app_version, created, last_seen, last_ip, allow_adult, only_group_id
+    for row in db.q("""SELECT id, name, model, app_version, created, last_seen, last_ip, allow_adult, only_group_id,
+                              pin_required, default_profile_id, revert_hours
                        FROM devices ORDER BY id"""):
         item = dict(row)
         item["allow_adult"] = bool(item["allow_adult"])
+        item["pin_required"] = bool(item["pin_required"])
         item["playing"] = active_session_for(row["id"])
         out.append(item)
     return out
@@ -91,6 +93,22 @@ def update_device(device_id, data):
         rename(device_id, data["name"])
     if "allow_adult" in data:
         db.x("UPDATE devices SET allow_adult = ? WHERE id = ?", (1 if data["allow_adult"] else 0, device_id))
+    if "pin_required" in data:
+        db.x("UPDATE devices SET pin_required = ? WHERE id = ?", (1 if data["pin_required"] else 0, device_id))
+        with _pin_lock:
+            _unlocks.pop(device_id, None)
+    if "default_profile_id" in data:
+        from . import profiles
+        pid = data["default_profile_id"]
+        pid = None if pid in (None, "", 0, "0") else int(pid)
+        if pid is not None and not profiles.get(pid):
+            raise LookupError("Profilen finns inte")
+        db.x("UPDATE devices SET default_profile_id = ? WHERE id = ?", (pid, device_id))
+    if "revert_hours" in data:
+        hours = int(data["revert_hours"] or 0)
+        if not 0 <= hours <= 48:
+            raise ValueError("Ange 0–48 timmar.")
+        db.x("UPDATE devices SET revert_hours = ? WHERE id = ?", (hours, device_id))
     if "only_group_id" in data:
         group_id = data["only_group_id"]
         if group_id in (None, "", 0, "0"):
@@ -102,12 +120,13 @@ def update_device(device_id, data):
         db.x("UPDATE devices SET only_group_id = ? WHERE id = ?", (group_id, device_id))
 
 
-def scope_for(device, wants_adult, wants_history=True):
-    """Vad boxen får se: läget från appen, begränsat av boxens profil.
+def scope_for(device, wants_adult, wants_history=True, profile=None):
+    """Vad boxen får se: läget från appen, begränsat av boxens profil och vem som tittar.
     wants_history gäller bara vuxenläget (dolt val i appen: höger tre gånger på Inställningar)."""
     adult = 1 if wants_adult and device["allow_adult"] else 0
     return catalog.Scope(adult=adult, group_id=device["only_group_id"], hide_hidden=True,
-                         history=bool(wants_history) or not adult)
+                         history=bool(wants_history) or not adult,
+                         profile_id=(profile or {}).get("id") or None, guest=bool((profile or {}).get("guest")))
 
 
 def rename(device_id, name):
@@ -306,8 +325,14 @@ def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(
         """INSERT INTO sessions (id, device_id, type, item_id, item_name, portal_id, started, last_heartbeat,
            adult, series_id, ext, icon, viewer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (session_id, device["id"], session_type, item_id, display, portal["id"], db.iso(), db.iso(),
-         adult, series_id, ext_final, str(icon)[:500] if icon else None, None if adult else viewer_id),
+         adult, series_id, ext_final, str(icon)[:500] if icon else None, viewer_id),
     )
+    if kind == "catchup" and recording is None and start:
+        # Mina program: var man är i ett program ur arkivet sparas per profil.
+        try:
+            db.x("UPDATE sessions SET catchup_start = ? WHERE id = ?", (int(start), session_id))
+        except (TypeError, ValueError):
+            pass
     if recording is not None:
         recordings.attach_session(device, recording["id"], item_id, session_id)
     db.log_event("record" if recording else "play",
@@ -322,7 +347,7 @@ def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(
         "name": display,
         "heartbeat_ms": 10000,
         "user_agent": CFG["user_agent"],
-        "resume": extras.resume_position(adult, kind, item_id)
+        "resume": extras.resume_position(adult, kind, item_id, scope.pid if scope is not None else None)
         if kind in ("vod", "episode") and not (scope is not None and scope.private) else None,
         "archive_days": int((item or {}).get("archive_days") or 0) if kind in ("live", "catchup") else 0,
     }
@@ -414,7 +439,7 @@ def unlock_adult(device, pin):
     stored = db.get_setting("adult_pin")
     if not device["allow_adult"]:
         return {"pin_required": bool(stored), "token": None, "error": "Den här boxen har inte vuxenläge."}
-    if not stored:
+    if not stored or not _box_requires_pin(device):
         return {"pin_required": False, "token": "", "error": None}
     if pin in (None, ""):
         return {"pin_required": True, "token": None, "error": None}
@@ -438,9 +463,14 @@ def unlock_adult(device, pin):
     return {"pin_required": True, "token": token, "error": None}
 
 
+def _box_requires_pin(device):
+    keys = device.keys() if hasattr(device, "keys") else []
+    return bool(device["pin_required"]) if "pin_required" in keys else True
+
+
 def adult_unlocked(device, token):
-    """Får boxen vuxenläge just nu? Utan PIN: ja. Med PIN: bara med giltig nyckel."""
-    if not adult_pin_set():
+    """Får boxen vuxenläge just nu? Utan PIN (eller om boxen inte kräver den): ja. Annars bara med giltig nyckel."""
+    if not adult_pin_set() or not _box_requires_pin(device):
         return True
     with _pin_lock:
         entry = _unlocks.get(device["id"])

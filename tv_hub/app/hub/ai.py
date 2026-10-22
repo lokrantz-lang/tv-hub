@@ -313,6 +313,8 @@ def run_all(trigger="manual"):
     try:
         results, errors = [], []
         for v in taste.viewers():
+            if v.get("guest"):
+                continue  # gästprofilen har inga tummar att utgå från
             for kind in taste.KINDS:
                 try:
                     results.append({"viewer": v["name"], "kind": kind, "picks": rerank(v["id"], kind)})

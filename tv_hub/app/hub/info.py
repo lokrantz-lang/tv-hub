@@ -145,5 +145,5 @@ def detail(kind, item_id):
         "release": info.get("release"), "poster": info.get("poster") or item.get("icon"),
         "backdrop": info.get("backdrop"), "trailer": info.get("trailer"), "country": info.get("country"),
     })
-    item["favorite"] = (kind, str(item_id)) in catalog.favorite_keys()
+    item["favorite"] = (kind, str(item_id)) in catalog.favorite_keys()  # ägarens; enheterna ersätter med profilens
     return item

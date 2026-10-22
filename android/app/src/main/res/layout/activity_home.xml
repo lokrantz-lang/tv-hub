@@ -32,14 +32,35 @@
         android:layout_height="match_parent"
         android:layout_marginStart="96dp" />
 
-    <LinearLayout
-        android:id="@+id/rail"
+    <!-- Utfälld meny: sidan bakom tonas ner så att menyn inte flyter ihop med den. -->
+    <View
+        android:id="@+id/rail_dim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0"
+        android:background="#B30A0A0C"
+        android:visibility="gone" />
+
+    <!-- Menyn rullar om den inte får plats på höjden (fler menyval än skärmen rymmer). -->
+    <ScrollView
+        android:id="@+id/rail_scroll"
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
-        android:gravity="center_vertical"
-        android:orientation="vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp" />
+        android:fillViewport="true"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/rail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:gravity="center_vertical"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="16dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="16dp" />
+    </ScrollView>
 
     <TextView
         android:id="@+id/status"

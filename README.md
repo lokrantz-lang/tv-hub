@@ -22,6 +22,8 @@ Egen IPTV-lösning för Formuler Z10 Pro och Z Alpha, med Home Assistant som nav
 - **Felsökning som pekar ut orsaken:** internet, källan, hemnätet, kontot eller en annan app som strömmar. Varje slutsats visar sitt underlag.
 - **Varför listan inte uppdaterades.** Varje steg i listuppdateringen loggas med orsak och tid. En tom eller kraftigt förkortad lista från källan skriver aldrig över den gamla.
 - **Bibliotek med sök, sortering, filter, affischvy, favoriter och egna grupper** i webbadminen, som syns direkt i boxarna.
+- **Profiler** med egna favoriter, Fortsätt titta och snabbval (Mina program: senaste Rapport, nästa avsnitt ur arkivet …), valfri kod per profil och startprofil per box.
+- **Mina sporter och TV-guide:** sändningar för lag och sporter (just nu, kommande, ur arkivet) med notis, automatisk inspelning och "När går …?", plus en TV-guide med tidslinje.
 - **Inspelning till USB-minnet i boxen och timeshift** (paus och spolning i direktsändningar via Toucans arkiv).
 - **Anslutningsvakt.** Toucan stänger av konton som strömmar på två enheter samtidigt. Den andra boxen frågar först och väntar tills den första har stoppat. Servern startar aldrig egna strömmar i bakgrunden.
 
@@ -104,7 +106,7 @@ Se `homeassistant/tv_hub_package.yaml`. Ger status, svarstid, vem som tittar, n�
 ## Utveckling
 
 ```
-python3 tests/test_e2e.py     # 356 kontroller mot en simulerad Xtream-server
+python3 tests/test_e2e.py     # 420 kontroller mot en simulerad Xtream-server
 sh tests/dlna/run.sh          # appens DLNA-klient mot en simulerad Synology
 python3 tests/demo.py         # demodata: admin på http://127.0.0.1:28080
 ```

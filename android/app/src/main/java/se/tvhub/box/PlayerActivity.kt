@@ -180,6 +180,9 @@ class PlayerActivity : Activity() {
     private var seekTargetMs = 0L      // väggklocka (ms) som spolningen siktar på
     private var seekTask: Runnable? = null
     private var currentProgram: JSONObject? = null
+    private var nextProgram: JSONObject? = null
+    private var clockView: TextView? = null
+    private var programProgress: ProgressBar? = null
 
     // Spolning i film, avsnitt, inspelning och catch-up: vänster 10 s bakåt, höger 30 s framåt
     private var vodSeekTarget = -1L
@@ -316,6 +319,8 @@ class PlayerActivity : Activity() {
         statusView = findViewById(R.id.status)
         spinner = findViewById(R.id.spinner)
         shiftView = findViewById(R.id.shift)
+        clockView = findViewById(R.id.clock)
+        programProgress = findViewById(R.id.program_progress)
         bandwidthMeter = DefaultBandwidthMeter.getSingletonInstance(this)
         mobile = FormFactor.isMobile(this)
 
@@ -752,7 +757,7 @@ class PlayerActivity : Activity() {
                 ),
             ).build()
         } ?: MediaItem.fromUri(url)
-        if (positionMs > 0 && (type == "vod" || type == "episode" || type == "file" || shiftStart > 0)) {
+        if (positionMs > 0 && (type == "vod" || type == "episode" || type == "file" || type == "catchup" || shiftStart > 0)) {
             newPlayer.setMediaItem(mediaItem, positionMs)
         } else {
             newPlayer.setMediaItem(mediaItem)
@@ -941,7 +946,15 @@ class PlayerActivity : Activity() {
         PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
         PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
         PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> "Boxen kan inte spela det här formatet."
-        else -> error.errorCodeName
+        PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> "Sändningen hann före. Försök igen."
+        PlaybackException.ERROR_CODE_TIMEOUT -> "Källan svarar inte."
+        else -> when (error.errorCode / 1000) {
+            2 -> "Strömmen bröts. Försök igen om en stund."
+            3 -> "Strömmen gick inte att läsa."
+            4 -> "Boxen klarar inte att avkoda den här videon."
+            5 -> "Ljudet går inte att spela på den här boxen."
+            else -> "Något gick fel i uppspelningen."
+        }
     }
 
     private fun onEnded() {
@@ -1311,6 +1324,8 @@ class PlayerActivity : Activity() {
         behindMs = 0L
         archiveDays = 0
         currentProgram = null
+        nextProgram = null
+        programProgress?.visibility = View.GONE
         shiftView.visibility = View.GONE
     }
 
@@ -1806,6 +1821,8 @@ class PlayerActivity : Activity() {
 
     private fun showOverlay(durationMs: Long) {
         overlay.visibility = View.VISIBLE
+        clockView?.text = timeFormat.format(Date())
+        updateProgramBar()
         handler.removeCallbacks(hideOverlay)
         handler.postDelayed(hideOverlay, durationMs)
     }
@@ -1992,6 +2009,35 @@ class PlayerActivity : Activity() {
         shiftTo(startMs)
     }
 
+    /**
+     * Spelarlisten för live (modernt utseende): programmets titel stort, tider och minuter kvar, förlopp
+     * för programmet och vad som kommer sedan. Klockan visas uppe till höger.
+     */
+    private fun updateProgramBar() {
+        val bar = programProgress ?: return
+        val p = currentProgram
+        val now = System.currentTimeMillis() / 1000
+        if (type != "live" || p == null || p.optLong("end") <= now) {
+            bar.visibility = View.GONE
+            return
+        }
+        val start = p.optLong("start")
+        val end = p.optLong("end")
+        bar.progress = if (end > start) ((now - start) * 1000 / (end - start)).toInt().coerceIn(0, 1000) else 0
+        bar.visibility = View.VISIBLE
+        val left = ((end - now + 59) / 60).toInt()
+        val text = android.text.SpannableStringBuilder()
+        val title = p.optString("title")
+        text.append(title)
+        text.setSpan(android.text.style.RelativeSizeSpan(1.25f), 0, title.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        text.setSpan(android.text.style.ForegroundColorSpan(0xFFF5F5F7.toInt()), 0, title.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        text.append("   ${timeFormat.format(Date(start * 1000))}–${timeFormat.format(Date(end * 1000))}  ·  ${if (left > 1) "$left min kvar" else "slutar nu"}")
+        nextProgram?.let { n ->
+            text.append("\nSedan ${timeFormat.format(Date(n.optLong("start") * 1000))}  ${n.optString("title")}")
+        }
+        epgView.text = text
+    }
+
     private fun loadEpg() {
         if (type != "live") return
         val id = itemId
@@ -2000,6 +2046,7 @@ class PlayerActivity : Activity() {
             result.onSuccess { array ->
                 val now = System.currentTimeMillis() / 1000
                 val lines = ArrayList<String>()
+                nextProgram = null
                 for (i in 0 until array.length()) {
                     if (lines.size == 2) break
                     val p = array.optJSONObject(i) ?: continue
@@ -2007,10 +2054,12 @@ class PlayerActivity : Activity() {
                     val endTs = p.optLong("end")
                     if (endTs in 1 until now) continue
                     if (startTs <= now && lines.isEmpty()) currentProgram = p
+                    else if (nextProgram == null) nextProgram = p
                     val label = if (startTs <= now) "Nu" else "Sedan"
                     lines.add("$label  ${timeFormat.format(Date(startTs * 1000))}–${timeFormat.format(Date(endTs * 1000))}  ${p.optString("title")}")
                 }
                 if (lines.isNotEmpty()) epgView.text = lines.joinToString("\n")
+                updateProgramBar()
             }
         }
     }

@@ -16,8 +16,9 @@ from urllib.parse import parse_qs, urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (VERSION, ai, catalog, control, db, devices, diagnostics, extras, info, portals, recordings, reminders,
-               remote, taste, updates)
+from . import (VERSION, ai, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
+               sports,
+               recordings, reminders, remote, taste, updates)
 from .config import CFG
 from .xtream import XtreamError
 
@@ -740,12 +741,25 @@ class DeviceHandler(BaseHandler):
         return self.client_ip()
 
     def device(self):
+        cached = getattr(self, "_device_row", None)
+        if cached is not None:
+            return cached
         dev = devices.authenticate(self.auth_header(), self.device_ip())
         if dev is None:
             raise HttpError(401, "Boxen är inte parad. Para om den i appen.")
         if self.via_ingress:
             remote.mark_remote(dev, self.headers, self.device_ip())
+        self._device_row = dev
         return dev
+
+    def profile(self):
+        """Vem som tittar (X-TVHub-Profile; äldre appar skickar X-TVHub-Viewer). Annars boxens standardprofil."""
+        cached = getattr(self, "_profile", None)
+        if cached is not None:
+            return cached
+        value = (self.headers.get("X-TVHub-Profile") or self.headers.get("X-TVHub-Viewer") or "").strip()
+        self._profile = profiles.resolve(value, self.device())
+        return self._profile
 
     def wants_adult(self):
         """Läget skickas av appen i varje anrop. Allt annat än "adult" betyder vanligt läge."""
@@ -757,13 +771,19 @@ class DeviceHandler(BaseHandler):
 
     def context(self):
         dev = self.device()
-        # PIN-kod (valfri): vuxenläget gäller bara med en giltig upplåsning från /device/adult-unlock.
-        adult = self.wants_adult() and devices.adult_unlocked(dev, (self.headers.get("X-TVHub-Unlock") or "").strip())
-        return dev, devices.scope_for(dev, adult, self.wants_history())
+        prof = self.profile()
+        # Vuxenläget: bara profiler som får använda det, och med PIN-koden om boxen kräver den.
+        adult = self.wants_adult() and prof.get("allow_adult") and \
+            devices.adult_unlocked(dev, (self.headers.get("X-TVHub-Unlock") or "").strip())
+        return dev, devices.scope_for(dev, adult, self.wants_history(), prof)
 
     def viewer_id(self):
-        """Tittarläget som valts i Filmkväll (X-TVHub-Viewer). None = inget valt."""
-        return taste.resolve_viewer((self.headers.get("X-TVHub-Viewer") or "").strip())
+        """Filmkväll: profilen som tittar (None för gäst, som inte sparar något)."""
+        try:
+            prof = self.profile()
+        except HttpError:
+            return taste.resolve_viewer((self.headers.get("X-TVHub-Viewer") or "").strip())
+        return None if prof.get("guest") else (prof.get("id") or None)
 
 
 @route(DEVICE, "GET", r"/device/ping")
@@ -808,7 +828,11 @@ def dev_home(h):
             "vod", scope, None, {"sort": "rating", "min_rating": "7.5", "min_year": str(time.gmtime().tm_year - 6)}, 0, 30)[0],
         "counts": catalog.counts(scope),
         "recordings": len(recordings.for_device(dev["id"], adult=scope.adult or 0)),
-        "adult_pin": devices.adult_pin_set(),
+        "adult_pin": devices.adult_pin_set() and bool(dev["pin_required"]),
+        # Profiler: vem som tittar, och vad boxen går tillbaka till efter en stund utan användning.
+        "active_profile": h.profile(),
+        "profiles": profiles.all_profiles(),
+        "box": {"default_profile_id": dev["default_profile_id"] or profiles.owner_id(), "revert_hours": dev["revert_hours"]},
     }
 
 
@@ -827,7 +851,7 @@ def dev_browse(h):
                                   _int_arg(h.query, "offset", 0), _int_arg(h.query, "limit", 300, 1, 1000))
     if kind != "live":
         for item in items:
-            item["watched"] = extras.is_watched(scope.adult or 0, kind, item["id"]) \
+            item["watched"] = extras.is_watched(scope.adult or 0, kind, item["id"], scope.pid) \
                 if kind == "vod" and not scope.private else False
     return 200, {"items": items, "total": total}
 
@@ -868,10 +892,9 @@ def dev_vod(h, vod_id):
     if item is None:
         raise HttpError(404, "Finns inte.")
     adult = scope.adult or 0
-    item["resume"] = None if scope.private else extras.resume_position(adult, "vod", vod_id)
-    item["watched"] = False if scope.private else extras.is_watched(adult, "vod", vod_id)
-    if scope.private:
-        item["favorite"] = False
+    item["resume"] = None if scope.private else extras.resume_position(adult, "vod", vod_id, scope.pid)
+    item["watched"] = False if scope.private else extras.is_watched(adult, "vod", vod_id, scope.pid)
+    item["favorite"] = False if scope.private else ("vod", str(vod_id)) in catalog.favorite_keys(scope.pid)
     if not scope.adult:
         item.update(taste.detail_extras("vod", vod_id, h.viewer_id()))
     return 200, item
@@ -888,12 +911,11 @@ def dev_series(h, sid):
         if meta.get(key) and not detail.get(key):
             detail[key] = meta[key]
     detail["cover"] = detail.get("cover") or meta.get("poster") or meta.get("icon")
-    progress, watched = ({}, []) if scope.private else extras.series_progress(scope.adult or 0, sid)
+    progress, watched = ({}, []) if scope.private else extras.series_progress(scope.adult or 0, sid, scope.pid)
     detail["progress"] = progress
     detail["watched"] = watched
-    detail["favorite_episodes"] = [] if scope.private else extras.episode_favorite_ids(scope.adult, sid)
-    if scope.private:
-        detail["favorite"] = False
+    detail["favorite_episodes"] = [] if scope.private else extras.episode_favorite_ids(scope.adult, sid, scope.pid)
+    detail["favorite"] = False if scope.private else ("series", str(sid)) in catalog.favorite_keys(scope.pid)
     if not scope.adult:
         detail.update(taste.detail_extras("series", sid, h.viewer_id()))
     return 200, detail
@@ -942,7 +964,7 @@ def guide_for(stream_id):
             return []
 
     programs = []
-    for p in cached(("guide", str(stream_id)), 600, produce):
+    for p in cached(("guide", str(stream_id)), int(os.environ.get("GUIDE_CACHE_S", "600")), produce):
         if p["end"] < since or p["start"] > until:
             continue
         item = dict(p)
@@ -976,7 +998,7 @@ def dev_favorite_state(h):
     item_id = (h.query.get("id") or [""])[0]
     if scope.private or not catalog.in_scope(kind, item_id, scope):
         return 200, {"favorite": False}
-    return 200, {"favorite": (kind, str(item_id)) in catalog.favorite_keys()}
+    return 200, {"favorite": (kind, str(item_id)) in catalog.favorite_keys(scope.pid)}
 
 
 @route(DEVICE, "POST", r"/device/favorites")
@@ -989,11 +1011,13 @@ def dev_favorite(h):
         return 200, {"favorite": on}
     if not catalog.in_scope(data.get("type"), data.get("id"), scope):
         raise HttpError(404, "Finns inte.")
+    if scope.guest:
+        raise HttpError(400, "Gästprofilen sparar inga favoriter.")
     on = bool(data.get("on", True))
     if data.get("toggle"):
         # Favoritknappen på fjärrkontrollen: växla.
-        on = (data.get("type"), str(data.get("id"))) not in catalog.favorite_keys()
-    on = catalog.set_favorite(data.get("type"), data.get("id"), on)
+        on = (data.get("type"), str(data.get("id"))) not in catalog.favorite_keys(scope.pid)
+    on = catalog.set_favorite(data.get("type"), data.get("id"), on, scope.pid)
     return 200, {"favorite": on}
 
 
@@ -1023,7 +1047,7 @@ def dev_play(h):
         dev, data.get("type"), data.get("id"), ext=data.get("ext"), force=bool(data.get("force")),
         exclude_portals=data.get("exclude_portals") or [], name=data.get("name"), scope=scope,
         series_id=data.get("series_id"), start=data.get("start"), duration=data.get("duration"),
-        icon=data.get("icon"), recording_id=data.get("recording_id"), viewer_id=h.viewer_id(),
+        icon=data.get("icon"), recording_id=data.get("recording_id"), viewer_id=scope.pid,
     )
     if data.get("failover_from") and result.get("status") == "ok":
         db.log_event("failover", {"from_portal": data.get("failover_from"), "to": result["portal_name"],
@@ -1174,7 +1198,136 @@ def dev_summary(h):
         "expires": account["exp_date"] if account else None,
         "active_cons": account["active_cons"] if account else None,
         "max_connections": account["max_connections"] if account else None,
+        "next_match": _match_summary(),
     }
+
+
+def _match_summary():
+    """Mina sporter: nästa (eller pågående) sändning, för sensorn "TV Hub nästa match"."""
+    try:
+        e = sports.next_match()
+    except Exception:  # noqa: BLE001 - sensorn ska fungera även utan programguide
+        return None
+    if not e:
+        return None
+    return {"title": e["title"], "start": e["start"], "end": e["end"], "channel": e["channel"],
+            "live": e["state"] == "now", "interests": e["interests"], "when": e["when"]}
+
+
+# ----- Mina sporter, När går …? och TV-guiden -----
+@route(DEVICE, "GET", r"/device/sports")
+def dev_sports(h):
+    dev, scope = h.context()
+    if scope.adult:
+        return 200, {"now": [], "upcoming": [], "past": [], "interests": [], "status": {}}
+    iid = h.query.get("interest", [None])[0]
+    if iid:
+        evs = sports.events(scope, int(iid))
+        out = sports._split(evs)
+        out["interests"] = []
+        return 200, out
+    return 200, sports.overview(scope)
+
+
+@route(DEVICE, "GET", r"/device/when")
+def dev_when(h):
+    dev, scope = h.context()
+    if scope.adult:
+        return 200, {"now": [], "upcoming": [], "past": [], "library": [], "channels": [], "query": ""}
+    return 200, sports.when(h.query.get("q", [""])[0], scope)
+
+
+@route(DEVICE, "GET", r"/device/epg-grid")
+def dev_epg_grid(h):
+    """TV-guiden: program för några kanaler i ett tidsfönster. Från den sparade guiden när kanalen finns där,
+    annars hämtas kanalens guide (som i programguiden)."""
+    dev, scope = h.context()
+    ids = [i for i in h.query.get("ids", [""])[0].split(",") if i][:30]
+    now = int(time.time())
+    t0 = _int_arg(h.query, "from", now - 3600, 0, 10**11)
+    t1 = _int_arg(h.query, "to", now + 4 * 3600, 0, 10**11)
+    out = []
+    futures = {}
+    for cid in ids:
+        if not catalog.in_scope("live", cid, scope):
+            continue
+        item = catalog.get_item("live", cid) or {}
+        key = sports._epg_key(item) if item else None
+        scanned = key and db.q1("SELECT 1 FROM epg_scan WHERE epg_key = ? AND error IS NULL", (key,))
+        if scanned:
+            rows = db.q("SELECT start, end, title, description FROM epg WHERE epg_key = ? AND end > ? AND start < ? ORDER BY start",
+                        (key, t0, t1))
+            progs = [dict(r) for r in rows]
+            out.append({"id": cid, "archive_days": int(item.get("archive_days") or 0), "programs": progs})
+        else:
+            futures[cid] = _epg_pool.submit(guide_for, cid)
+            out.append({"id": cid, "archive_days": int(item.get("archive_days") or 0), "programs": None})
+    for ch in out:
+        if ch["programs"] is None:
+            try:
+                g = futures[ch["id"]].result(timeout=20)
+                ch["programs"] = [{"start": p["start"], "end": p["end"], "title": p["title"], "description": p["description"]}
+                                  for p in g["programs"] if p["end"] > t0 and p["start"] < t1]
+            except Exception:  # noqa: BLE001 - kanalen visas utan program
+                ch["programs"] = []
+    return 200, {"from": t0, "to": t1, "now": now, "channels": out}
+
+
+@route(ADMIN, "GET", r"/api/sports")
+def admin_sports(h):
+    evs = sports.events()
+    items = []
+    for i in sports.interests():
+        mine = [e for e in evs if i["name"] in e["interests"]]
+        i["counts"] = {s: sum(1 for e in mine if e["state"] == s) for s in ("now", "upcoming", "past")}
+        items.append(i)
+    cats = [{"category_id": c["category_id"], "name": c["name"], "auto": bool(sports.AUTO_CATEGORY.search(c["name"] or "")) and not c["hidden"]}
+            for c in catalog.categories("live") if not c["adult"]]
+    return 200, {"interests": items, "settings": sports.settings(), "status": sports.status(), "categories": cats,
+                 "boxes": [{"id": b["id"], "name": b["name"]} for b in control.boxes()]}
+
+
+@route(ADMIN, "POST", r"/api/sports")
+def admin_sport_create(h):
+    return 201, sports.create_interest(h.read_json())
+
+
+@route(ADMIN, "PUT", r"/api/sports/(\d+)")
+def admin_sport_update(h, iid):
+    return 200, sports.update_interest(int(iid), h.read_json())
+
+
+@route(ADMIN, "DELETE", r"/api/sports/(\d+)")
+def admin_sport_delete(h, iid):
+    if not sports.delete_interest(int(iid)):
+        raise HttpError(404, "Finns inte.")
+    return 200, {"ok": True}
+
+
+@route(ADMIN, "GET", r"/api/sports/preview/(\d+)")
+def admin_sport_preview(h, iid):
+    if not sports.get_interest(int(iid)):
+        raise HttpError(404, "Finns inte.")
+    return 200, sports._split(sports.events(interest_id=int(iid)), limit=15)
+
+
+@route(ADMIN, "PUT", r"/api/sports/settings")
+def admin_sport_settings(h):
+    out = sports.save_settings(h.read_json())
+    return 200, out
+
+
+@route(ADMIN, "POST", r"/api/sports/scan")
+def admin_sport_scan(h):
+    if sports.status()["running"]:
+        return 200, {"started": False, "message": "Genomsökningen pågår redan."}
+    sports.request_scan()
+    return 200, {"started": True}
+
+
+@route(ADMIN, "GET", r"/api/when")
+def admin_when(h):
+    return 200, sports.when(h.query.get("q", [""])[0])
 
 
 # ----- Fjärrstart och röstkommandon -----
@@ -1311,12 +1464,107 @@ def dev_new_summary(h):
     return 200, {"days": catalog.new_summary(scope, _int_arg(h.query, "days", 14, 1, 60))}
 
 
+# ----- Profiler och Mina program -----
+@route(DEVICE, "GET", r"/device/profiles")
+def dev_profiles(h):
+    h.device()
+    return 200, {"profiles": profiles.all_profiles(), "active": h.profile()}
+
+
+@route(DEVICE, "POST", r"/device/profile-check")
+def dev_profile_check(h):
+    """Byte till en profil med PIN: appen kontrollerar koden här."""
+    h.device()
+    data = h.read_json()
+    if not profiles.check_pin(data.get("profile_id"), data.get("pin")):
+        time.sleep(1)
+        raise HttpError(403, "Fel kod.")
+    return 200, {"ok": True, "profile": profiles.get(data.get("profile_id"))}
+
+
+@route(DEVICE, "GET", r"/device/my-programs")
+def dev_my_programs(h):
+    """Snabbvalen för profilen som tittar, med vad som spelas just nu (senaste Rapport osv.)."""
+    dev, scope = h.context()
+    if scope.adult:
+        return 200, {"programs": []}
+    rows = myprograms.for_profile(scope.pid)
+    return 200, {"programs": [myprograms.resolve(r, scope.pid) for r in rows]}
+
+
+@route(ADMIN, "GET", r"/api/profiles")
+def admin_profiles(h):
+    out = []
+    for p in profiles.all_profiles():
+        p = dict(p)
+        p["programs"] = myprograms.for_profile(p["id"])
+        p["favorites"] = db.q1("SELECT COUNT(*) AS n FROM favorites WHERE profile_id = ?", (p["id"],))["n"]
+        out.append(p)
+    return 200, {"profiles": out, "modes": myprograms.MODES}
+
+
+@route(ADMIN, "POST", r"/api/profiles")
+def admin_profile_create(h):
+    p = profiles.create(h.read_json())
+    taste.invalidate()
+    return 201, p
+
+
+@route(ADMIN, "PUT", r"/api/profiles/(\d+)")
+def admin_profile_update(h, pid):
+    p = profiles.update(int(pid), h.read_json())
+    taste.invalidate()
+    return 200, p
+
+
+@route(ADMIN, "DELETE", r"/api/profiles/(\d+)")
+def admin_profile_delete(h, pid):
+    profiles.delete(int(pid))
+    taste.invalidate()
+    return 200, {"ok": True}
+
+
+@route(ADMIN, "POST", r"/api/my-programs")
+def admin_program_create(h):
+    return 201, myprograms.create(h.read_json())
+
+
+@route(ADMIN, "PUT", r"/api/my-programs/(\d+)")
+def admin_program_update(h, pid):
+    return 200, myprograms.update(int(pid), h.read_json())
+
+
+@route(ADMIN, "DELETE", r"/api/my-programs/(\d+)")
+def admin_program_delete(h, pid):
+    if not myprograms.delete(int(pid)):
+        raise HttpError(404, "Finns inte.")
+    return 200, {"ok": True}
+
+
+@route(ADMIN, "POST", r"/api/my-programs/suggest")
+def admin_program_suggest(h):
+    data = h.read_json()
+    if not profiles.get(data.get("profile_id")):
+        raise HttpError(404, "Profilen finns inte.")
+    return 200, {"created": myprograms.suggest(int(data["profile_id"]))}
+
+
+@route(ADMIN, "GET", r"/api/my-programs/preview/(\d+)")
+def admin_program_preview(h, pid):
+    row = db.q1("SELECT * FROM my_programs WHERE id = ?", (int(pid),))
+    if not row:
+        raise HttpError(404, "Finns inte.")
+    return 200, myprograms.resolve(myprograms._row(row), row["profile_id"])
+
+
 # ----- Vuxenläge med PIN-kod -----
 @route(DEVICE, "POST", r"/device/adult-unlock")
 def dev_adult_unlock(h):
     """Utan pin: talar om ifall kod krävs. Med pin: nyckel som appen skickar som X-TVHub-Unlock."""
     dev = h.device()
     data = h.read_json()
+    if not h.profile().get("allow_adult"):
+        raise HttpError(403, "Byt till en profil som får använda vuxenläget först.")
     result = devices.unlock_adult(dev, data.get("pin"))
     if result["error"]:
         raise HttpError(403, result["error"])
@@ -1455,17 +1703,26 @@ def admin_viewers(h):
 
 @route(ADMIN, "POST", r"/api/viewers")
 def admin_viewer_create(h):
-    return 201, taste.save_viewer(h.read_json())
+    # Tittarlägen och profiler är samma sak: skapa via profilerna (namnkontroll), spara smak och regler här.
+    data = h.read_json()
+    p = profiles.create({"name": data.get("name")})
+    rest = {k: v for k, v in data.items() if k != "name"}
+    return 201, taste.save_viewer(rest, p["id"])
 
 
 @route(ADMIN, "PUT", r"/api/viewers/(\d+)")
 def admin_viewer_update(h, vid):
-    return 200, taste.save_viewer(h.read_json(), int(vid))
+    data = h.read_json()
+    if str(data.get("name") or "").strip():
+        profiles.update(int(vid), {"name": data["name"]})
+    rest = {k: v for k, v in data.items() if k != "name"}
+    return 200, taste.save_viewer(rest, int(vid))
 
 
 @route(ADMIN, "DELETE", r"/api/viewers/(\d+)")
 def admin_viewer_delete(h, vid):
-    taste.delete_viewer(int(vid))
+    profiles.delete(int(vid))
+    taste.invalidate()
     return 200, {"ok": True}
 
 

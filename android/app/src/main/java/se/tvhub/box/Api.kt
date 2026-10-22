@@ -101,7 +101,7 @@ object Api {
         conn.setRequestProperty("X-TVHub-Mode", if (adult) "adult" else "normal")
         conn.setRequestProperty("X-TVHub-History", if (!adult || prefs.adultHistory) "show" else "hide")
         if (adult && prefs.adultUnlock.isNotEmpty()) conn.setRequestProperty("X-TVHub-Unlock", prefs.adultUnlock)
-        if (!adult) prefs.activeViewer?.let { conn.setRequestProperty("X-TVHub-Viewer", it.toString()) }
+        prefs.profileId.takeIf { it > 0 }?.let { conn.setRequestProperty("X-TVHub-Profile", it.toString()) }
         return conn
     }
 
@@ -133,7 +133,7 @@ object Api {
             }
             if (code >= 400) {
                 val message = (parsed as? JSONObject)?.optString("error")?.takeIf { it.isNotEmpty() }
-                    ?: if (target.remote) remoteHttpError(code) else "HTTP $code"
+                    ?: if (target.remote) remoteHttpError(code) else "TV Hub kunde inte svara just nu. Försök igen om en stund."
                 throw ApiException(code, message)
             }
             return parsed
@@ -190,7 +190,8 @@ object Api {
         is SocketTimeoutException -> "TV Hub svarar inte. Är Home Assistant igång?"
         is ConnectException -> "Når inte TV Hub. Kontrollera adressen och att tillägget körs i Home Assistant."
         is UnknownHostException -> "Okänd adress. Använd Home Assistants IP-adress, t.ex. http://192.168.1.10:8099"
-        is IOException -> "Nätverksfel: ${e.message ?: e.javaClass.simpleName}"
-        else -> e.message ?: e.toString()
+        is IOException -> "Tappade kontakten med TV Hub. Kontrollera nätverket och försök igen."
+        is org.json.JSONException -> "TV Hub svarade konstigt. Försök igen om en stund."
+        else -> e.message?.takeIf { it.isNotBlank() && !it.contains("Exception") } ?: "Något gick fel. Försök igen."
     }
 }

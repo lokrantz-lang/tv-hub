@@ -253,6 +253,9 @@ RULE_KEYS = ("kids", "max_minutes", "rewatch_days", "exclude_genres", "animated"
 
 def _viewer(row):
     v = dict(row)
+    # Profilens PIN lämnas aldrig ut, bara om den finns.
+    v["has_pin"] = bool(v.pop("pin_hash", None))
+    v.pop("pin_salt", None)
     try:
         v["rules"] = json.loads(v.get("rules") or "{}")
     except ValueError:

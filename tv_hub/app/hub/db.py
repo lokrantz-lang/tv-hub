@@ -369,6 +369,146 @@ SCHEMA = [
     );
     CREATE INDEX reminders_start ON reminders (sent, start)
     """,
+    # version 11: profiler (tittarlägena blir profiler), PIN per box, Mina program.
+    # Favoriter, Fortsätt titta, sedda och favoritavsnitt blir per profil. Allt som fanns blir den första
+    # profilens (Själv -> Henrik).
+    """
+    ALTER TABLE viewers ADD COLUMN color TEXT;
+    ALTER TABLE viewers ADD COLUMN emoji TEXT;
+    ALTER TABLE viewers ADD COLUMN pin_salt TEXT;
+    ALTER TABLE viewers ADD COLUMN pin_hash TEXT;
+    ALTER TABLE viewers ADD COLUMN allow_adult INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE viewers ADD COLUMN guest INTEGER NOT NULL DEFAULT 0;
+    UPDATE viewers SET name = 'Henrik', color = '#3B82F6' WHERE name = 'Själv';
+    UPDATE viewers SET name = 'Tillsammans', color = '#F59E0B' WHERE name = 'Med döttrarna';
+    UPDATE viewers SET allow_adult = 1 WHERE id = (SELECT MIN(id) FROM viewers);
+    DELETE FROM viewers WHERE name = 'Med vuxen'
+        AND NOT EXISTS (SELECT 1 FROM ratings r WHERE r.viewer_id = viewers.id)
+        AND NOT EXISTS (SELECT 1 FROM seen_log s WHERE s.viewer_id = viewers.id)
+        AND NOT EXISTS (SELECT 1 FROM wishlist w WHERE w.viewer_id = viewers.id);
+    INSERT INTO viewers (name, position, rules, created, color) SELECT 'Ida', 4, '{}', datetime('now'), '#EC4899'
+        WHERE NOT EXISTS (SELECT 1 FROM viewers WHERE name = 'Ida');
+    INSERT INTO viewers (name, position, rules, created, color) SELECT 'Linn', 5, '{}', datetime('now'), '#10B981'
+        WHERE NOT EXISTS (SELECT 1 FROM viewers WHERE name = 'Linn');
+    INSERT INTO viewers (name, position, rules, created, color, guest) SELECT 'Gäst', 9, '{}', datetime('now'), '#6B7280', 1
+        WHERE NOT EXISTS (SELECT 1 FROM viewers WHERE name = 'Gäst');
+
+    CREATE TABLE favorites_p (
+        profile_id INTEGER NOT NULL, type TEXT NOT NULL, item_id TEXT NOT NULL, added TEXT NOT NULL,
+        PRIMARY KEY (profile_id, type, item_id)
+    );
+    INSERT INTO favorites_p SELECT (SELECT MIN(id) FROM viewers), type, item_id, added FROM favorites;
+    DROP TABLE favorites;
+    ALTER TABLE favorites_p RENAME TO favorites;
+
+    CREATE TABLE progress_p (
+        profile_id INTEGER NOT NULL, adult INTEGER NOT NULL, type TEXT NOT NULL, item_id TEXT NOT NULL,
+        series_id TEXT, name TEXT, icon TEXT, ext TEXT,
+        position_ms INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, updated TEXT NOT NULL,
+        PRIMARY KEY (profile_id, adult, type, item_id)
+    );
+    INSERT INTO progress_p SELECT (SELECT MIN(id) FROM viewers), adult, type, item_id, series_id, name, icon, ext,
+        position_ms, duration_ms, updated FROM progress;
+    DROP TABLE progress;
+    ALTER TABLE progress_p RENAME TO progress;
+
+    CREATE TABLE watched_p (
+        profile_id INTEGER NOT NULL, adult INTEGER NOT NULL, type TEXT NOT NULL, item_id TEXT NOT NULL,
+        series_id TEXT, at TEXT NOT NULL,
+        PRIMARY KEY (profile_id, adult, type, item_id)
+    );
+    INSERT INTO watched_p SELECT (SELECT MIN(id) FROM viewers), adult, type, item_id, series_id, at FROM watched;
+    DROP TABLE watched;
+    ALTER TABLE watched_p RENAME TO watched;
+
+    CREATE TABLE fav_episodes_p (
+        profile_id INTEGER NOT NULL, adult INTEGER NOT NULL DEFAULT 0, episode_id TEXT NOT NULL, series_id TEXT NOT NULL,
+        title TEXT, ext TEXT, icon TEXT, added TEXT NOT NULL,
+        PRIMARY KEY (profile_id, adult, episode_id)
+    );
+    INSERT INTO fav_episodes_p SELECT (SELECT MIN(id) FROM viewers), adult, episode_id, series_id, title, ext, icon, added
+        FROM fav_episodes;
+    DROP TABLE fav_episodes;
+    ALTER TABLE fav_episodes_p RENAME TO fav_episodes;
+
+    UPDATE sessions SET viewer_id = (SELECT MIN(id) FROM viewers) WHERE viewer_id IS NULL;
+    ALTER TABLE sessions ADD COLUMN catchup_start INTEGER;
+
+    ALTER TABLE devices ADD COLUMN pin_required INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE devices ADD COLUMN default_profile_id INTEGER;
+    ALTER TABLE devices ADD COLUMN revert_hours INTEGER NOT NULL DEFAULT 0;
+    UPDATE devices SET pin_required = 0, default_profile_id = (SELECT MIN(id) FROM viewers) WHERE lower(name) LIKE '%sovrum%';
+    UPDATE devices SET pin_required = 1, revert_hours = 4,
+        default_profile_id = (SELECT id FROM viewers WHERE name = 'Tillsammans') WHERE lower(name) LIKE '%vardagsrum%';
+
+    CREATE TABLE my_programs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        channel_id TEXT,
+        query TEXT,
+        times TEXT NOT NULL DEFAULT '[]',
+        series_id TEXT,
+        position INTEGER NOT NULL DEFAULT 0,
+        created TEXT NOT NULL
+    )
+    """,
+    # version 12: programguide för svenska kanaler och sportkanaler (sök, Mina sporter, TV-guiden)
+    """
+    CREATE TABLE epg (
+        epg_key TEXT NOT NULL,
+        start INTEGER NOT NULL,
+        end INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        title_norm TEXT NOT NULL,
+        description TEXT,
+        archive INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (epg_key, start)
+    );
+    CREATE INDEX idx_epg_start ON epg(start);
+    CREATE TABLE epg_scan (
+        epg_key TEXT PRIMARY KEY,
+        stream_id TEXT NOT NULL,
+        scanned INTEGER NOT NULL,
+        programs INTEGER NOT NULL DEFAULT 0,
+        error TEXT
+    );
+    CREATE TABLE sport_interests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'sport',
+        keywords TEXT NOT NULL DEFAULT '[]',
+        exclude TEXT NOT NULL DEFAULT '[]',
+        title_only INTEGER NOT NULL DEFAULT 0,
+        notify INTEGER NOT NULL DEFAULT 0,
+        record_device_id INTEGER,
+        position INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created TEXT NOT NULL
+    );
+    CREATE TABLE sport_hits (
+        interest_id INTEGER NOT NULL,
+        epg_key TEXT NOT NULL,
+        start INTEGER NOT NULL,
+        PRIMARY KEY (interest_id, epg_key, start)
+    );
+    CREATE TABLE sport_done (
+        key TEXT PRIMARY KEY,
+        at INTEGER NOT NULL
+    );
+    INSERT INTO sport_interests (name, kind, keywords, exclude, title_only, position, created) VALUES
+        ('Golf', 'sport', '["golf", "pga tour", "lpga", "dp world tour", "ryder cup", "solheim cup", "liv golf"]',
+         '["minigolf", "discgolf"]', 1, 1, datetime('now')),
+        ('Ridsport', 'sport', '["ridsport", "hästhoppning", "hoppning", "dressyr", "fälttävlan", "horse show", "show jumping", "global champions", "equestrian"]',
+         '["trav", "galopp", "v75", "v86", "v64", "v65", "travsport"]', 1, 2, datetime('now')),
+        ('Norrköping Dolphins', 'team', '["norrköping dolphins", "dolphins + basket", "dolphins + basketligan", "dolphins + norrköping"]',
+         '["miami", "nfl"]', 0, 3, datetime('now')),
+        ('IFK Norrköping', 'team', '["ifk norrköping", "ifk + norrköping", "norrköping + allsvenskan", "norrköping + damallsvenskan", "norrköping + svenska cupen"]',
+         '["dolphins", "basket"]', 0, 4, datetime('now')),
+        ('Sverige, fotbollslandslagen', 'team', '["sverige + fotboll", "sweden + football", "sverige + landskamp", "damlandslaget", "herrlandslaget", "sverige + em kval", "sverige + vm kval", "sverige + nations league", "blågult + fotboll"]',
+         '["ishockey", "handboll", "bandy", "innebandy", "tre kronor", "damkronorna", "basket", "friidrott", "volleyboll"]', 0, 5, datetime('now'))
+    """,
 ]
 
 

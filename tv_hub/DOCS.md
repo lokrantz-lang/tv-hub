@@ -19,6 +19,72 @@ TV Hub gör Home Assistant till navet för din IPTV:
 3. **Översikt:** Klicka *Uppdatera listor*. Första gången tar det upp till ett par minuter.
 4. **Boxar:** Klicka *Para ny box* och skriv in koden i TV Hub-appen på boxen. Serveradressen i appen är `http://<Home Assistants IP>:8099`.
 
+## Profiler
+
+Fliken **Profiler** i webbadminen. Från början finns Henrik, Tillsammans, Ida, Linn och Gäst (tidigare tittarlägen blev profiler).
+
+- **Egna favoriter, Fortsätt titta, sedda avsnitt och snabbval** per profil. Favoriter från tiden före 2.5 hör till Henrik.
+- **Byta profil:** TV: den runda bilden överst i menyn till vänster. Telefon: den runda bilden uppe till höger.
+  Ingen "Vem tittar?" vid start: boxen startar med sin *startprofil*.
+- **Kod (valfri, 4–8 siffror):** appen frågar efter den när någon byter till profilen.
+- **Får använda vuxenläget:** bara profiler med den rutan ikryssad kan slå på vuxenläget. Minst en profil måste ha den.
+- **Gäst:** sparar inga favoriter, inget Fortsätt titta och inga tummar.
+- **Lägg till, byt namn, färg, emoji och ta bort** i fliken. Tar man bort en profil försvinner dess favoriter, Fortsätt titta,
+  tummar och snabbval.
+- **Per box** (fliken *Boxar*): *Startprofil*, *Tillbaka till startprofilen efter X h utan användning* och
+  *Kräv kod för vuxenläget*. Vid uppdateringen till 2.5 fick en box med "vardagsrum" i namnet startprofilen Tillsammans,
+  4 timmar och kod; en box med "sovrum" i namnet fick Henrik och ingen kod.
+
+### Mina program (snabbval)
+
+Överst på Hem och under Favoriter → *Mina program*. Läggs till per profil i fliken Profiler. *Lägg till förslagen* ger
+Rapport (SVT1), TV4 Nyheterna (19:00 och 22:00) och Robinson (TV4). Sätten:
+
+| Sätt | Spelar |
+|---|---|
+| Senaste sändningen | Direkt om programmet sänds nu, annars den senaste sändningen ur kanalens arkiv. |
+| Senaste huvudsändningen | Bara sändningar som börjar vid angivna tider (±20 min), t.ex. 19:00 och 22:00. |
+| Avsnitt ur arkivet i tur och ordning | Påbörjat avsnitt först, annars nästa efter det du såg senast, annars det senaste. Snabbast för nya avsnitt. |
+| Serie: fortsätt där du var | En serie i Toucans bibliotek. Nya avsnitt kommer ofta dit senare än i arkivet. |
+
+Programmets namn matchas mot programguiden (stora/små bokstäver och tecken spelar ingen roll). Kanalen måste ha arkiv
+(catch-up) för allt utom det som sänds nu; arkivet är oftast några dagar. *Testa* i webbadminen visar vad som skulle spelas.
+
+## Mina sporter och När går …?
+
+**Sport** i menyn på TV:n och raden *Sport: nu och snart* på Hem (TV och telefon). Sporterna och lagen ställs in i
+webbadminen under fliken **Sport**. Från början: Golf, Ridsport, Norrköping Dolphins, IFK Norrköping och
+Sveriges fotbollslandslag (dam och herr).
+
+- **Just nu** (OK: titta), **Kommande** (OK: påminn mig eller spela in) och **I efterhand** (OK: spela ur arkivet).
+  Grupperna överst visar en sport eller ett lag i taget. Samma sändning på flera kanaler visas en gång ("även på …").
+- **Sökorden** jämförs med programguidens titel (och beskrivning, om inte *Bara i titeln* är ikryssat). En rad per
+  alternativ, `dolphins + basket` betyder att båda orden måste finnas, och *Inte*-orden stoppar en träff (t.ex.
+  `miami` så att Miami Dolphins inte kommer med). *Ändra och se sändningar* visar direkt vad som hittas.
+- **Fråga när den börjar:** de valda boxarna frågar "Byt kanal?" några minuter innan, och telefonen får en notis
+  (notify-tjänsten under *Boxar → Påminnelser till telefonen*). Inte mellan 23 och 08 som standard.
+- **Spela in lagets sändningar:** kommande sändningar planeras som inspelningar på vald box, 2 minuter före till
+  15 minuter efter. Tar du bort en sådan inspelning planeras den inte igen. Boxen måste vara på eller i standby,
+  och en inspelning använder en av kontots anslutningar (anslutningsvakten frågar som vanligt).
+- **När går …?** Sök på TV:n letar också i programguiden: *Sänds nu*, *Kommande sändningar* och *Se i efterhand*
+  överst bland träffarna. Knappen *När går …?* på Sport-sidan går dit. I webbadminen finns samma sökning under Sport.
+
+**Programguiden** hämtas i bakgrunden var fjärde timme för svenska kategorier och sportkategorier (en kanal i
+taget, med paus, aldrig vuxenkategorier). Kanaler med samma programguide hämtas en gång. Valet kan ändras under
+*Sport → Programguiden → Kanaler som söks igenom*. Det som inte finns i Toucans programguide hittas inte, och
+matcher som bara ligger på tillfälliga eventkanaler utan programguide syns inte.
+
+## TV-guiden
+
+**TV-guide** i menyn (eller Guide-knappen när ingen kanal är markerad): kanalerna i rader och programmen på en
+tidslinje, två timmar i taget. ▲ ▼ byter kanal, ◀ ▶ går mellan programmen, Kanal +/− bläddrar en sida. OK på ett
+pågående program visar kanalen, på ett tidigare program spelas det ur arkivet (▶ framför titeln), och på ett
+kommande program kan du få en påminnelse eller spela in. Håll in OK för alla val. Upp från första raden väljer
+grupp: Favoriter, Senaste kanaler eller en kategori. Guiden sträcker sig ett dygn bakåt och drygt ett dygn framåt.
+
+**Spelarlisten** för live visar programmets namn, tider, minuter kvar, hur långt programmet har kommit,
+vad som kommer sedan och klockan.
+
 ## Dolt vuxenläge
 
 Kategorier med "For Adults", "Porn" eller "XXX" i namnet räknas som vuxeninnehåll. Under **Kategorier** i webbadminen
@@ -27,10 +93,11 @@ kan en kategori markeras som *Alltid 18+* eller *Aldrig 18+*. I boxen: markera *
 I vuxenläget döljs favoriter, Fortsätt titta, senaste kanaler och sedda. Tryck **höger tre gånger** på **Inställningar**
 för att visa dem, och igen för att dölja dem. Tittandet sparas alltid, men visas bara när du har valt att visa det.
 Läget stängs av efter 15 minuter utan aktivitet, efter högst 3 timmar och när appen eller boxen startas om.
-En box med profilen *Utan vuxenläge* eller *Bara gruppen …* kan inte byta läge.
+En box med innehållet *Utan vuxenläge* eller *Bara gruppen …* kan inte byta läge, och bara profiler med
+*Får använda vuxenläget* kan slå på det (för andra händer ingenting). Läget stängs av när någon byter profil.
 
 **PIN-kod (valfritt):** webbadminen, *Boxar → PIN-kod för vuxenläget*. Med en kod frågar boxen och telefonen efter
-den efter de tre trycken. Utan kod fungerar det som förut. Koden sparas krypterad och kan bara bytas, inte visas.
+den efter de tre trycken, på boxar där *Kräv kod för vuxenläget* är ikryssat. Utan kod fungerar det som förut. Koden sparas krypterad och kan bara bytas, inte visas.
 Efter fem fel i rad går det inte att försöka igen på 5 minuter.
 
 ## Utseende i boxarna
@@ -124,7 +191,7 @@ Uppspelningen går inte via Toucan och räknas inte som en anslutning där.
 
 Välj vem som tittar och få tio förslag. TV: *Filmkväll* i menyn. Telefon: knappen överst. Webbadmin: fliken *Filmkväll*.
 
-- **Tittarlägen** har egna tummar, egen logg och egna regler (barnvänligt, högsta längd, genrer att undvika, titta igen efter X dagar). Ändras i webbadminen. Valt läge gäller till kl 05 nästa morgon.
+- **Tittarlägen** är profilerna: egna tummar, egen logg och egna regler (barnvänligt, högsta längd, genrer att undvika, titta igen efter X dagar). Reglerna ändras i webbadminen under Filmkväll. Att välja ett tittarläge i appen byter profil.
 - **Tummar:** 👍👍 Älskade, 👍 Bra, 👎 Inte för oss. Håll in OK på en film eller serie, använd knappen på detaljsidan, eller svara när appen frågar efter filmen.
 - **Förslagen** räknas i tillägget utifrån betyg, genre, regissör, skådespelare, årtionde, längd och om den är animerad, jämfört med det ni gillat. Sedda, nekade och "Inte i kväll" tas bort. Vill se kommer först.
 - **Barnvänligt** bygger på genre och kategori (Animerat, Familj, Barn) och är en bedömning, inte en garanti.
@@ -160,7 +227,8 @@ Säg till Google (eller tryck i telefonen eller webbadminen) och boxen startar u
 - **Röstkommandon:** *Boxar → Röststyrning och fjärrstart*. Varje kommando blir ett skript i Home Assistant
   (`script.tv_hub_…`) som först kan slå på TV:n och byta källa och sedan säger åt boxen vad den ska göra:
   fortsätta titta, en serie där ni var, senaste programmet ur arkivet (t.ex. Rapport på SVT1), en kanal,
-  en film, Filmkväll, pausa, fortsätta eller stänga. *Lägg till standardkommandon* skapar
+  en film, Filmkväll, matchen som sänds nu (Mina sporter, ett lag eller alla), pausa, fortsätta eller stänga.
+  Sänds ingen match säger webbadminens *Testa* när nästa går. *Lägg till standardkommandon* skapar
   "Fortsätt titta i …", "Pausa …", "Spela vidare i …" och "Stäng TV Hub i …" för en box.
 
 **Ställ in Google en gång:**
@@ -241,4 +309,6 @@ direkt från Toucan och telefonen blir fjärrkontroll (paus, spola, sluta casta)
 
 ## Home Assistant-sensorer
 
-Se `homeassistant/tv_hub_package.yaml` i förrådet. Det ger statussensor, svarstid, vem som tittar, utgångsdatum och notiser.
+Se `homeassistant/tv_hub_package.yaml` i förrådet. Det ger statussensor, svarstid, vem som tittar, utgångsdatum och notiser,
+och för Mina sporter: `sensor.tv_hub_nasta_match` (titel, med kanal, tid och om den pågår som attribut),
+`sensor.tv_hub_nasta_match_borjar` (tidpunkt) och `binary_sensor.tv_hub_match_pagar`.

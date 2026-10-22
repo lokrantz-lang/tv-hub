@@ -197,6 +197,23 @@ class CardAdapter(
         }
         holder.fallback?.text = if (card.kind == Card.CHANNEL) (card.subtitle ?: card.title) else card.title
         holder.fallback?.visibility = View.VISIBLE
+        (card.payload as? MyPrograms.Program)?.let { prog ->
+            // Mina program: namnet stort, vad som spelas (t.ex. "Idag 19:30 · fortsätt") under.
+            holder.title?.text = if (row) prog.title else listOf(prog.title, prog.subtitle).filter { it.isNotEmpty() }.joinToString("  ·  ")
+            holder.subtitle?.let { it.text = prog.subtitle; it.visibility = if (prog.subtitle.isEmpty()) View.GONE else View.VISIBLE }
+            holder.fallback?.text = prog.title
+            holder.plot?.visibility = View.GONE
+        }
+        (card.payload as? Sports.Event)?.let { e ->
+            // Sport: vad och när (logon visar kanalen).
+            val time = if (e.live) "● ${e.whenText}" else e.whenText
+            holder.title?.text = if (row) e.title else "$time  ·  ${e.title}"
+            holder.subtitle?.let { it.text = "$time  ·  ${e.channel}"; it.visibility = View.VISIBLE }
+            holder.fallback?.text = e.channel
+            holder.plot?.visibility = View.GONE
+        }
+        // Platshållare medan listan hämtas.
+        holder.itemView.alpha = if (card.key.startsWith("sk:")) 0.35f else 1f
         holder.art?.let { art ->
             val size = if (card.kind == Card.WIDE) 480 else 320
             ImageLoader.load(art, card.image, size, fade = true) { ok ->

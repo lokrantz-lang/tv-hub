@@ -105,7 +105,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .toast.show { opacity: 1; }
 .empty { color: var(--muted); padding: 12px 0; }
 .spark { display: block; width: 100%; height: 48px; }
-.hidden { display: none !important; }
+.hidden, [hidden] { display: none !important; }
 .tabpanel[hidden] { display: none; }
 @media (max-width: 640px) {
   #rec-form { grid-template-columns: 1fr !important; }
@@ -154,6 +154,40 @@ tbody tr:last-child td { border-bottom: 0; }
 .detail-body h3 { margin: 0 0 4px; font-size: 20px; }
 .detail-body .plot { font-size: 14px; line-height: 1.5; margin: 10px 0; }
 .detail-body .close { position: absolute; top: 10px; right: 12px; }
+/* profiler */
+.prof-card { border-top: 1px solid var(--line); padding: 16px 0; display: grid; gap: 12px; }
+.prof-card:first-child { border-top: 0; padding-top: 4px; }
+.prof-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 17px; flex: none; }
+.prof-head .name { font-size: 16px; font-weight: 650; }
+details.prof-set summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+details.prof-set > .row { margin-top: 10px; }
+.prof-grid { display: grid; gap: 10px 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); align-items: end; }
+.prof-grid input[type=color] { padding: 2px; height: 38px; }
+.mp-list { list-style: none; margin: 0; padding: 0; }
+.mp-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; margin-top: 6px; background: var(--panel-2); flex-wrap: wrap; }
+.mp-list .thumb { width: 36px; height: 36px; object-fit: contain; background: var(--panel); }
+.mp-form { display: grid; gap: 10px 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); align-items: end; margin-top: 10px; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; }
+.mp-form [hidden] { display: none !important; }
+@media (max-width: 640px) {
+  .mp-list li .grow { flex-basis: calc(100% - 50px); }
+  .mp-list li .btn { min-height: 32px; padding: 4px 8px; }
+  .mp-list li .ellipsis { white-space: normal; }
+}
+.mp-preview { font-size: 13px; }
+.mp-preview.ok { color: var(--ok); } .mp-preview.bad { color: var(--bad); }
+.dev-opts { display: flex; gap: 10px 14px; align-items: end; flex-wrap: wrap; }
+.dev-opts .f { min-width: 150px; }
+.list li.dev { flex-wrap: wrap; }
+/* sport */
+.sp-card { border-top: 1px solid var(--line); padding: 14px 0; display: grid; gap: 10px; }
+.sp-card:first-child { border-top: 0; padding-top: 4px; }
+.sp-grid { display: grid; gap: 10px 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.sp-grid textarea { min-height: 96px; font-family: var(--mono); font-size: 13px; }
+.ev-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.ev-list li { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
+.ev-list .t { color: var(--muted); min-width: 120px; font-variant-numeric: tabular-nums; }
+.pill.live { color: var(--bad); border-color: currentColor; }
 /* filmkväll */
 .night-controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
 .night-controls label.chk, label.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; color: var(--text); white-space: nowrap; }
@@ -194,6 +228,8 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
     </div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="overview" aria-selected="true">Översikt</button>
+      <button role="tab" data-tab="profiles">Profiler</button>
+      <button role="tab" data-tab="sports">Sport</button>
       <button role="tab" data-tab="night">Filmkväll</button>
       <button role="tab" data-tab="library">Bibliotek</button>
       <button role="tab" data-tab="collections">Favoriter och grupper</button>
@@ -239,7 +275,60 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
     </div>
   </section>
 
-  <!-- BIBLIOTEK -->
+  <!-- PROFILER -->
+  <section class="tabpanel" id="tab-profiles" hidden>
+    <div class="panel">
+      <div class="hd"><h2>Profiler</h2><button class="btn primary" id="prof-add">Lägg till profil</button></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Varje profil har egna favoriter, eget Fortsätt titta, egna sedda avsnitt och egna snabbval (Mina program). Byt profil i appen med profilknappen överst i menyn. Med en kod frågar appen efter den när man byter till profilen. Gästprofilen sparar ingenting. Profilerna är samma som tittarlägena i Filmkväll.</p>
+        <div id="prof-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SPORT -->
+  <section class="tabpanel" id="tab-sports" hidden>
+    <div class="panel">
+      <div class="hd"><h2>Mina sporter</h2><button class="btn primary" id="sp-add">Lägg till sport eller lag</button></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Sändningar hittas i programguiden med sökorden. En rad per alternativ; <span class="mono">dolphins + basket</span> betyder att båda orden måste finnas. Hela ord jämförs. <em>Inte</em>-orden stoppar en träff (t.ex. Miami Dolphins). Boxarna visar <em>Just nu</em>, <em>Kommande</em> och <em>I efterhand</em> (det som finns i arkivet) under Sport i menyn och på Hem.</p>
+        <div id="sp-list"></div>
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="panel">
+        <div class="hd"><h2>När matchen börjar</h2></div>
+        <div class="bd">
+          <p class="small muted" style="margin-top:0">För sporter och lag med <em>Fråga när den börjar</em>. Boxarna frågar "Byt kanal?" (de måste vara påslagna) och telefonen får en notis via notify-tjänsten under <a href="#" data-goto="devices">Boxar → Påminnelser till telefonen</a>.</p>
+          <div class="small" style="margin-bottom:6px">Fråga på</div>
+          <div class="row" id="sp-boxes" style="gap:8px 18px"></div>
+          <div class="viewer-grid" style="margin-top:10px; align-items:end">
+            <label class="chk" style="min-height:38px"><input type="checkbox" id="sp-phone"> Notis till telefonen</label>
+            <label class="f">Minuter innan<input id="sp-lead" type="number" min="0" max="60"></label>
+            <label class="f">Inte mellan<input id="sp-qfrom" placeholder="23:00"></label>
+            <label class="f">och<input id="sp-qto" placeholder="08:00"></label>
+          </div>
+          <div class="row" style="margin-top:10px"><button class="btn primary" id="sp-save-notify">Spara</button></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="hd"><h2>Programguiden</h2><button class="btn" id="sp-scan">Sök igenom nu</button></div>
+        <div class="bd">
+          <p class="small muted" style="margin-top:0" id="sp-status"></p>
+          <details class="ev"><summary>Kanaler som söks igenom</summary>
+            <p class="small muted">Utan val: svenska kategorier och sportkategorier (förvalda nedan). Vuxenkategorier aldrig. Fler kanaler gör genomsökningen längre (en kanal i taget, med paus).</p>
+            <div id="sp-cats" style="display:grid; gap:4px; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); max-height:260px; overflow:auto"></div>
+            <div class="row" style="margin-top:8px"><button class="btn" id="sp-save-cats">Spara val</button><button class="btn ghost" id="sp-auto-cats">Tillbaka till automatiskt</button></div>
+          </details>
+          <h3 style="font-size:14px; margin:16px 0 8px">När går …?</h3>
+          <div class="row"><input id="sp-when-q" placeholder="t.ex. Robinson, Dolphins, Sverige" style="flex:1; width:auto"><button class="btn" id="sp-when-go">Sök</button></div>
+          <div id="sp-when" class="small" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FILMKVÄLL -->
   <section class="tabpanel" id="tab-night" hidden>
     <div class="panel">
       <div class="hd"><h2>Kvällens förslag</h2><span id="night-ai" class="small muted"></span></div>
@@ -262,9 +351,9 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
     </div>
     <div class="grid2" style="margin-top:16px">
       <div class="panel">
-        <div class="hd"><h2>Tittarlägen</h2><button class="btn" id="viewer-add">Lägg till</button></div>
+        <div class="hd"><h2>Tittarlägen</h2></div>
         <div class="bd">
-          <p class="small muted" style="margin-top:0">Varje tittarläge har egna tummar, egen logg och egna regler. Smaktexten används av AI-tjänsten om du har valt en.</p>
+          <p class="small muted" style="margin-top:0">Tittarlägena är profilerna. Varje profil har egna tummar, egen logg och egna regler här. Smaktexten används av AI-tjänsten om du har valt en. Lägg till, byt namn på och ta bort profiler under <a href="#" data-goto="profiles">Profiler</a>.</p>
           <div id="viewer-list"></div>
           <label class="f" style="margin-top:8px">När samma film finns i flera versioner, visa
             <select id="version-pref"><option value="swedish">den med svensk text först</option><option value="quality">högsta kvaliteten först</option></select></label>
@@ -539,6 +628,7 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
           <label class="f" id="vc-query-wrap">Titel<input id="vc-query" placeholder="t.ex. Robinson"></label>
           <label class="f" id="vc-channel-wrap">Kanal<input id="vc-channel" list="vc-channels" placeholder="t.ex. SVT1"><datalist id="vc-channels"></datalist></label>
           <label class="f" id="vc-viewer-wrap">Tittarläge<select id="vc-viewer"></select></label>
+          <label class="f" id="vc-sport-wrap">Sport eller lag<select id="vc-sport"></select></label>
           <label class="f">Slå på TV:n först<select id="vc-tv"><option value="">Nej</option></select></label>
           <label class="f">Källa på TV:n<select id="vc-source"><option value="">Ändra inte</option></select></label>
           <label class="f">Vänta efter påslag (sek)<input id="vc-delay" type="number" min="0" max="60" value="10"></label>
@@ -560,7 +650,7 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
     <div class="panel" style="margin-top:16px">
       <div class="hd"><h2>PIN-kod för vuxenläget</h2><span id="pin-pill" class="small"></span></div>
       <div class="bd">
-        <p class="small muted" style="margin-top:0">Valfritt. Med en kod frågar boxen och telefonen efter den när vuxenläget slås på. Utan kod fungerar det som förut. Koden sparas krypterad och kan inte visas, bara bytas.</p>
+        <p class="small muted" style="margin-top:0">Valfritt. Med en kod frågar boxen och telefonen efter den när vuxenläget slås på, på de boxar som har <em>Kräv kod för vuxenläget</em> ikryssat ovan. Bara profiler som får använda vuxenläget (se Profiler) kan slå på det. Koden sparas krypterad och kan inte visas, bara bytas.</p>
         <form id="pin-form" class="filters" style="align-items:flex-end">
           <label class="f" style="min-width:180px">Ny kod (4–8 siffror)<input id="pin-new" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8"></label>
           <div class="row"><button class="btn primary" type="submit">Spara kod</button><button class="btn danger" type="button" id="pin-clear">Ta bort kod</button></div>
@@ -972,6 +1062,277 @@ $("lib-detail").addEventListener("change", (e) => {
   sel.value = "";
 });
 
+/* ---------- profiler ---------- */
+const prof = { list: [], modes: {}, channels: {}, series: {}, adding: null, editing: null };
+const MP_NEEDS = { latest: ["channel", "query"], main: ["channel", "query", "times"], archive: ["channel", "query"], series: ["series"] };
+const MP_HELP = {
+  latest: "Spelar det som sänds nu, annars den senaste sändningen ur kanalens arkiv. Bra för Rapport.",
+  main: "Bara sändningar som börjar vid tiderna du anger (±20 min), t.ex. 19:00 och 22:00 för TV4 Nyheterna.",
+  archive: "Avsnitt ur kanalens arkiv i tur och ordning: påbörjat avsnitt först, annars nästa efter det du såg senast. Snabbast för nya avsnitt av t.ex. Robinson.",
+  series: "En serie i Toucans bibliotek: fortsätter där du var. Nya avsnitt kommer ofta senare än i arkivet.",
+};
+const initial = (n) => esc((String(n || "?").trim()[0] || "?").toUpperCase());
+function avatar(p) { return `<span class="avatar" style="background:${esc(p.color || "#6B7280")}">${p.emoji ? esc(p.emoji) : initial(p.name)}</span>`; }
+loaders.profiles = async () => {
+  let r; try { r = await api("profiles"); } catch (e) { return toast(e.message); }
+  prof.list = r.profiles; prof.modes = r.modes;
+  renderProfiles();
+};
+function mpRow(m, p) {
+  const what = m.mode === "series" ? (m.series_name || "serien finns inte längre")
+    : `${m.channel_name || "kanalen finns inte längre"} · "${m.query}"${m.times && m.times.length ? " · " + m.times.join(", ") : ""}`;
+  return `<li data-mp="${m.id}">${m.icon ? `<img class="thumb" src="${img(m.icon)}" alt="" onerror="this.removeAttribute('src')">` : '<span class="thumb"></span>'}
+    <div class="grow"><div class="ellipsis"><strong>${esc(m.name)}</strong> <span class="pill">${esc(m.mode_label)}</span></div>
+    <div class="small muted ellipsis">${esc(what)}</div><div class="mp-preview" data-preview></div></div>
+    <button class="btn ghost small icon" data-act="mp-up" title="Flytta upp" aria-label="Flytta upp">▲</button>
+    <button class="btn ghost small icon" data-act="mp-down" title="Flytta ner" aria-label="Flytta ner">▼</button>
+    <button class="btn ghost small" data-act="mp-test">Testa</button>
+    <button class="btn ghost small" data-act="mp-edit">Ändra</button>
+    <button class="btn ghost small danger" data-act="mp-del">Ta bort</button></li>`;
+}
+function mpForm(pid, m) {
+  m = m || { mode: "latest", name: "", query: "", times: [], channel_name: "", series_name: "" };
+  const opts = Object.entries(prof.modes).map(([k, v]) => `<option value="${k}" ${k === m.mode ? "selected" : ""}>${esc(v)}</option>`).join("");
+  return `<form class="mp-form" data-pid="${pid}" ${m.id ? `data-edit="${m.id}"` : ""}>
+    <label class="f">Vad ska spelas<select data-m="mode">${opts}</select></label>
+    <label class="f" data-need="channel">Kanal<input data-m="channel" list="mp-channels" value="${esc(m.channel_name || "")}" placeholder="t.ex. SVT1" autocomplete="off"></label>
+    <label class="f" data-need="query">Programmets namn i guiden<input data-m="query" value="${esc(m.query || "")}" placeholder="t.ex. Rapport"></label>
+    <label class="f" data-need="times">Tider<input data-m="times" value="${esc((m.times || []).join(", "))}" placeholder="19:00, 22:00"></label>
+    <label class="f" data-need="series">Serie<input data-m="series" list="mp-series" value="${esc(m.series_name || "")}" placeholder="Sök serie" autocomplete="off"></label>
+    <label class="f">Namn på knappen<input data-m="name" value="${esc(m.name || "")}" placeholder="Som programmet"></label>
+    <div class="row"><button class="btn primary" type="submit">Spara</button><button class="btn" type="button" data-act="mp-cancel">Avbryt</button></div>
+    <div class="small muted" data-help style="grid-column:1/-1"></div></form>`;
+}
+function mpShowFields(form) {
+  const mode = form.querySelector("[data-m=mode]").value;
+  form.querySelectorAll("[data-need]").forEach((el) => el.hidden = !MP_NEEDS[mode].includes(el.dataset.need));
+  form.querySelector("[data-help]").textContent = MP_HELP[mode] || "";
+}
+function renderProfiles() {
+  const adults = prof.list.filter((p) => p.allow_adult).length;
+  $("prof-list").innerHTML = prof.list.map((p) => {
+    const pills = [p.has_pin ? '<span class="pill">🔒 kod</span>' : "", p.allow_adult ? '<span class="pill warn">får använda vuxenläget</span>' : "",
+      p.guest ? '<span class="pill">gäst: sparar inget</span>' : `<span class="pill">${p.favorites} favoriter</span>`].join(" ");
+    const progs = p.programs.map((m) => mpRow(m, p)).join("");
+    const form = prof.adding === p.id ? mpForm(p.id) : (prof.editing && prof.editing.pid === p.id ? mpForm(p.id, p.programs.find((m) => m.id === prof.editing.id)) : "");
+    return `<div class="prof-card" data-pid="${p.id}">
+      <div class="prof-head">${avatar(p)}<div class="grow"><div class="name">${esc(p.name)}</div><div class="row" style="gap:6px">${pills}</div></div></div>
+      <details class="prof-set"><summary>Namn, färg, kod och behörighet</summary>
+      <div class="prof-grid" style="margin-top:10px">
+        <label class="f">Namn<input data-p="name" value="${esc(p.name)}" maxlength="30"></label>
+        <label class="f">Färg<input data-p="color" type="color" value="${esc(p.color || "#6B7280")}"></label>
+        <label class="f">Emoji (valfri)<input data-p="emoji" value="${esc(p.emoji || "")}" maxlength="4" placeholder="t.ex. 🦊"></label>
+        <label class="f">${p.has_pin ? "Byt kod (4–8 siffror)" : "Kod (valfri, 4–8 siffror)"}<input data-p="pin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="${p.has_pin ? "oförändrad" : "ingen kod"}"></label>
+      </div>
+      <div class="row" style="gap:8px 18px">
+        <label class="chk"><input type="checkbox" data-p="allow_adult" ${p.allow_adult ? "checked" : ""} ${p.allow_adult && adults <= 1 ? "disabled title='Minst en profil måste få använda vuxenläget'" : ""}> Får använda vuxenläget</label>
+        <label class="chk"><input type="checkbox" data-p="guest" ${p.guest ? "checked" : ""}> Gäst (sparar inga favoriter eller Fortsätt titta)</label>
+        <span class="spacer"></span>
+        ${p.has_pin ? '<button class="btn ghost small" data-act="pin-clear">Ta bort kod</button>' : ""}
+        <button class="btn primary small" data-act="save">Spara</button>
+        <button class="btn ghost small danger" data-act="delete">Ta bort profil</button>
+      </div></details>
+      <div>
+        <div class="row"><strong class="small">Mina program</strong><span class="small muted">snabbval överst på Hem och under Favoriter</span><span class="spacer"></span>
+          ${p.programs.length < 3 ? '<button class="btn ghost small" data-act="mp-suggest">Lägg till förslagen</button>' : ""}
+          <button class="btn small" data-act="mp-add">Lägg till program</button></div>
+        <ul class="mp-list">${progs || '<li class="empty" style="background:none; border:0; padding:4px 0">Inga snabbval. "Lägg till förslagen" ger Rapport, TV4 Nyheterna (19:00 och 22:00) och Robinson.</li>'}</ul>
+        ${form}
+      </div></div>`;
+  }).join("") + '<datalist id="mp-channels"></datalist><datalist id="mp-series"></datalist>';
+  document.querySelectorAll("#prof-list .mp-form").forEach(mpShowFields);
+}
+$("prof-add").addEventListener("click", () => {
+  const name = prompt("Namn på profilen, t.ex. Mormor"); if (!name) return;
+  guarded(async () => { await api("profiles", { method: "POST", body: { name } }); toast("Profilen är tillagd"); loaders.profiles(); });
+});
+$("prof-list").addEventListener("change", (e) => { const f = e.target.closest(".mp-form"); if (f && e.target.dataset.m === "mode") mpShowFields(f); });
+$("prof-list").addEventListener("input", async (e) => {
+  const kind = e.target.dataset.m; if (kind !== "channel" && kind !== "series") return;
+  const q = e.target.value.trim(); if (q.length < 2) return;
+  const type = kind === "channel" ? "live" : "series";
+  const list = (await api(`library/search?q=${encodeURIComponent(q)}&type=${type}&limit=20`).catch(() => [])).filter((x) => !x.adult);
+  const map = kind === "channel" ? prof.channels : prof.series;
+  list.forEach((c) => (map[c.name] = c.id));
+  $(kind === "channel" ? "mp-channels" : "mp-series").innerHTML = list.map((c) => `<option value="${esc(c.name)}">`).join("");
+});
+$("prof-list").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const form = e.target; const g = (k) => form.querySelector(`[data-m=${k}]`).value.trim();
+  const mode = g("mode");
+  const body = { profile_id: Number(form.dataset.pid), mode, name: g("name"), query: g("query"),
+    times: g("times") ? g("times").split(/[\s,;]+/).filter(Boolean) : [] };
+  const editing = form.dataset.edit && prof.list.flatMap((p) => p.programs).find((m) => String(m.id) === form.dataset.edit);
+  if (MP_NEEDS[mode].includes("channel")) {
+    const n = g("channel"); body.channel_id = prof.channels[n] || (editing && editing.channel_name === n ? editing.channel_id : null);
+    if (!body.channel_id) return toast(n ? "Välj kanalen i listan som visas när du skriver." : "Välj kanal.");
+  }
+  if (mode === "series") {
+    const n = g("series"); body.series_id = prof.series[n] || (editing && editing.series_name === n ? editing.series_id : null);
+    if (!body.series_id) return toast(n ? "Välj serien i listan som visas när du skriver." : "Välj serien.");
+    body.query = "";
+  }
+  guarded(async () => {
+    const saved = form.dataset.edit ? await api(`my-programs/${form.dataset.edit}`, { method: "PUT", body }) : await api("my-programs", { method: "POST", body });
+    prof.adding = null; prof.editing = null;
+    await loaders.profiles();
+    mpTest(saved.id);
+  }, form.querySelector("button[type=submit]"));
+});
+async function mpTest(id) {
+  const el = document.querySelector(`[data-mp="${id}"] [data-preview]`); if (!el) return;
+  el.className = "mp-preview"; el.textContent = "Kollar programguiden…";
+  try {
+    const r = await api(`my-programs/preview/${id}`);
+    el.className = "mp-preview " + (r.error ? "bad" : "ok");
+    el.textContent = r.error ? `Går inte just nu: ${r.error}` : `Spelar nu: ${r.command.name}${r.subtitle ? " (" + r.subtitle + ")" : ""}`;
+  } catch (e) { el.className = "mp-preview bad"; el.textContent = e.message; }
+}
+$("prof-list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const card = b.closest(".prof-card"); const pid = Number(card.dataset.pid);
+  const p = prof.list.find((x) => x.id === pid);
+  const li = b.closest("[data-mp]"); const mid = li && Number(li.dataset.mp);
+  const v = (k) => card.querySelector(`[data-p=${k}]`);
+  switch (b.dataset.act) {
+    case "save": {
+      const body = { name: v("name").value, color: v("color").value, emoji: v("emoji").value.trim(), allow_adult: v("allow_adult").checked, guest: v("guest").checked };
+      if (v("pin").value) body.pin = v("pin").value;
+      return guarded(async () => { await api(`profiles/${pid}`, { method: "PUT", body }); toast(body.pin ? "Sparat. Koden gäller nästa gång någon byter till profilen." : "Sparat"); loaders.profiles(); }, b);
+    }
+    case "pin-clear":
+      return guarded(async () => { await api(`profiles/${pid}`, { method: "PUT", body: { pin: "" } }); toast("Koden är borttagen"); loaders.profiles(); }, b);
+    case "delete":
+      if (!confirm(`Ta bort ${p.name}? Profilens favoriter, Fortsätt titta, tummar och snabbval tas bort. Det går inte att ångra.`)) return;
+      return guarded(async () => { await api(`profiles/${pid}`, { method: "DELETE" }); toast("Profilen är borttagen"); loaders.profiles(); }, b);
+    case "mp-suggest":
+      return guarded(async () => {
+        const r = await api("my-programs/suggest", { method: "POST", body: { profile_id: pid } });
+        toast(r.created.length ? `La till ${r.created.map((x) => x.name).join(", ")}` : "Förslagen finns redan, eller så hittades inte SVT1/TV4 i listan.");
+        await loaders.profiles(); r.created.forEach((x) => mpTest(x.id));
+      }, b);
+    case "mp-add": prof.adding = pid; prof.editing = null; return renderProfiles();
+    case "mp-edit": prof.editing = { pid, id: mid }; prof.adding = null; return renderProfiles();
+    case "mp-cancel": prof.adding = null; prof.editing = null; return renderProfiles();
+    case "mp-test": return mpTest(mid);
+    case "mp-del":
+      return guarded(async () => { await api(`my-programs/${mid}`, { method: "DELETE" }); loaders.profiles(); }, b);
+    case "mp-up": case "mp-down": {
+      const list = p.programs.slice(); const i = list.findIndex((m) => m.id === mid); const j = b.dataset.act === "mp-up" ? i - 1 : i + 1;
+      if (j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      return guarded(async () => { await Promise.all(list.map((m, k) => api(`my-programs/${m.id}`, { method: "PUT", body: { position: k + 1 } }))); loaders.profiles(); });
+    }
+  }
+});
+
+/* ---------- sport ---------- */
+const sp = { data: null, open: new Set() };
+const STATE_LABEL = { now: "Just nu", upcoming: "Kommande", past: "I efterhand" };
+const fmtTs = (ts) => new Date(ts * 1000).toLocaleString("sv-SE", { weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
+loaders.sports = async () => {
+  try { sp.data = await api("sports"); } catch (e) { return toast(e.message); }
+  renderSports();
+};
+function evList(list, empty) {
+  if (!list || !list.length) return `<div class="small muted">${empty}</div>`;
+  return `<ul class="ev-list">${list.map((e) => `<li><span class="t">${e.state === "now" ? '<span class="pill live">nu</span>' : esc(fmtTs(e.start))}</span>
+    <span class="grow">${esc(e.title)} <span class="muted">· ${esc(e.channel)}${e.also && e.also.length ? " (även " + esc(e.also.join(", ")) + ")" : ""}</span></span></li>`).join("")}</ul>`;
+}
+function renderSports() {
+  const d = sp.data; const st = d.status;
+  $("sp-status").innerHTML = st.running ? `Söker igenom programguiden: ${st.done} av ${st.total} kanaler…`
+    : st.last_scan ? `Senast ${fmtAgo(new Date(st.last_scan * 1000).toISOString())}: ${st.channels} kanaler, ${st.programs.toLocaleString("sv-SE")} program${st.errors ? `, ${st.errors} kanaler gick inte att hämta` : ""}. Var ${st.interval_h}:e timme.`
+    : "Programguiden har inte hämtats än. Den hämtas en stund efter start, eller med Sök igenom nu.";
+  if (st.running) setTimeout(() => current === "sports" && loaders.sports(), 4000);
+  const boxOpts = (sel) => '<option value="">Nej</option>' + d.boxes.map((b) => `<option value="${b.id}" ${b.id === sel ? "selected" : ""}>Ja, på ${esc(b.name)}</option>`).join("");
+  $("sp-list").innerHTML = d.interests.map((i) => {
+    const c = i.counts || {};
+    return `<div class="sp-card" data-id="${i.id}">
+      <div class="row"><strong>${esc(i.name)}</strong>${i.enabled ? "" : ' <span class="pill">av</span>'}
+        ${c.now ? `<span class="pill live">${c.now} just nu</span>` : ""}<span class="pill">${c.upcoming || 0} kommande</span><span class="pill">${c.past || 0} i arkivet</span>
+        ${i.notify ? '<span class="pill accent">🔔 frågar</span>' : ""}${i.record_device_id ? '<span class="pill accent">⏺ spelas in</span>' : ""}
+        <span class="spacer"></span><button class="btn ghost small" data-act="toggle">${sp.open.has(i.id) ? "Stäng" : "Ändra och se sändningar"}</button></div>
+      ${sp.open.has(i.id) ? `
+      <div class="sp-grid">
+        <label class="f">Namn<input data-f="name" value="${esc(i.name)}" maxlength="40"></label>
+        <label class="f">Spela in lagets sändningar<select data-f="record">${boxOpts(i.record_device_id)}</select></label>
+        <label class="f">Sökord (en rad per alternativ)<textarea data-f="keywords">${esc(i.keywords.join("\n"))}</textarea></label>
+        <label class="f">Inte (en rad per ord)<textarea data-f="exclude">${esc(i.exclude.join("\n"))}</textarea></label>
+      </div>
+      <div class="row" style="gap:8px 18px">
+        <label class="chk"><input type="checkbox" data-f="title_only" ${i.title_only ? "checked" : ""}> Bara i titeln</label>
+        <label class="chk"><input type="checkbox" data-f="notify" ${i.notify ? "checked" : ""}> Fråga när den börjar</label>
+        <label class="chk"><input type="checkbox" data-f="enabled" ${i.enabled ? "checked" : ""}> Visa på boxarna</label>
+        <span class="spacer"></span>
+        <button class="btn primary small" data-act="save">Spara</button><button class="btn ghost small danger" data-act="del">Ta bort</button>
+      </div>
+      <div data-preview class="small muted">Hämtar sändningar…</div>` : ""}
+    </div>`;
+  }).join("") || '<div class="empty">Inga sporter eller lag än.</div>';
+  sp.open.forEach((id) => spPreview(id));
+  const s = d.settings;
+  $("sp-boxes").innerHTML = d.boxes.map((b) => `<label class="chk"><input type="checkbox" data-box="${b.id}" ${s.notify_devices.includes(b.id) ? "checked" : ""}> ${esc(b.name)}</label>`).join("") || '<span class="small muted">Ingen box parad.</span>';
+  $("sp-phone").checked = !!s.notify_phone; $("sp-lead").value = s.lead_minutes; $("sp-qfrom").value = s.quiet_from || ""; $("sp-qto").value = s.quiet_to || "";
+  const chosen = new Set(s.categories);
+  $("sp-cats").innerHTML = d.categories.map((c) => `<label class="chk" style="white-space:normal"><input type="checkbox" data-cat="${esc(c.category_id)}" ${(chosen.size ? chosen.has(c.category_id) : c.auto) ? "checked" : ""}> ${esc(c.name)}</label>`).join("");
+}
+async function spPreview(id) {
+  const el = document.querySelector(`.sp-card[data-id="${id}"] [data-preview]`); if (!el) return;
+  try {
+    const r = await api(`sports/preview/${id}`);
+    el.className = "";
+    el.innerHTML = ["now", "upcoming", "past"].map((k) => `<div style="margin-top:6px"><strong class="small">${STATE_LABEL[k]}</strong>${evList(r[k], k === "past" ? "Inget i arkivet." : "Inget.")}</div>`).join("");
+  } catch (e) { el.textContent = e.message; }
+}
+$("sp-list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const card = b.closest(".sp-card"); const id = Number(card.dataset.id);
+  const f = (k) => card.querySelector(`[data-f=${k}]`);
+  if (b.dataset.act === "toggle") { sp.open.has(id) ? sp.open.delete(id) : sp.open.add(id); return renderSports(); }
+  if (b.dataset.act === "del") {
+    if (!confirm("Ta bort? Planerade inspelningar finns kvar.")) return;
+    return guarded(async () => { await api(`sports/${id}`, { method: "DELETE" }); sp.open.delete(id); loaders.sports(); }, b);
+  }
+  if (b.dataset.act === "save") {
+    const body = { name: f("name").value, keywords: f("keywords").value, exclude: f("exclude").value, title_only: f("title_only").checked,
+      notify: f("notify").checked, enabled: f("enabled").checked, record_device_id: f("record").value ? Number(f("record").value) : null };
+    return guarded(async () => { await api(`sports/${id}`, { method: "PUT", body }); toast("Sparat. Sändningarna har räknats om."); loaders.sports(); }, b);
+  }
+});
+$("sp-add").addEventListener("click", () => {
+  const name = prompt("Namn, t.ex. Tennis eller Brynäs IF"); if (!name) return;
+  const kw = prompt("Sökord (det som står i programguiden), t.ex. tennis eller brynäs", name.toLowerCase()); if (!kw) return;
+  guarded(async () => { const r = await api("sports", { method: "POST", body: { name, keywords: kw, kind: "team" } }); sp.open.add(r.id); loaders.sports(); });
+});
+$("sp-save-notify").addEventListener("click", (e) => guarded(async () => {
+  const body = { notify_devices: [...document.querySelectorAll("#sp-boxes [data-box]:checked")].map((x) => Number(x.dataset.box)),
+    notify_phone: $("sp-phone").checked, lead_minutes: Number($("sp-lead").value) || 0, quiet_from: $("sp-qfrom").value, quiet_to: $("sp-qto").value };
+  await api("sports/settings", { method: "PUT", body }); toast("Sparat");
+}, e.currentTarget));
+$("sp-save-cats").addEventListener("click", (e) => guarded(async () => {
+  const cats = [...document.querySelectorAll("#sp-cats [data-cat]:checked")].map((x) => x.dataset.cat);
+  await api("sports/settings", { method: "PUT", body: { categories: cats } }); toast("Sparat. Gäller från nästa genomsökning.");
+}, e.currentTarget));
+$("sp-auto-cats").addEventListener("click", (e) => guarded(async () => {
+  await api("sports/settings", { method: "PUT", body: { categories: [] } }); toast("Automatiskt val"); loaders.sports();
+}, e.currentTarget));
+$("sp-scan").addEventListener("click", (e) => guarded(async () => {
+  const r = await api("sports/scan", { method: "POST" }); toast(r.started ? "Söker igenom programguiden i bakgrunden…" : r.message);
+  setTimeout(loaders.sports, 1500);
+}, e.currentTarget));
+async function spWhen() {
+  const q = $("sp-when-q").value.trim(); if (!q) return;
+  try {
+    const r = await api(`when?q=${encodeURIComponent(q)}`);
+    $("sp-when").innerHTML = ["now", "upcoming", "past"].map((k) => r[k].length ? `<div style="margin-top:6px"><strong>${STATE_LABEL[k]}</strong>${evList(r[k], "")}</div>` : "").join("")
+      + (r.library.length ? `<div style="margin-top:6px"><strong>I biblioteket</strong><div class="muted">${r.library.map((x) => esc(x.name)).join(", ")}</div></div>` : "")
+      || `<div class="muted">Hittade inget i programguiden (${r.covered} kanaler) eller biblioteket.</div>`;
+  } catch (e) { $("sp-when").textContent = e.message; }
+}
+$("sp-when-go").addEventListener("click", spWhen);
+$("sp-when-q").addEventListener("keydown", (e) => { if (e.key === "Enter") spWhen(); });
+
 /* ---------- filmkväll ---------- */
 const night = { viewers: [], viewer: null, kind: "vod", shown: [] };
 const THUMBS = [[2, "👍👍"], [1, "👍"], [-1, "👎"]];
@@ -1053,8 +1414,8 @@ $("night-list").addEventListener("click", (e) => {
 });
 function renderViewerList() {
   $("viewer-list").innerHTML = night.viewers.map((v) => `<div class="viewer-card" data-id="${v.id}">
+      <strong>${esc(v.name)}</strong>
       <div class="viewer-grid">
-        <label class="f">Namn<input data-f="name" value="${esc(v.name)}"></label>
         <label class="f">Högsta längd (min, 0 = ingen)<input data-f="max_minutes" type="number" min="0" value="${v.rules.max_minutes || 0}"></label>
         <label class="f">Animerat<select data-f="animated"><option value="any" ${v.rules.animated === "any" ? "selected" : ""}>Med</option><option value="only" ${v.rules.animated === "only" ? "selected" : ""}>Bara animerat</option><option value="none" ${v.rules.animated === "none" ? "selected" : ""}>Inget animerat</option></select></label>
         <label class="f">Föreslå älskade igen efter (dagar, 0 = aldrig)<input data-f="rewatch_days" type="number" min="0" value="${v.rules.rewatch_days || 0}"></label>
@@ -1062,24 +1423,20 @@ function renderViewerList() {
         <label class="f" style="display:flex; gap:6px; align-items:center; color:var(--text)"><input data-f="kids" type="checkbox" style="width:auto; min-height:0" ${v.rules.kids ? "checked" : ""}> Barnvänligt som standard</label>
       </div>
       <label class="f">Det här uppskattar vi (för AI-tjänsten)<textarea data-f="taste" placeholder="t.ex. Smarta thrillers med vändningar. Inte för långsamma. Gärna verklighetsbaserat.">${esc(v.taste || "")}</textarea></label>
-      <div class="row"><button class="btn primary small" data-act="save">Spara</button><button class="btn ghost small danger" data-act="del">Ta bort</button></div></div>`).join("");
+      <div class="row"><button class="btn primary small" data-act="save">Spara</button></div></div>`).join("");
 }
 $("viewer-list").addEventListener("click", (e) => {
   const card = e.target.closest(".viewer-card"); const act = e.target.closest("[data-act]"); if (!card || !act) return;
   const id = card.dataset.id;
-  if (act.dataset.act === "del") {
-    if (confirm("Ta bort tittarläget? Dess tummar tas bort.")) guarded(async () => { await api(`viewers/${id}`, { method: "DELETE" }); await loadViewers(); renderViewerList(); loadNight(); });
-    return;
-  }
   const f = (k) => card.querySelector(`[data-f=${k}]`);
-  const body = { name: f("name").value, taste: f("taste").value, rules: {
+  const body = { taste: f("taste").value, rules: {
     max_minutes: Number(f("max_minutes").value) || 0, animated: f("animated").value, rewatch_days: Number(f("rewatch_days").value) || 0,
     exclude_genres: f("exclude_genres").value, kids: f("kids").checked } };
   guarded(async () => { await api(`viewers/${id}`, { method: "PUT", body }); toast("Sparat"); await loadViewers(); loadNight(); }, act);
 });
-$("viewer-add").addEventListener("click", () => {
-  const name = prompt("Namn på tittarläget, t.ex. Med vänner"); if (!name) return;
-  guarded(async () => { await api("viewers", { method: "POST", body: { name } }); await loadViewers(); renderViewerList(); });
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("a[data-goto]"); if (!a) return;
+  e.preventDefault(); showTab(a.dataset.goto);
 });
 $("version-pref").addEventListener("change", () => guarded(async () => { await api("night/settings", { method: "PUT", body: { version_pref: $("version-pref").value } }); toast("Sparat"); loadNight(); }));
 async function loadWishes() {
@@ -1523,18 +1880,26 @@ loaders.devices = async () => {
   if (!vc.data) loadVoice();
   const list = await api("devices").catch((e) => (toast(e.message), []));
   if (!groupList.length) groupList = (await api("groups").catch(() => [])).map((g) => ({ id: g.id, name: g.name }));
+  const profs = (await api("profiles").catch(() => ({ profiles: [] }))).profiles;
   $("device-list").innerHTML = list.map((d) => {
     const isBox = d.model !== "integration";
     const value = d.only_group_id ? `g${d.only_group_id}` : (d.allow_adult ? "all" : "noadult");
-    const profile = isBox ? `<label class="f" style="min-width:210px">Profil<select data-act="profile">
+    const profile = isBox ? `<label class="f" style="min-width:210px">Innehåll<select data-act="profile">
         <option value="all" ${value === "all" ? "selected" : ""}>Allt (dolt vuxenläge möjligt)</option>
         <option value="noadult" ${value === "noadult" ? "selected" : ""}>Utan vuxenläge</option>
         ${groupList.map((g) => `<option value="g${g.id}" ${value === `g${g.id}` ? "selected" : ""}>Bara gruppen ${esc(g.name)}</option>`).join("")}
       </select></label>` : "";
-    return `<li data-id="${d.id}"><div class="grow"><div><strong>${esc(d.name)}</strong> ${d.playing ? `<span class="pill ok">tittar: ${esc(d.playing.item_name)}</span>` : ""}</div>
+    const hours = [0, 1, 2, 3, 4, 6, 8, 12, 24];
+    const opts = isBox ? `<div class="dev-opts">
+        <label class="f">Startprofil<select data-act="default_profile">${profs.map((p) => `<option value="${p.id}" ${p.id === (d.default_profile_id || (profs.find((x) => x.allow_adult) || profs[0] || {}).id) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
+        <label class="f">Tillbaka till startprofilen<select data-act="revert">${hours.map((h) => `<option value="${h}" ${h === (d.revert_hours || 0) ? "selected" : ""}>${h ? `efter ${h} h utan användning` : "Aldrig"}</option>`).join("")}</select></label>
+        <label class="chk" style="min-height:38px"><input type="checkbox" data-act="pin_required" ${d.pin_required ? "checked" : ""}> Kräv kod för vuxenläget</label>
+      </div>` : "";
+    return `<li class="dev" data-id="${d.id}"><div class="grow"><div><strong>${esc(d.name)}</strong> ${d.playing ? `<span class="pill ok">tittar: ${esc(d.playing.item_name)}</span>` : ""}</div>
     <div class="small muted">${esc(d.model || "")}${d.app_version ? " · app " + esc(d.app_version) : ""} · senast ${fmtAgo(d.last_seen)}${d.last_ip ? " · " + esc(d.last_ip) : ""}</div></div>
     ${profile}
-    <button class="btn ghost small" data-act="rename">Byt namn</button><button class="btn ghost small danger" data-act="delete">Ta bort</button></li>`;
+    <button class="btn ghost small" data-act="rename">Byt namn</button><button class="btn ghost small danger" data-act="delete">Ta bort</button>
+    ${opts ? `<div style="flex-basis:100%">${opts}</div>` : ""}</li>`;
   }).join("") || '<li class="empty">Ingen box parad ännu.</li>';
 };
 $("pair-btn").addEventListener("click", (e) => guarded(async () => {
@@ -1544,6 +1909,12 @@ $("pair-btn").addEventListener("click", (e) => guarded(async () => {
   pairTimer = setInterval(() => { if (new Date(r.expires) < new Date()) { $("pair-code").textContent = "Utgången"; clearInterval(pairTimer); } loaders.devices(); }, 4000);
 }, e.currentTarget));
 $("device-list").addEventListener("change", (e) => {
+  const el = e.target.closest("[data-act]"); if (!el) return;
+  const did = el.closest("li").dataset.id;
+  const put = (body, msg) => guarded(async () => { await api(`devices/${did}`, { method: "PUT", body }); toast(msg); });
+  if (el.dataset.act === "default_profile") return put({ default_profile_id: Number(el.value) }, "Sparat. Boxen startar med den profilen.");
+  if (el.dataset.act === "revert") return put({ revert_hours: Number(el.value) }, Number(el.value) ? `Sparat. Boxen går tillbaka till startprofilen efter ${el.value} h utan användning.` : "Sparat. Boxen stannar på vald profil.");
+  if (el.dataset.act === "pin_required") return put({ pin_required: el.checked }, el.checked ? "Sparat. Boxen frågar efter koden för vuxenläget (om en kod är satt)." : "Sparat. Boxen frågar inte efter koden.");
   const sel = e.target.closest("select[data-act=profile]"); if (!sel) return;
   const id = sel.closest("li").dataset.id;
   const v = sel.value;
@@ -1566,7 +1937,7 @@ $("ha-token-btn").addEventListener("click", (e) => guarded(async () => {
 
 /* ---------- röststyrning ---------- */
 const vc = { data: null, players: [], editing: null, channels: {} };
-const VC_NEEDS = { series: ["query"], vod: ["query"], channel: ["channel"], program: ["query", "channel"], night: ["viewer"] };
+const VC_NEEDS = { series: ["query"], vod: ["query"], channel: ["channel"], program: ["query", "channel"], night: ["viewer"], sport: ["sport"] };
 async function loadVoice() {
   try { vc.data = await api("voice"); } catch (e) { return toast(e.message); }
   const d = vc.data;
@@ -1586,6 +1957,8 @@ async function loadVoice() {
   $("vc-action").innerHTML = Object.entries(d.actions).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
   if (!night.viewers.length) { try { night.viewers = await api("viewers"); } catch (_) {} }
   $("vc-viewer").innerHTML = night.viewers.map((v) => `<option value="${v.id}">${esc(v.name)}</option>`).join("");
+  const sp = await api("sports").catch(() => ({ interests: [] }));
+  $("vc-sport").innerHTML = '<option value="">Alla mina sporter</option>' + sp.interests.map((i) => `<option value="${i.id}">${esc(i.name)}</option>`).join("");
   const mp = await api("voice/media-players").catch(() => ({ entities: [] }));
   vc.players = mp.entities || [];
   $("vc-tv").innerHTML = '<option value="">Nej</option>' + vc.players.map((p) => `<option value="${p.entity_id}">${esc(p.name)} (${esc(p.entity_id)})</option>`).join("");
@@ -1596,6 +1969,7 @@ function vcShowFields() {
   $("vc-query-wrap").hidden = !need.includes("query");
   $("vc-channel-wrap").hidden = !need.includes("channel");
   $("vc-viewer-wrap").hidden = !need.includes("viewer");
+  $("vc-sport-wrap").hidden = !need.includes("sport");
   $("vc-query-wrap").firstChild.textContent = $("vc-action").value === "program" ? "Programnamn" : "Titel";
   const p = vc.players.find((x) => x.entity_id === $("vc-tv").value);
   const keep = $("vc-source").value;
@@ -1605,7 +1979,7 @@ $("vc-action").addEventListener("change", vcShowFields);
 $("vc-tv").addEventListener("change", vcShowFields);
 $("vc-channel").addEventListener("input", async () => {
   const q = $("vc-channel").value.trim(); if (q.length < 2) return;
-  const list = await api(`search?q=${encodeURIComponent(q)}&type=live&limit=20`).catch(() => []);
+  const list = await api(`library/search?q=${encodeURIComponent(q)}&type=live&limit=20`).catch(() => []);
   list.forEach((c) => (vc.channels[c.name] = c.id));
   $("vc-channels").innerHTML = list.map((c) => `<option value="${esc(c.name)}">`).join("");
 });
@@ -1617,6 +1991,7 @@ $("vc-cancel").addEventListener("click", vcReset);
 $("vc-form").addEventListener("submit", (e) => { e.preventDefault(); guarded(async () => {
   const action = $("vc-action").value;
   const params = { query: $("vc-query").value.trim(), viewer_id: action === "night" ? Number($("vc-viewer").value) : undefined,
+    interest_id: action === "sport" && $("vc-sport").value ? Number($("vc-sport").value) : undefined,
     tv_entity: $("vc-tv").value, tv_source: $("vc-source").value, tv_delay: Number($("vc-delay").value) || 10 };
   if ((VC_NEEDS[action] || []).includes("channel")) {
     const name = $("vc-channel").value.trim();
@@ -1645,6 +2020,7 @@ $("vc-list").addEventListener("click", (e) => {
     $("vc-query").value = c.params.query || ""; $("vc-tv").value = c.params.tv_entity || ""; vcShowFields();
     $("vc-source").value = c.params.tv_source || ""; $("vc-delay").value = c.params.tv_delay || 10;
     if (c.params.viewer_id) $("vc-viewer").value = c.params.viewer_id;
+    $("vc-sport").value = c.params.interest_id || "";
     $("vc-channel").value = ""; $("vc-channel").placeholder = c.params.channel_id ? "behåll kanalen (skriv för att byta)" : "t.ex. SVT1";
     $("vc-form").scrollIntoView({ behavior: "smooth" });
   }

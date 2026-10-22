@@ -146,7 +146,12 @@ class FilmNightActivity : Activity(), CardListener {
         val viewers = Taste.parseViewers(data.optJSONArray("viewers"))
         pendingViewer?.let { id ->
             pendingViewer = null
-            viewers.firstOrNull { it.id == id }?.let { prefs.setActiveViewer(it.id, it.name) }
+            // Röststyrning (inställd i webbadminen): byt profil direkt.
+            viewers.firstOrNull { it.id == id }?.let { v ->
+                prefs.profileId = v.id
+                Profiles.all.firstOrNull { it.id == v.id }?.let { prefs.shownProfile = it.json.toString() }
+                MyPrograms.clear()
+            }
         }
         val v = data.optJSONObject("viewer")
         viewerAdapter.submit(viewers.map { Chip("v:${it.id}", it.name, it.id == (viewerId ?: -1)) })
@@ -256,14 +261,25 @@ class FilmNightActivity : Activity(), CardListener {
         ))
     }
 
+    /** Tittarlägena är profilerna: att välja ett här byter profil (med kod om profilen har en). */
     private fun pickViewer(chip: Chip) {
         val id = chip.key.removePrefix("v:").toIntOrNull() ?: return
-        viewerId = id
-        prefs.setActiveViewer(id, chip.label)
-        kids = null
-        Toast.makeText(this, "${chip.label} tittar i kväll", Toast.LENGTH_SHORT).show()
-        viewerAdapter.submit(viewerAdapter.chips.map { it.copy(on = it.key == chip.key) })
-        load()
+        if (id == viewerId) return
+        val profile = Profiles.all.firstOrNull { it.id == id }
+        val apply = {
+            viewerId = id
+            kids = null
+            viewerAdapter.submit(viewerAdapter.chips.map { it.copy(on = it.key == chip.key) })
+            load()
+        }
+        if (profile != null) {
+            Profiles.switchTo(this, profile) { apply() }
+        } else {
+            prefs.profileId = id
+            MyPrograms.clear()
+            Toast.makeText(this, "${chip.label} tittar", Toast.LENGTH_SHORT).show()
+            apply()
+        }
     }
 
     private fun toggleFilter(chip: Chip) {

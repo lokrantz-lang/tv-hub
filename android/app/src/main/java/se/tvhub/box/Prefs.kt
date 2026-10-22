@@ -73,10 +73,52 @@ class Prefs(context: Context) {
 
     /** Anropas vid knapptryck och under uppspelning så att vuxenläget inte stängs av mitt i. */
     fun touch() {
+        val now = System.currentTimeMillis()
         if (sp.getBoolean("adult_mode", false)) {
-            sp.edit().putLong("adult_last_active", System.currentTimeMillis()).apply()
+            sp.edit().putLong("adult_last_active", now).apply()
         }
+        // Profilen: senaste användning (för återgång till startprofilen). Skrivs högst en gång i minuten.
+        if (now - sp.getLong("profile_active", 0L) > 60_000L) sp.edit().putLong("profile_active", now).apply()
     }
+
+    /** TV-guiden: senast valda grupp ("fav", "recent" eller "cat:<id>"). */
+    var guideGroup: String
+        get() = sp.getString("guide_group", "fav") ?: "fav"
+        set(value) {
+            sp.edit().putString("guide_group", value).apply()
+        }
+
+    // ---------------------------------------------------------------- profiler
+
+    /** Vald profil på den här enheten. 0 = boxens startprofil (bestäms i webbadminen). */
+    var profileId: Int
+        get() = sp.getInt("profile_id", 0)
+        set(value) {
+            sp.edit().putInt("profile_id", value).putLong("profile_active", System.currentTimeMillis()).apply()
+        }
+
+    /** Senaste användning, för återgång till startprofilen. */
+    val profileActiveAt: Long
+        get() = sp.getLong("profile_active", 0L)
+
+    /** Den profil som TV Hub senast sa var aktiv (namn, färg …), för menyn. */
+    var shownProfile: String
+        get() = sp.getString("profile_json", "") ?: ""
+        set(value) {
+            sp.edit().putString("profile_json", value).apply()
+        }
+
+    var boxDefaultProfile: Int
+        get() = sp.getInt("box_default_profile", 0)
+        set(value) {
+            sp.edit().putInt("box_default_profile", value).apply()
+        }
+
+    var boxRevertHours: Int
+        get() = sp.getInt("box_revert_hours", 0)
+        set(value) {
+            sp.edit().putInt("box_revert_hours", value).apply()
+        }
 
     var audioLanguage: String
         get() = sp.getString("audio_lang", "") ?: ""
@@ -209,31 +251,12 @@ class Prefs(context: Context) {
     val remoteReady: Boolean
         get() = remoteUrl.startsWith("https://") && remoteIngress.startsWith("/") && remoteHaToken.isNotEmpty()
 
-    /**
-     * Filmkväll: vem som tittar. Gäller till kl 05 nästa morgon, sedan måste det väljas igen.
-     * Skickas med i anropen så att tummar och "sett klart" hamnar på rätt tittarläge.
-     */
+    /** Filmkväll: vem som tittar = vald profil (tittarlägena är profilerna). */
     val activeViewer: Int?
-        get() {
-            val id = sp.getInt("viewer_id", 0)
-            return if (id > 0 && System.currentTimeMillis() < sp.getLong("viewer_until", 0L)) id else null
-        }
+        get() = profileId.takeIf { it > 0 } ?: boxDefaultProfile.takeIf { it > 0 }
 
     val activeViewerName: String
-        get() = if (activeViewer != null) sp.getString("viewer_name", "") ?: "" else ""
-
-    fun setActiveViewer(id: Int?, name: String = "") {
-        if (id == null) {
-            sp.edit().remove("viewer_id").remove("viewer_until").apply()
-            return
-        }
-        val cal = java.util.Calendar.getInstance()
-        if (cal.get(java.util.Calendar.HOUR_OF_DAY) >= 5) cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
-        cal.set(java.util.Calendar.HOUR_OF_DAY, 5)
-        cal.set(java.util.Calendar.MINUTE, 0)
-        cal.set(java.util.Calendar.SECOND, 0)
-        sp.edit().putInt("viewer_id", id).putString("viewer_name", name).putLong("viewer_until", cal.timeInMillis).apply()
-    }
+        get() = Profiles.current(appContext)?.name ?: ""
 
     val paired: Boolean
         get() = server.isNotEmpty() && token.isNotEmpty()

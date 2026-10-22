@@ -82,6 +82,19 @@ VOD_INFO.update({
 })
 
 
+SPORT_EPG = {  # stream_id -> {timme från nu: (titel, beskrivning)}
+    "101": {-3: ("Fotboll: Sverige - Danmark", "Damlandskamp i fotboll från Gamla Ullevi."),
+            0: ("Golf: Scandinavian Mixed", "Dag tre."),
+            2: ("Hästhoppning: Falsterbo Horse Show", "Nations Cup.")},
+    "105": {0: ("Fotboll: IFK Norrköping - AIK", "Allsvenskan, omgång 28."),
+            2: ("Basket: Norrköping Dolphins - Borås", "Basketligan."),
+            3: ("NFL: Miami Dolphins - New York Jets", "Amerikansk fotboll.")},
+    "106": {1: ("Trav: V75 från Solvalla", "Ridsport? Nej, trav."),
+            -2: ("Golf: PGA Tour", "Highlights.")},
+    "107": {2: ("Basket: Norrköping Dolphins - Borås", "Basketligan.")},
+}
+
+
 def fake_ai_reply(user):
     """Simulerad AI: väljer kandidaterna i omvänd ordning, så att testet ser att AI:ns ordning används."""
     if "Svara bara med ordet OK" in user:
@@ -145,6 +158,10 @@ class Handler(BaseHTTPRequestHandler):
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
         mode = STATE["mode"]
 
+        if url.path == "/__epg_calls":
+            calls = STATE.get("epg_calls", [])
+            STATE["epg_calls"] = []
+            return self.send(200, {"calls": calls})
         if url.path == "/__last_timeshift":
             return self.send(200, {"path": STATE.get("last_timeshift")})
         if url.path == "/__mode":
@@ -153,6 +170,10 @@ class Handler(BaseHTTPRequestHandler):
                 STATE["extra"] = q["extra"] == "1"
             if "dupes" in q:
                 STATE["dupes"] = q["dupes"] == "1"
+            if "news" in q:
+                STATE["news"] = q["news"] == "1"
+            if "sport" in q:
+                STATE["sport"] = q["sport"] == "1"
             if "active_cons" in q:
                 STATE["active_cons"] = int(q["active_cons"])
             return self.send(200, {"mode": STATE["mode"]})
@@ -214,11 +235,21 @@ class Handler(BaseHTTPRequestHandler):
                 now = int(time.time())
                 base = now - now % 3600
                 listings = []
+                news = {-4: "Rapport", -3: "Robinson", -2: "TV4 Nyheterna", -1: "Robinson", 0: "Rapport", 1: "Robinson"}
+                # sport=1: matcher och tävlingar på några kanaler (Mina sporter, När går …?)
+                sport = SPORT_EPG.get(str(q.get("stream_id")), {}) if STATE.get("sport") else {}
+                STATE.setdefault("epg_calls", []).append(str(q.get("stream_id")))
                 for k in range(-4, 4):
                     start = base + k * 3600
-                    listings.append({"title": b64(f"Program {k}"), "description": b64(""),
+                    title = news.get(k, f"Program {k}") if STATE.get("news") else f"Program {k}"
+                    title, desc = sport.get(k, (title, ""))
+                    listings.append({"title": b64(title), "description": b64(desc),
                                      "start_timestamp": str(start), "stop_timestamp": str(start + 3600),
                                      "has_archive": "1" if start + 3600 <= now else "0"})
+                if STATE.get("sport") and str(q.get("stream_id")) == "107":
+                    soon = now // 60 * 60 + 180
+                    listings.append({"title": b64("Basket: Norrköping Dolphins - Luleå"), "description": b64("Basketligan."),
+                                     "start_timestamp": str(soon), "stop_timestamp": str(soon + 5400), "has_archive": "0"})
                 return self.send(200, {"epg_listings": listings})
             if action == "get_short_epg":
                 now = int(time.time())

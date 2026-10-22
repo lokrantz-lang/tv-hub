@@ -32,6 +32,7 @@ ACTIONS = {
     "channel": "Kanal direkt",
     "vod": "Film",
     "night": "Filmkväll",
+    "sport": "Mina sporter: det som sänds nu",
     "pause": "Pausa",
     "resume": "Fortsätt spela",
     "stop": "Stäng spelaren",
@@ -113,7 +114,7 @@ def _first(kind, query):
     return found[0]
 
 
-def _series_play(series_id, series_name=None):
+def _series_play(series_id, series_name=None, profile_id=None):
     from .server import series_detail  # sen import: server importerar den här modulen
     detail = series_detail(series_id)
     name = series_name or detail.get("name") or "Serie"
@@ -124,7 +125,7 @@ def _series_play(series_id, series_name=None):
             episodes.append({"id": str(ep["id"]), "title": f"{name} S{season['season']}E{num}", "ext": ep.get("ext") or "mp4"})
     if not episodes:
         raise ControlError(f"{name} har inga avsnitt.")
-    progress, watched = extras.series_progress(0, series_id)
+    progress, watched = extras.series_progress(0, series_id, profile_id)
     index = next((i for i, ep in enumerate(episodes) if ep["id"] in progress), None)
     if index is None:
         last = max((i for i, ep in enumerate(episodes) if ep["id"] in watched), default=-1)
@@ -147,11 +148,11 @@ def resolve(action, params=None):
     if action == "night":
         return {"action": "night", "viewer": params.get("viewer_id"), "name": "Filmkväll"}
     if action == "continue":
-        row = db.q1("SELECT * FROM progress WHERE adult = 0 ORDER BY updated DESC LIMIT 1")
+        row = db.q1("SELECT * FROM progress WHERE adult = 0 AND type IN ('vod', 'episode') ORDER BY updated DESC LIMIT 1")
         if not row:
             raise ControlError("Det finns inget att fortsätta titta på.")
         if row["type"] == "episode" and row["series_id"]:
-            return _series_play(row["series_id"])
+            return _series_play(row["series_id"], profile_id=row["profile_id"])
         return {"action": "play", "type": "vod", "id": row["item_id"], "name": row["name"], "ext": row["ext"],
                 "icon": row["icon"], "auto_resume": True}
     if action == "series":
@@ -193,6 +194,10 @@ def resolve(action, params=None):
         if not guide["archive_days"]:
             raise ControlError(f"{channel['name']} har inget arkiv, och \"{params.get('query')}\" sänds inte nu.")
         raise ControlError(f"Hittade inget \"{params.get('query')}\" i {channel['name']}s arkiv.")
+    if action == "sport":
+        from . import sports
+        command, event = sports.live_now(params.get("interest_id") or None)
+        return dict(command, name=f"{event['title']} ({event['channel']})")
     raise ControlError("Okänt kommando.")
 
 
@@ -241,7 +246,7 @@ def send_item(device_id, data):
 # ====================================================================
 # Röstkommandon och skript i Home Assistant
 # ====================================================================
-PARAM_KEYS = ("query", "channel_id", "series_id", "vod_id", "viewer_id", "tv_entity", "tv_source", "tv_delay")
+PARAM_KEYS = ("query", "channel_id", "series_id", "vod_id", "viewer_id", "interest_id", "tv_entity", "tv_source", "tv_delay")
 
 
 def _cmd(row):
