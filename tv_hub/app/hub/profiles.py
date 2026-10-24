@@ -122,6 +122,7 @@ def delete(profile_id):
         conn.execute("DELETE FROM sessions WHERE viewer_id = ?", (pid,))
         conn.execute("UPDATE devices SET default_profile_id = NULL WHERE default_profile_id = ?", (pid,))
         conn.execute("DELETE FROM viewers WHERE id = ?", (pid,))
+        conn.execute("DELETE FROM profile_category_prefs WHERE profile_id = ?", (pid,))
     return True
 
 

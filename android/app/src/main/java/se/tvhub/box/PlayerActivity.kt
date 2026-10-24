@@ -1639,7 +1639,7 @@ class PlayerActivity : Activity() {
         // "Nästa avsnitt" de sista 20 sekunderna (som Netflix).
         val hasNext = (type == "episode" || (type == "file" && !sleepAtEnd)) && queueIndex >= 0 && queueIndex + 1 < queueIds.size
         val card = nextCard ?: return
-        if (hasNext && !casting && duration - position in 1..20_000 && state.third) {
+        if (hasNext && prefs.showNextCard && !casting && duration - position in 1..20_000 && state.third) {
             val left = ((duration - position) / 1000).coerceAtLeast(1)
             card.text = "Nästa avsnitt om $left s\n${queueNames.getOrNull(queueIndex + 1) ?: ""}\n" + if (mobile) "Tryck: spela nu" else "OK: spela nu"
             card.visibility = View.VISIBLE

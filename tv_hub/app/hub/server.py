@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (VERSION, ai, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
+from . import (VERSION, ai, alerts, backup, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
                sports,
                recordings, reminders, remote, taste, updates)
 from .config import CFG
@@ -522,13 +522,39 @@ def admin_series(h, sid):
 # ----- favoriter -----
 @route(ADMIN, "GET", r"/api/favorites")
 def admin_favorites(h):
-    return 200, catalog.favorites()
+    profile = h.query.get("profile", [""])[0]
+    return 200, catalog.favorites_overview(int(profile) if profile.isdigit() else None)
+
+
+@route(ADMIN, "GET", r"/api/favorites/profiles")
+def admin_favorite_profiles(h):
+    owner = profiles.owner_id()
+    return 200, {"profiles": [{"id": p["id"], "name": p["name"], "guest": p["guest"], "owner": p["id"] == owner}
+                               for p in profiles.all_profiles()]}
+
+
+@route(ADMIN, "POST", r"/api/favorites/assign")
+def admin_favorite_assign(h):
+    data = h.read_json()
+    return 200, {"profiles": catalog.assign_favorite(data.get("type"), data.get("id"), data.get("profiles"))}
+
+
+@route(ADMIN, "POST", r"/api/favorites/copy")
+def admin_favorite_copy(h):
+    data = h.read_json()
+    try:
+        source = int(data.get("from"))
+    except (TypeError, ValueError):
+        raise HttpError(400, "Välj en profil att kopiera från.")
+    return 200, catalog.copy_favorites(source, data.get("to"))
 
 
 @route(ADMIN, "POST", r"/api/favorites")
 def admin_favorite_set(h):
     data = h.read_json()
-    catalog.set_favorite(data.get("type"), data.get("id"), bool(data.get("on", True)))
+    profile = data.get("profile")
+    catalog.set_favorite(data.get("type"), data.get("id"), bool(data.get("on", True)),
+                         int(profile) if profile not in (None, "", 0) else None)
     return 200, {"ok": True}
 
 
@@ -620,7 +646,18 @@ def admin_category_prefs(h):
     kind = h.query.get("type", ["live"])[0]
     if kind not in catalog.TYPES:
         raise HttpError(400, "Okänd typ")
-    return 200, catalog.categories(kind)
+    profile = h.query.get("profile", [""])[0]
+    return 200, catalog.categories(kind, for_profile=int(profile) if profile.isdigit() else None)
+
+
+@route(ADMIN, "GET", r"/api/categories/options")
+def admin_browse_options(h):
+    return 200, catalog.browse_options()
+
+
+@route(ADMIN, "PUT", r"/api/categories/options")
+def admin_browse_options_save(h):
+    return 200, catalog.save_browse_options(h.read_json())
 
 
 @route(ADMIN, "PUT", r"/api/categories/start")
@@ -635,6 +672,13 @@ def admin_category_prefs_set(h):
     changes = data.get("changes")
     if not isinstance(changes, list) or len(changes) > 5000:
         raise HttpError(400, "changes måste vara en lista")
+    profile = data.get("profile")
+    if profile not in (None, "", 0):
+        if data.get("reset"):
+            catalog.reset_profile_category_prefs(int(profile), data.get("type"))
+        else:
+            catalog.set_profile_category_prefs(int(profile), data.get("type"), changes)
+        return 200, {"ok": True}
     catalog.set_category_prefs(data.get("type"), changes)
     return 200, {"ok": True}
 
@@ -884,7 +928,8 @@ def dev_home(h):
     }
 
 
-BROWSE_KEYS = ("sort", "min_rating", "min_year", "max_year", "min_duration", "max_duration", "genre", "q", "new_only")
+BROWSE_KEYS = ("sort", "min_rating", "min_year", "max_year", "min_duration", "max_duration", "genre", "q", "new_only",
+               "skipped_only")
 
 
 @route(DEVICE, "GET", r"/device/browse")
@@ -1126,6 +1171,8 @@ def dev_recordings(h):
                     r["title"] = "Inspelning"
                     r["channel"] = None
         return 200, rows
+    if scope.private:
+        return 200, []   # vuxenläge utan historik: inga inspelningar (de visas bara i det djupaste läget)
     return 200, recordings.for_device(dev["id"], adult=scope.adult or 0)
 
 
@@ -1705,6 +1752,31 @@ def admin_reminder_settings_save(h):
 @route(ADMIN, "GET", r"/api/reminders/notify-services")
 def admin_notify_services(h):
     return 200, reminders.notify_services()
+
+
+@route(ADMIN, "GET", r"/api/alerts/settings")
+def admin_alert_settings(h):
+    return 200, alerts.settings()
+
+
+@route(ADMIN, "PUT", r"/api/alerts/settings")
+def admin_alert_settings_save(h):
+    return 200, alerts.save_settings(h.read_json())
+
+
+@route(ADMIN, "POST", r"/api/alerts/test")
+def admin_alert_test(h):
+    return 200, alerts.test()
+
+
+@route(ADMIN, "GET", r"/api/backup")
+def admin_backup(h):
+    return 200, backup.export_all()
+
+
+@route(ADMIN, "POST", r"/api/backup")
+def admin_backup_import(h):
+    return 200, backup.import_all(h.read_json())
 
 
 @route(ADMIN, "POST", r"/api/reminders/test")

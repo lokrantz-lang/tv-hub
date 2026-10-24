@@ -1,5 +1,44 @@
 # Ändringar
 
+## 2.9.2
+
+- **Favoriter per profil i webbadmin** (*Favoriter och grupper*): välj profil överst, och använd *Visa för…* på en favorit för att den ska
+  finnas hos alla eller valda profiler. *Kopiera alla till…* fyller på en annan profil (befintliga favoriter behålls).
+  Vuxenfavoriter, favoritavsnitt och gäster ingår inte.
+- Innehåller allt från 2.9.1.
+
+## 2.9.1
+
+- **Inte i Alla:** per kategori i *Kategorier* kan du kryssa i *Inte i Alla*. Kategorin (t.ex. sport) räknas då inte in i *Alla* och
+  *Nytt tillagt* (inte heller på Hem eller i Nytt per dag), men har kvar sin egen flik och finns i sök.
+- **Fliken Sport** i Filmer och Serier (TV och telefon) samlar alla kategorier du markerat, så att sporten går att nå utan att leta.
+- **Förslag på sportkategorier:** kategorier med ord som Sport, Replay, Events, NFL, UFC eller Formula föreslås. Du bekräftar med
+  *Markera föreslagna sportkategorier…*. Inget markeras utan att du säger till.
+- **Valfria filmfilter** (av som standard): *Dölj sportreprisor i Alla och Nytt tillagt* (titlar som börjar med klockslag och innehåller "vs")
+  och *Nytt tillagt: bara titlar med affisch*.
+- **Kategorier per profil:** välj en profil i *Kategorier → Visa och ordna för* och dölj kategorier eller ändra ordningen bara för den profilen
+  (t.ex. bara Kids Movies och Disney för barnprofilen). Titlarna i dolda kategorier syns inte heller i Alla för profilen.
+- **Kom ihåg senaste fliken** (inställning i appen, av som standard): Filmer och Serier öppnar där du senast var i stället för startkategorin.
+- Säkerhetskopian innehåller de nya valen. Databasversion 15.
+- Innehåller allt från 2.9.0.
+
+## 2.9.0
+
+- **Efterhandsuppspelning (TV-guidens historik):** tillägget provar olika adressformer och starttider mot leverantören (sökväg och
+  `timeshift.php`; källans tid, UTC och svensk tid) och sparar den som ger video. Första uppspelningen kan dröja upp till ca 10 sekunder.
+  Resultatet syns i Diagnostik som *Efterhandsadress*. Ger leverantören ändå tomt svar går det inte att åtgärda härifrån.
+- **Inspelningar:** vuxeninspelningar syns bara i det djupaste läget (vuxenläge med historik/favoriter på).
+- **Fler sorteringar** i Filmer och Serier: A–Ö/Ö–A, nyast/äldst tillagd, betyg, år (nyast/äldst), längd (filmer) och *Med affisch först*.
+- **Mina media:** *Dölj mappen helt (även undermappar)* (borta i alla lägen, ångra under *Mer… → Dolda mappar*);
+  *Alla videor här* i en mapp och som favorit (öppnas direkt med vald sortering); sortering åt båda håll på namn, datum, storlek och längd
+  som sparas; sök på filnamn (*Mer… → Sök i Mina media*).
+- **Nästa avsnitt-rutan** visas inte längre som standard (inställning *Ruta för nästa avsnitt*). Nästa avsnitt/fil startar ändå av sig självt.
+- **Avbrottsnotiser** till telefonen (leverantören svarar inte, inspelning misslyckades, box som tystnat). Webbadmin: *Boxar → Avbrottsnotiser*.
+  Använder samma notify-tjänst som påminnelserna. Aldrig titlar på vuxeninnehåll.
+- **Säkerhetskopia av inställningar** (profiler, snabbval, kategorier, sport, boxinställningar) som fil. Inga koder, nycklar eller inloggningar ingår.
+- **Boxöversikt:** uppkopplad/senast sedd och *ny version finns* för varje box.
+- Innehåller allt från 2.8.0.
+
 ## 2.8.0
 
 - **Menyn på TV:n** klipps inte längre överst, så profilbrickan (byt användare) går att nå. När profilen saknar Mina program visas en ledtext på Hem.

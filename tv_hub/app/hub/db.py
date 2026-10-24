@@ -509,6 +509,18 @@ SCHEMA = [
     """
     ALTER TABLE devices ADD COLUMN remote_allowed INTEGER NOT NULL DEFAULT 0
     """,
+    # version 15: kategorier som inte räknas in i Alla/Nytt tillagt (t.ex. sport), och kategorival per profil
+    """
+    ALTER TABLE category_prefs ADD COLUMN skip_all INTEGER;
+    CREATE TABLE profile_category_prefs (
+        profile_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        category_id TEXT NOT NULL,
+        hidden INTEGER NOT NULL DEFAULT 0,
+        position INTEGER,
+        PRIMARY KEY (profile_id, type, category_id)
+    );
+    """,
 ]
 
 

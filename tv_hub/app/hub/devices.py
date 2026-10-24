@@ -15,7 +15,7 @@ import time
 
 from datetime import datetime, timezone
 
-from . import catalog, db, extras, limits, portals, recordings
+from . import catalog, db, extras, limits, portals, recordings, updates, xtream
 from .config import CFG
 
 ACTIVE_WINDOW_S = 35        # session räknas som aktiv om heartbeat inom detta
@@ -98,8 +98,33 @@ def list_devices():
         item["pin_required"] = bool(item["pin_required"])
         item["remote_allowed"] = bool(item["remote_allowed"])
         item["playing"] = active_session_for(row["id"])
+        item["online"] = _seconds_since(row["last_seen"]) < ONLINE_S
+        latest = updates.cached_latest()
+        item["update_available"] = bool(latest and row["app_version"] and row["model"] != "integration"
+                                        and _older(row["app_version"], latest.get("version_name")))
         out.append(item)
     return out
+
+
+ONLINE_S = 600
+
+
+def _seconds_since(stamp):
+    if not stamp:
+        return 10 ** 9
+    try:
+        when = datetime.fromisoformat(stamp)
+    except ValueError:
+        return 10 ** 9
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - when).total_seconds()
+
+
+def _older(have, latest):
+    def parts(v):
+        return [int(x) for x in re.findall(r"\d+", str(v or ""))][:3]
+    return bool(parts(latest)) and parts(have) < parts(latest)
 
 
 def update_device(device_id, data):
@@ -228,6 +253,88 @@ def _timeshift_start(portal, start_ts):
 
 _play_lock = threading.RLock()
 
+# ---------- catch-up: vilken adressform källan godkänner ----------
+TS_VARIANT = "timeshift_variant:{}"
+TS_DISCOVERY_COOLDOWN_S = 600
+TS_DISCOVERY_BUDGET_S = 10
+TS_PROBE_TIMEOUT_S = 3
+_ts_failed_at = {}   # portal_id -> när sökningen senast misslyckades
+
+
+def _looks_like_video(status, ctype, body):
+    """Ser svaret ut som en videoström? (Tom kropp, HTML, JSON och text är det inte.)"""
+    if status not in (200, 206) or not body:
+        return False
+    ctype = (ctype or "").lower()
+    if ctype.startswith("video/") or "mpegurl" in ctype:
+        return True
+    if len(body) > 188 and body[0] == 0x47 and body[188] == 0x47:
+        return True
+    if any(t in ctype for t in ("html", "json", "text", "xml")):
+        return False
+    return not all(b in (9, 10, 13) or 32 <= b < 127 for b in body[:64])
+
+
+def _fetch_head(url, timeout):
+    """(status, innehållstyp, första byten). status None = ingen kontakt."""
+    import urllib.error
+    import urllib.request
+    request = urllib.request.Request(url, headers={"User-Agent": CFG["user_agent"], "Range": f"bytes=0-{PROBE_BYTES - 1}"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as resp:
+            return resp.status, resp.headers.get("Content-Type") or "", resp.read(PROBE_BYTES)
+    except urllib.error.HTTPError as exc:
+        try:
+            return exc.code, exc.headers.get("Content-Type") or "", exc.read(PROBE_BYTES)
+        except Exception:
+            return exc.code, "", b""
+    except Exception:
+        return None, "", b""
+
+
+def _discover_timeshift(portal, candidates):
+    """Provar adressformerna i tur och ordning och sparar den första som ger video. Returnerar dess nyckel eller None.
+    Resultatet loggas (utan adresser) som händelsen "timeshift" så att det syns i Diagnostik."""
+    deadline = time.time() + TS_DISCOVERY_BUDGET_S
+    results, found = [], None
+    for key, url in candidates:
+        if time.time() > deadline:
+            break
+        status, ctype, body = _fetch_head(url, TS_PROBE_TIMEOUT_S)
+        ok = _looks_like_video(status, ctype, body)
+        results.append({"variant": key, "status": status, "type": ctype[:40], "bytes": len(body), "video": ok})
+        if ok:
+            found = key
+            break
+    if found:
+        db.set_setting(TS_VARIANT.format(portal["id"]), found)
+    db.log_event("timeshift", {"portal": portal["name"], "found": found, "results": results})
+    return found
+
+
+def _catchup_url(portal, client, stream_id, start_ts, minutes):
+    """Adress för efterhandsuppspelning. Den adressform som fungerar för källan hittas första gången
+    (och sparas). Går ingen att använda används standardformen (sökväg, källans tidszon)."""
+    candidates = xtream.timeshift_candidates(client, stream_id, start_ts, minutes, db.get_setting(f"portal_tz:{portal['id']}"))
+    by_key = dict(candidates)
+    saved = db.get_setting(TS_VARIANT.format(portal["id"]))
+    if saved in by_key:
+        return by_key[saved]
+    if time.time() - _ts_failed_at.get(portal["id"], 0) > TS_DISCOVERY_COOLDOWN_S:
+        found = _discover_timeshift(portal, candidates)
+        if found:
+            return by_key[found]
+        _ts_failed_at[portal["id"]] = time.time()
+    return candidates[0][1]
+
+
+def _forget_timeshift_variant(portal_id):
+    """Den sparade formen gav inget (tomt svar): sök på nytt nästa gång."""
+    if portal_id is None:
+        return
+    db.set_setting(TS_VARIANT.format(portal_id), None)
+    _ts_failed_at.pop(portal_id, None)
+
 # Senaste strömadressen per session, bara i minnet (den innehåller kontouppgifter och får aldrig loggas).
 # Används för att undersöka vad källan svarar när boxen inte kan läsa strömmen.
 _recent_urls = {}
@@ -238,9 +345,9 @@ PROBE_BYTES = 512
 PROBE_TIMEOUT_S = 8
 
 
-def _remember_url(session_id, url, adult):
+def _remember_url(session_id, url, adult, portal_id=None, kind=None):
     with _pin_lock_urls:
-        _recent_urls[session_id] = (url, bool(adult))
+        _recent_urls[session_id] = (url, bool(adult), portal_id, kind)
         while len(_recent_urls) > _RECENT_URLS_MAX:
             _recent_urls.pop(next(iter(_recent_urls)))
 
@@ -265,7 +372,7 @@ def probe_stream(session_id):
         entry = _recent_urls.get(session_id)
     if not entry:
         return None
-    url, adult = entry
+    url, adult = entry[0], entry[1]
     detail = {"adult": adult}
     try:
         request = urllib.request.Request(url, headers={
@@ -275,8 +382,9 @@ def probe_stream(session_id):
             detail.update(status=resp.status, content_type=(resp.headers.get("Content-Type") or "")[:80],
                           length=resp.headers.get("Content-Length"), bytes=len(body))
             detail["start"] = _printable(body)
+            detail["video"] = _looks_like_video(resp.status, resp.headers.get("Content-Type"), body)
     except urllib.error.HTTPError as exc:
-        detail.update(status=exc.code, content_type=(exc.headers.get("Content-Type") or "")[:80])
+        detail.update(status=exc.code, content_type=(exc.headers.get("Content-Type") or "")[:80], video=False)
         try:
             detail["start"] = _printable(exc.read(PROBE_BYTES))
         except Exception:
@@ -415,7 +523,7 @@ def _request_play(device, kind, item_id, ext=None, force=False, exclude_portals=
         display = item["name"] if item else (name or f"Kanal {item_id}")
         if kind == "catchup":
             display = (name or display)[:120]
-            url = client.timeshift_url(item_id, _timeshift_start(portal, start), duration, "ts")
+            url = _catchup_url(portal, client, item_id, start, duration)
         else:
             url = client.stream_url("live", item_id, ext_final)
     elif kind == "vod":
@@ -452,7 +560,7 @@ def _request_play(device, kind, item_id, ext=None, force=False, exclude_portals=
         (session_id, device["id"], session_type, item_id, display, portal["id"], db.iso(), db.iso(),
          adult, series_id, ext_final, str(icon)[:500] if icon else None, viewer_id),
     )
-    _remember_url(session_id, url, adult)
+    _remember_url(session_id, url, adult, portal["id"], kind)
     if kind == "catchup" and recording is None and start:
         # Mina program: var man är i ett program ur arkivet sparas per profil.
         try:
@@ -559,6 +667,10 @@ def _start_probe(device, session_id):
             detail = probe_stream(session_id)
             if detail is not None:
                 db.log_event("probe", detail, device_id=device["id"], session_id=session_id)
+                with _pin_lock_urls:
+                    entry = _recent_urls.get(session_id)
+                if entry and entry[3] == "catchup" and not detail.get("error") and detail.get("video") is False:
+                    _forget_timeshift_variant(entry[2])
         except Exception:
             pass
 

@@ -1196,6 +1196,8 @@ class MainActivity : Activity() {
             "Mobilläge (för telefon)",
             "Nytt per dag",
             "Starta på senaste kanalen: " + if (prefs.startOnLastChannel) "På" else "Av",
+            "Ruta för nästa avsnitt: " + if (prefs.showNextCard) "På" else "Av",
+            "Kom ihåg senaste fliken i Filmer och Serier: " + if (prefs.rememberTab) "På" else "Av",
         )
         AlertDialog.Builder(this)
             .setTitle("Inställningar")
@@ -1223,6 +1225,16 @@ class MainActivity : Activity() {
                         prefs.startOnLastChannel = !prefs.startOnLastChannel
                         Toast.makeText(this, if (prefs.startOnLastChannel) "Appen startar på senaste kanalen" else "Appen startar på Hem",
                             Toast.LENGTH_SHORT).show()
+                    }
+                    12 -> {
+                        prefs.showNextCard = !prefs.showNextCard
+                        Toast.makeText(this, if (prefs.showNextCard) "Rutan för nästa avsnitt visas" else "Rutan för nästa avsnitt visas inte (nästa spelas ändå automatiskt)",
+                            Toast.LENGTH_LONG).show()
+                    }
+                    13 -> {
+                        prefs.rememberTab = !prefs.rememberTab
+                        Toast.makeText(this, if (prefs.rememberTab) "Filmer och Serier öppnar där du senast var" else "Filmer och Serier öppnar på startkategorin",
+                            Toast.LENGTH_LONG).show()
                     }
                     9 -> {
                         prefs.layoutMode = "mobile"

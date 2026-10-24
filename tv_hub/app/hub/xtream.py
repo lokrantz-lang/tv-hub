@@ -198,6 +198,43 @@ class XtreamClient:
         return f"{self.base}/timeshift/{user}/{pw}/{int(minutes)}/{start_local}/{stream_id}.{ext}"
 
 
+_TS_FORMAT = "%Y-%m-%d:%H-%M"
+
+
+def _ts_zone(choice, portal_tz):
+    """Tidszon för catch-up-starttiden: källans egen (om den anges), UTC eller svensk tid."""
+    from datetime import timezone as _utc
+    name = {"portal": portal_tz, "utc": None, "stockholm": "Europe/Stockholm"}.get(choice)
+    if not name:
+        return _utc.utc
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(name)
+    except Exception:
+        return _utc.utc
+
+
+def timeshift_candidates(client, stream_id, start_ts, minutes, portal_tz=None):
+    """Catch-up-adresser i den ordning de provas: [(nyckel, adress)], nyckel = "form:tidszon".
+    Formerna är de två som Xtream-källor använder (sökväg och timeshift.php). Dubbletter tas bort."""
+    from datetime import datetime
+    user = urllib.parse.quote(client.username, safe="")
+    pw = urllib.parse.quote(client.password, safe="")
+    out, seen = [], set()
+    for zone_choice in ("portal", "utc", "stockholm"):
+        start = datetime.fromtimestamp(int(start_ts), _ts_zone(zone_choice, portal_tz)).strftime(_TS_FORMAT)
+        forms = {
+            "path": f"{client.base}/timeshift/{user}/{pw}/{int(minutes)}/{start}/{stream_id}.ts",
+            "php": f"{client.base}/streaming/timeshift.php?username={user}&password={pw}"
+                   f"&stream={stream_id}&start={start}&duration={int(minutes)}",
+        }
+        for form in ("path", "php"):
+            if forms[form] not in seen:
+                seen.add(forms[form])
+                out.append((f"{form}:{zone_choice}", forms[form]))
+    return out
+
+
 def _to_int(value):
     try:
         return int(value)

@@ -461,7 +461,15 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
     <div class="grid2">
       <div class="panel">
         <div class="hd"><h2>Favoriter</h2><span class="small muted">Visas överst i boxarna</span></div>
-        <div class="bd"><ul class="list" id="fav-list"></ul></div>
+        <div class="bd">
+          <div class="row" style="align-items:flex-end; flex-wrap:wrap; margin-bottom:10px">
+            <label class="f" style="min-width:180px">Favoriter för<select id="fav-profile"></select></label>
+            <label class="f" style="min-width:180px">Kopiera alla till<select id="fav-copy-to"></select></label>
+            <button class="btn small" id="fav-copy" type="button">Kopiera</button>
+          </div>
+          <p class="small muted" style="margin-top:0">Favoriterna är per profil. <em>Visa för…</em> på en favorit gör att den finns hos alla eller valda profiler. Vuxenfavoriter och gäster ingår inte.</p>
+          <ul class="list" id="fav-list"></ul>
+        </div>
       </div>
       <div class="panel">
         <div class="hd"><h2>Egna grupper</h2></div>
@@ -488,6 +496,7 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
       <div class="bd" style="display:grid; gap:12px">
         <p class="small muted" style="margin:0">Dölj kategorier du aldrig använder, till exempel kanaler på andra språk. Dolda kategorier syns inte i boxarnas listor eller sök. Favoriter och grupper påverkas inte. Ordningen här är ordningen i boxarna.<br>
           <strong>Eget namn</strong> visas i alla appar. <strong>Start</strong>: kategorin som Filmer, Serier eller Live öppnar med i stället för Alla.<br>
+          <strong>Inte i Alla</strong>: kategorin (t.ex. sport) räknas inte in i <em>Alla</em> och <em>Nytt tillagt</em>, men får en egen flik och finns i sök. Alla sådana kategorier samlas också i fliken <em>Sport</em> i appen.<br>
           <strong>18+:</strong> kategorier med "For Adults", "Porn" eller "XXX" i namnet visas bara i boxarnas dolda vuxenläge. Välj <em>Alltid 18+</em> eller <em>Aldrig 18+</em> om regeln har fel för en kategori.</p>
         <div class="row">
           <div class="seg" id="cat-type">
@@ -495,6 +504,16 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
             <button data-type="vod" aria-pressed="false">Filmer</button>
             <button data-type="series" aria-pressed="false">Serier</button>
           </div>
+        </div>
+        <div class="row" style="align-items:flex-end; flex-wrap:wrap">
+          <label class="f" style="min-width:220px">Visa och ordna för<select id="cat-profile"><option value="">Alla profiler (gemensamt)</option></select></label>
+          <button class="btn ghost small hidden" id="cat-profile-reset" type="button">Börja om för profilen</button>
+          <button class="btn small hidden" id="cat-suggest" type="button"></button>
+        </div>
+        <p class="small muted hidden" id="cat-profile-help" style="margin:0">Valet gäller bara den här profilen, ovanpå de gemensamma valen: kryssa ur för att dölja en kategori för profilen och ordna om för att få en egen ordning.</p>
+        <div class="row" style="flex-wrap:wrap" id="cat-options">
+          <label class="chk" title="Gäller listorna Alla och Nytt tillagt i Filmer och Serier."><input type="checkbox" id="opt-sport-titles"> Dölj sportreprisor i Alla och Nytt tillagt (titlar som börjar med klockslag och innehåller &quot;vs&quot;)</label>
+          <label class="chk"><input type="checkbox" id="opt-poster"> Nytt tillagt: bara titlar med affisch</label>
         </div>
         <div class="form" style="grid-template-columns: 2fr auto auto">
           <label class="f">Filtrera<input id="cat-q" type="search" placeholder="t.ex. SE, UK, Sport" autocomplete="off"></label>
@@ -645,6 +664,26 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
           <label class="f" style="min-width:280px">Notify-tjänst<input id="rn-notify" list="rn-services" placeholder="t.ex. mobile_app_galaxy_s23_fe" autocomplete="off"><datalist id="rn-services"></datalist></label>
           <div class="row"><button class="btn primary" type="submit">Spara</button><button class="btn" type="button" id="rn-test">Skicka testnotis</button></div>
         </form>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Avbrottsnotiser</h2></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Få en notis på telefonen när något går fel. Använder samma notify-tjänst som påminnelserna ovan. Notiserna innehåller aldrig titlar på vuxeninnehåll.</p>
+        <form id="al-form" class="filters" style="align-items:flex-end">
+          <label class="chk"><input type="checkbox" id="al-provider"> Leverantören svarar inte</label>
+          <label class="chk"><input type="checkbox" id="al-recording"> Inspelning misslyckades</label>
+          <label class="f" style="min-width:200px">Box som tystnat<select id="al-box"><option value="0">Av</option><option value="24">efter 1 dygn</option><option value="72">efter 3 dygn</option><option value="168">efter 1 vecka</option></select></label>
+          <div class="row"><button class="btn primary" type="submit">Spara</button><button class="btn" type="button" id="al-test">Skicka testnotis</button></div>
+        </form>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Säkerhetskopia av inställningar</h2></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Sparar profiler, snabbval, kategorival, sport och boxinställningar i en fil. Koder, nycklar och inloggningar ingår inte. Vid import slås innehållet ihop med det som redan finns; profiler får ingen kod och måste få en ny.</p>
+        <div class="row"><button class="btn" type="button" id="bk-export">Ladda ner kopia</button>
+          <label class="btn" style="cursor:pointer">Importera kopia…<input type="file" id="bk-file" accept="application/json,.json" class="hidden"></label></div>
       </div>
     </div>
     <div class="panel" style="margin-top:16px">
@@ -817,8 +856,8 @@ $("sync-btn").addEventListener("click", (e) => guarded(async () => {
 /* ---------- bibliotek ---------- */
 const LIB_SORTS = {
   live: [["num", "Kanalnummer"], ["name", "Namn"], ["added", "Senast tillagda"]],
-  vod: [["added", "Senast tillagda (källans datum)"], ["new", "Nytt tillagt (TV Hubs datum)"], ["rating", "Betyg"], ["year", "Årtal"], ["duration", "Längd, kortast först"], ["duration_desc", "Längd, längst först"], ["name", "Namn"]],
-  series: [["added", "Senast tillagda (källans datum)"], ["new", "Nytt tillagt (TV Hubs datum)"], ["rating", "Betyg"], ["year", "Årtal"], ["name", "Namn"]],
+  vod: [["added", "Senast tillagda (källans datum)"], ["new", "Nytt tillagt (TV Hubs datum)"], ["added_asc", "Äldst tillagda (källans datum)"], ["rating", "Betyg"], ["year", "Årtal, nyast först"], ["year_asc", "Årtal, äldst först"], ["duration", "Längd, kortast först"], ["duration_desc", "Längd, längst först"], ["name", "Namn A–Ö"], ["name_desc", "Namn Ö–A"], ["poster", "Med affisch först"]],
+  series: [["added", "Senast tillagda (källans datum)"], ["new", "Nytt tillagt (TV Hubs datum)"], ["added_asc", "Äldst tillagda (källans datum)"], ["rating", "Betyg"], ["year", "Årtal, nyast först"], ["year_asc", "Årtal, äldst först"], ["name", "Namn A–Ö"], ["name_desc", "Namn Ö–A"], ["poster", "Med affisch först"]],
 };
 const LIB_PAGE = 120;
 const lib = { type: "live", view: "list", items: [], total: 0, loading: false, token: 0 };
@@ -1529,11 +1568,21 @@ $("paste-go").addEventListener("click", (e) => guarded(async () => {
 }, e.currentTarget));
 
 /* ---------- favoriter och grupper ---------- */
+let favProfiles = [], favProfile = "";
 loaders.collections = async () => {
   loadFilters();
-  const [favs, groups] = await Promise.all([api("favorites").catch(() => []), api("groups").catch(() => [])]);
+  const pl = await api("favorites/profiles").catch(() => ({ profiles: [] }));
+  favProfiles = (pl.profiles || []).filter((p) => !p.guest);
+  if (!favProfile || !favProfiles.some((p) => String(p.id) === favProfile)) favProfile = String((favProfiles.find((p) => p.owner) || favProfiles[0] || {}).id || "");
+  $("fav-profile").innerHTML = favProfiles.map((p) => `<option value="${p.id}" ${String(p.id) === favProfile ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+  $("fav-copy-to").innerHTML = '<option value="all">Alla andra profiler</option>' + favProfiles.filter((p) => String(p.id) !== favProfile).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  const [favs, groups] = await Promise.all([api(`favorites?profile=${favProfile}`).catch(() => []), api("groups").catch(() => [])]);
   groupsCache = groups;
-  $("fav-list").innerHTML = favs.map((f) => `<li data-type="${f.type}" data-id="${esc(f.id)}"><div class="grow"><div class="ellipsis">${f.missing ? '<span class="muted">Finns inte längre i källan</span>' : esc(f.name)}</div><div class="small muted">${TYPE_LABEL[f.type]}</div></div><button class="btn ghost small danger" data-act="unfav">Ta bort</button></li>`).join("") || '<li class="empty">Inga favoriter. Markera med ☆ i Bibliotek.</li>';
+  $("fav-list").innerHTML = favs.map((f) => `<li data-type="${f.type}" data-id="${esc(f.id)}"><div class="grow"><div class="ellipsis">${f.missing ? '<span class="muted">Finns inte längre i källan</span>' : esc(f.name)}</div><div class="small muted">${TYPE_LABEL[f.type]}${favProfiles.length > 1 ? ` · hos ${(f.profiles || []).length} av ${favProfiles.length} profiler` : ""}</div>
+      <details class="fav-share" style="margin-top:6px"><summary class="small" style="cursor:pointer">Visa för…</summary>
+        <div class="row" style="flex-wrap:wrap; gap:8px; margin-top:6px">${favProfiles.map((p) => `<label class="chk small"><input type="checkbox" data-pid="${p.id}" ${(f.profiles || []).includes(p.id) ? "checked" : ""}> ${esc(p.name)}</label>`).join("")}
+          <button class="btn small" data-act="all" type="button">Alla</button><button class="btn small primary" data-act="share" type="button">Spara</button></div></details></div>
+      <button class="btn ghost small danger" data-act="unfav">Ta bort</button></li>`).join("") || '<li class="empty">Inga favoriter för den här profilen. Markera med ☆ i Bibliotek eller kopiera från en annan profil.</li>';
   $("groups").innerHTML = groups.map((g) => `<div class="panel" style="margin-top:12px; box-shadow:none" data-gid="${g.id}">
       <div class="hd"><h2>${esc(g.name)} <span class="small muted">(${g.count})</span></h2><div class="row">
         <button class="btn ghost small" data-act="rename">Byt namn</button><button class="btn ghost small danger" data-act="delete">Ta bort</button></div></div>
@@ -1543,10 +1592,27 @@ loaders.collections = async () => {
         <button class="btn icon ghost" data-act="down" ${i === g.items.length - 1 ? "disabled" : ""} aria-label="Flytta ner">↓</button>
         <button class="btn icon ghost danger" data-act="remove" aria-label="Ta bort ur gruppen">✕</button></li>`).join("") || '<li class="empty">Tom grupp.</li>'}</ul></div></div>`).join("");
 };
+$("fav-profile").addEventListener("change", (e) => { favProfile = e.target.value; loaders.collections(); });
+$("fav-copy").addEventListener("click", (e) => {
+  const to = $("fav-copy-to").value;
+  const name = to === "all" ? "alla andra profiler" : $("fav-copy-to").selectedOptions[0].textContent;
+  if (!confirm(`Kopiera alla vanliga favoriter från ${$("fav-profile").selectedOptions[0].textContent} till ${name}? Befintliga favoriter hos dem behålls.`)) return;
+  guarded(async () => { const r = await api("favorites/copy", { method: "POST", body: { from: +favProfile, to: to === "all" ? "all" : [+to] } });
+    toast(`${r.added} nya favoriter hos ${r.profiles} profil${r.profiles === 1 ? "" : "er"}`); loaders.collections(); }, e.currentTarget);
+});
 $("fav-list").addEventListener("click", (e) => {
+  const sh = e.target.closest("[data-act=share],[data-act=all]");
+  if (sh) {
+    const li = sh.closest("li");
+    if (sh.dataset.act === "all") { li.querySelectorAll("input[data-pid]").forEach((x) => (x.checked = true)); return; }
+    const ids = [...li.querySelectorAll("input[data-pid]:checked")].map((x) => +x.dataset.pid);
+    guarded(async () => { await api("favorites/assign", { method: "POST", body: { type: li.dataset.type, id: li.dataset.id, profiles: ids } });
+      toast(ids.length ? `Favoriten finns hos ${ids.length} profil${ids.length === 1 ? "" : "er"}` : "Favoriten är borttagen från alla"); loaders.collections(); }, sh);
+    return;
+  }
   const b = e.target.closest("[data-act=unfav]"); if (!b) return;
   const li = b.closest("li");
-  guarded(async () => { await api("favorites", { method: "POST", body: { type: li.dataset.type, id: li.dataset.id, on: false } }); loaders.collections(); });
+  guarded(async () => { await api("favorites", { method: "POST", body: { type: li.dataset.type, id: li.dataset.id, on: false, profile: favProfile ? +favProfile : undefined } }); loaders.collections(); });
 });
 $("group-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -1592,22 +1658,61 @@ $("filter-list").addEventListener("click", (e) => {
 
 /* ---------- kategorier ---------- */
 let catType = "live", catRows = [];
+let catProfile = "";
+const catPrefsBody = (changes) => ({ type: catType, changes, ...(catProfile ? { profile: +catProfile } : {}) });
 loaders.categories = async () => {
-  catRows = await api(`categories?type=${catType}`).catch((e) => (toast(e.message), []));
+  const sel = $("cat-profile");
+  if (sel.options.length <= 1) {
+    const pr = await api("profiles").catch(() => ({ profiles: [] }));
+    (pr.profiles || []).forEach((p) => { const o = document.createElement("option"); o.value = p.id; o.textContent = p.name; sel.appendChild(o); });
+  }
+  const opt = await api("categories/options").catch(() => ({}));
+  $("opt-sport-titles").checked = !!opt.hide_sport_titles; $("opt-poster").checked = !!opt.new_requires_poster;
+  catRows = await api(`categories?type=${catType}${catProfile ? "&profile=" + catProfile : ""}`).catch((e) => (toast(e.message), []));
+  $("cat-profile-reset").classList.toggle("hidden", !catProfile);
+  $("cat-profile-help").classList.toggle("hidden", !catProfile);
+  $("cat-options").classList.toggle("hidden", !!catProfile);
   renderCategories();
 };
+$("cat-profile").addEventListener("change", (e) => { catProfile = e.target.value; loaders.categories(); });
+$("cat-profile-reset").addEventListener("click", (e) => { if (!confirm("Ta bort profilens egna val för den här sorten?")) return;
+  guarded(async () => { await api("categories/prefs", { method: "POST", body: { type: catType, changes: [], profile: +catProfile, reset: true } }); toast("Återställt"); loaders.categories(); }, e.target); });
+for (const [id, key] of [["opt-sport-titles", "hide_sport_titles"], ["opt-poster", "new_requires_poster"]]) {
+  $(id).addEventListener("change", (e) => guarded(async () => { await api("categories/options", { method: "PUT", body: { [key]: e.target.checked } }); toast("Sparat"); }));
+}
+$("cat-suggest").addEventListener("click", (e) => guarded(async () => {
+  const rows = catRows.filter((c) => c.suggest_sport);
+  if (!rows.length || !confirm(`Markera ${rows.length} kategorier som sport (inte i Alla och Nytt tillagt)?\n\n` + rows.slice(0, 12).map((c) => c.name).join("\n") + (rows.length > 12 ? "\n…" : ""))) return;
+  await api("categories/prefs", { method: "POST", body: { type: catType, changes: rows.map((c) => ({ category_id: c.category_id, skip_all: true })) } });
+  toast(`${rows.length} markerade`); loaders.categories();
+}, e.target));
 function catMatches() {
   const q = $("cat-q").value.trim().toLowerCase();
   return catRows.filter((c) => !q || `${c.name} ${c.original_name || ""}`.toLowerCase().includes(q));
 }
 function renderCategories() {
   const rows = catMatches();
-  const hidden = catRows.filter((c) => c.hidden).length;
+  const isHidden = (c) => (catProfile ? c.profile_hidden : c.hidden);
+  const hidden = catRows.filter(isHidden).length;
   $("cat-summary").textContent = `${catRows.length - hidden} visas, ${hidden} dolda`;
+  const suggested = catProfile ? 0 : catRows.filter((c) => c.suggest_sport).length;
+  $("cat-suggest").classList.toggle("hidden", !suggested);
+  $("cat-suggest").textContent = `Markera ${suggested} föreslagna sportkategorier…`;
+  if (catProfile) {
+    $("cat-list").innerHTML = rows.slice(0, 400).map((c) => `<li data-id="${esc(c.category_id)}">
+      <input type="checkbox" data-act="toggle" ${c.profile_hidden ? "" : "checked"} ${c.hidden ? "disabled" : ""} aria-label="Visa för profilen" style="width:20px; min-height:20px">
+      <div class="grow"><div class="ellipsis" style="${c.profile_hidden || c.hidden ? "opacity:.55" : ""}">${esc(c.name)}</div><div class="small muted">${c.count} st${c.hidden ? " · dold för alla" : c.profile_hidden ? " · dold för profilen" : ""}</div></div>
+      <button class="btn icon ghost" data-act="top" title="Överst" aria-label="Flytta överst">⤒</button>
+      <button class="btn icon ghost" data-act="up" aria-label="Flytta upp">↑</button>
+      <button class="btn icon ghost" data-act="down" aria-label="Flytta ner">↓</button></li>`).join("")
+      || '<li class="empty">Inga kategorier.</li>';
+    return;
+  }
   $("cat-list").innerHTML = rows.slice(0, 400).map((c) => `<li data-id="${esc(c.category_id)}">
       <input type="checkbox" data-act="toggle" ${c.hidden ? "" : "checked"} aria-label="Visa i boxarna" style="width:20px; min-height:20px">
-      <div class="grow"><div class="ellipsis" style="${c.hidden ? "opacity:.55" : ""}">${c.adult ? "🔞 " : ""}${esc(c.name)}${c.start ? ' <span class="pill accent">start</span>' : ""}</div><div class="small muted">${c.count} st${c.hidden ? " · dold" : ""}${c.display_name ? ` · heter ${esc(c.original_name)} hos Toucan` : ""}</div></div>
+      <div class="grow"><div class="ellipsis" style="${c.hidden ? "opacity:.55" : ""}">${c.adult ? "🔞 " : ""}${esc(c.name)}${c.start ? ' <span class="pill accent">start</span>' : ""}</div><div class="small muted">${c.count} st${c.hidden ? " · dold" : ""}${c.skip_all ? " · inte i Alla" : c.suggest_sport ? " · ser ut som sport" : ""}${c.display_name ? ` · heter ${esc(c.original_name)} hos Toucan` : ""}</div></div>
       <input data-act="name" value="${esc(c.display_name || "")}" placeholder="Eget namn" title="Eget visningsnamn (tomt = Toucans namn)" style="width:150px; min-height:34px">
+      <label class="chk small" title="Räknas inte in i Alla och Nytt tillagt (samlas i fliken Sport)" style="white-space:nowrap"><input type="checkbox" data-act="skip" ${c.skip_all ? "checked" : ""}> Inte i Alla</label>
       <button class="btn small ${c.start ? "primary" : "ghost"}" data-act="start" title="Öppnas först i appen i stället för Alla">${c.start ? "★ Start" : "Start"}</button>
       <select data-act="adult" title="Vuxeninnehåll" aria-label="Vuxeninnehåll" style="width:auto; min-height:34px">
         <option value="auto" ${c.adult_override == null ? "selected" : ""}>Auto (${c.auto_adult ? "18+" : "vanlig"})</option>
@@ -1621,7 +1726,7 @@ function renderCategories() {
     || '<li class="empty">Inga kategorier. Uppdatera listorna först.</li>';
 }
 async function saveCategoryOrder() {
-  await api("categories/prefs", { method: "POST", body: { type: catType, changes: catRows.map((c, i) => ({ category_id: c.category_id, position: i })) } });
+  await api("categories/prefs", { method: "POST", body: catPrefsBody(catRows.map((c, i) => ({ category_id: c.category_id, position: i }))) });
 }
 $("cat-type").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return; catType = b.dataset.type;
@@ -1650,9 +1755,16 @@ $("cat-list").addEventListener("change", (e) => {
     });
     return;
   }
+  const skip = e.target.closest("input[data-act=skip]");
+  if (skip) {
+    const id = skip.closest("li").dataset.id;
+    guarded(async () => { await api("categories/prefs", { method: "POST", body: { type: catType, changes: [{ category_id: id, skip_all: skip.checked }] } }); loaders.categories(); });
+    return;
+  }
   const box = e.target.closest("input[data-act=toggle]"); if (!box) return;
   const id = box.closest("li").dataset.id; const c = catRows.find((x) => x.category_id === id);
-  guarded(async () => { await api("categories/prefs", { method: "POST", body: { type: catType, changes: [{ category_id: id, hidden: !box.checked }] } }); c.hidden = !box.checked; renderCategories(); });
+  guarded(async () => { await api("categories/prefs", { method: "POST", body: catPrefsBody([{ category_id: id, hidden: !box.checked }]) });
+    if (catProfile) c.profile_hidden = !box.checked; else c.hidden = !box.checked; renderCategories(); });
 });
 $("cat-list").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-act]"); if (!b) return;
@@ -1675,8 +1787,8 @@ for (const [btn, hide] of [["cat-show-all", false], ["cat-hide-all", true]]) {
   $(btn).addEventListener("click", (e) => guarded(async () => {
     const rows = catMatches();
     if (hide && !$("cat-q").value.trim() && !confirm("Dölja ALLA kategorier?")) return;
-    await api("categories/prefs", { method: "POST", body: { type: catType, changes: rows.map((c) => ({ category_id: c.category_id, hidden: hide })) } });
-    rows.forEach((c) => (c.hidden = hide)); renderCategories(); toast(`${rows.length} kategorier ${hide ? "dolda" : "visas"}`);
+    await api("categories/prefs", { method: "POST", body: catPrefsBody(rows.map((c) => ({ category_id: c.category_id, hidden: hide }))) });
+    rows.forEach((c) => { if (catProfile) c.profile_hidden = hide; else c.hidden = hide; }); renderCategories(); toast(`${rows.length} kategorier ${hide ? "dolda" : "visas"}`);
   }, e.currentTarget));
 }
 
@@ -1887,9 +1999,37 @@ $("pin-form").addEventListener("submit", (e) => { e.preventDefault(); guarded(as
 $("pin-clear").addEventListener("click", (e) => { if (!confirm("Ta bort koden? Vuxenläget slås då på som förut, utan kod.")) return;
   guarded(async () => { await api("adult-pin", { method: "PUT", body: { pin: "" } }); toast("Koden är borttagen"); loadReminderSettings(); }, e.target); });
 
+async function loadAlertSettings() {
+  const a = await api("alerts/settings").catch(() => ({}));
+  $("al-provider").checked = a.provider !== false; $("al-recording").checked = a.recording !== false;
+  $("al-box").value = String(a.box_hours || 0);
+}
+const alertBody = () => ({ provider: $("al-provider").checked, recording: $("al-recording").checked, box_hours: +$("al-box").value });
+$("al-form").addEventListener("submit", (e) => { e.preventDefault(); guarded(async () => {
+  await api("alerts/settings", { method: "PUT", body: alertBody() }); toast("Sparat"); }); });
+$("al-test").addEventListener("click", (e) => guarded(async () => {
+  await api("alerts/settings", { method: "PUT", body: alertBody() });
+  await api("alerts/test", { method: "POST" }); toast("Testnotis skickad"); }, e.target));
+$("bk-export").addEventListener("click", (e) => guarded(async () => {
+  const data = await api("backup");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
+  a.download = "tvhub-installningar-" + new Date().toISOString().slice(0, 10) + ".json";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}, e.target));
+$("bk-file").addEventListener("change", (e) => { const file = e.target.files[0]; e.target.value = ""; if (!file) return;
+  guarded(async () => {
+    const body = JSON.parse(await file.text());
+    if (!confirm("Importera inställningarna? De slås ihop med det som finns.")) return;
+    const r = await api("backup", { method: "POST", body });
+    toast("Importerat: " + Object.entries(r).map(([k, v]) => `${v} ${k}`).join(", "));
+    loaders.devices();
+  }); });
+
 loaders.devices = async () => {
   loadRemote();
   loadReminderSettings();
+  loadAlertSettings();
   if (!vc.data) loadVoice();
   const list = await api("devices").catch((e) => (toast(e.message), []));
   if (!groupList.length) groupList = (await api("groups").catch(() => [])).map((g) => ({ id: g.id, name: g.name }));
@@ -1911,7 +2051,7 @@ loaders.devices = async () => {
         <label class="chk" style="min-height:38px"><input type="checkbox" data-act="pin_required" ${d.pin_required ? "checked" : ""}> Kräv kod för vuxenläget</label>
       </div>` : "";
     return `<li class="dev" data-id="${d.id}"><div class="grow"><div><strong>${esc(d.name)}</strong> ${d.playing ? `<span class="pill ok">tittar: ${esc(d.playing.item_name)}</span>` : ""}</div>
-    <div class="small muted">${esc(d.model || "")}${d.app_version ? " · app " + esc(d.app_version) : ""} · senast ${fmtAgo(d.last_seen)}${d.last_ip ? " · " + esc(d.last_ip) : ""}</div></div>
+    <div class="small muted">${esc(d.model || "")}${d.app_version ? " · app " + esc(d.app_version) : ""}${d.update_available ? ' <span class="pill warn">ny version finns</span>' : ""} · ${d.online ? '<span class="pill ok">uppkopplad</span>' : "senast " + fmtAgo(d.last_seen)}${d.last_ip ? " · " + esc(d.last_ip) : ""}</div></div>
     ${profile}
     <button class="btn ghost small" data-act="rename">Byt namn</button><button class="btn ghost small danger" data-act="delete">Ta bort</button>
     ${opts ? `<div style="flex-basis:100%">${opts}</div>` : ""}</li>`;
@@ -2140,7 +2280,7 @@ loaders.diagnostics = async () => {
     }).join("") || '<li class="empty">Ingen uppdatering ännu.</li>';
   }
 };
-const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden stannade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar", probe: "Källans svar", record: "Inspelning" };
+const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden stannade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar", probe: "Källans svar", timeshift: "Efterhandsadress", record: "Inspelning" };
 function describeEvent(ev) {
   const d = ev.detail || {};
   switch (ev.kind) {
@@ -2153,7 +2293,8 @@ function describeEvent(ev) {
     case "sync": return d.status + (d.failed_steps && d.failed_steps.length ? ": " + d.failed_steps.join(", ") : "");
     case "takeover_requested": return `${d.by} tar över från ${d.from}`;
     case "error": return [d.code, d.message].filter(Boolean).join(": ");
-    case "probe": return d.error ? `Ingen kontakt (${d.error})` : [`HTTP ${d.status}`, d.content_type, d.length != null && `${d.length} byte`, d.start && `börjar med: ${d.start}`].filter(Boolean).join(" · ");
+    case "timeshift": return d.found ? `Adressform som fungerar: ${d.found}` : "Ingen adressform gav video: " + (d.results || []).map((r) => `${r.variant} → ${r.status ?? "ingen kontakt"}, ${r.bytes} byte`).join("; ");
+    case "probe": return d.error ? `Ingen kontakt (${d.error})` : [d.video === false && "ingen video", `HTTP ${d.status}`, d.content_type, d.length != null && `${d.length} byte`, d.start && `börjar med: ${d.start}`].filter(Boolean).join(" · ");
     case "paired": return d.model || "";
     default: return Object.entries(d).slice(0, 4).map(([k, v]) => `${k}: ${v}`).join(", ");
   }

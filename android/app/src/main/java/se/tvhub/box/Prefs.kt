@@ -164,6 +164,39 @@ class Prefs(context: Context) {
     }
 
     /** Utseende: modernt (standard) eller klassiskt (tre kolumner som tidigare). Mobilen är alltid modern. */
+    /** Mina media: sortering i mappar och i "Alla videor här" (egna val, sparas), t.ex. "name_asc", "date_desc". */
+    var mediaSort: String
+        get() = sp.getString("media_sort", "name_asc") ?: "name_asc"
+        set(value) {
+            sp.edit().putString("media_sort", value).apply()
+        }
+
+    var mediaSortFlat: String
+        get() = sp.getString("media_sort_flat", "date_desc") ?: "date_desc"
+        set(value) {
+            sp.edit().putString("media_sort_flat", value).apply()
+        }
+
+    /** Visa en ruta med nedräkning till nästa avsnitt/fil (av som standard: den täcker bilden). */
+    var showNextCard: Boolean
+        get() = sp.getBoolean("show_next_card", false)
+        set(value) {
+            sp.edit().putBoolean("show_next_card", value).apply()
+        }
+
+    /** Filmer/Serier öppnar på fliken du senast använde (i stället för startkategorin från webbadminen). */
+    var rememberTab: Boolean
+        get() = sp.getBoolean("remember_tab", false)
+        set(value) {
+            sp.edit().putBoolean("remember_tab", value).apply()
+        }
+
+    fun lastTab(type: String): String? = sp.getString("last_tab_$type", null)
+
+    fun setLastTab(type: String, key: String) {
+        sp.edit().putString("last_tab_$type", key).apply()
+    }
+
     /** Mina media: visa storlek och längd vid titeln. */
     var mediaMeta: Boolean
         get() = sp.getBoolean("media_meta", false)

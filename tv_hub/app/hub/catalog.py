@@ -75,6 +75,12 @@ class Scope:
                 f"NOT EXISTS (SELECT 1 FROM category_prefs cpx WHERE cpx.type = {alias}.type "
                 f"AND cpx.category_id = {alias}.category_id AND cpx.hidden = 1)"
             )
+            if self.profile_id:
+                conds.append(
+                    f"NOT EXISTS (SELECT 1 FROM profile_category_prefs pcx WHERE pcx.profile_id = ? "
+                    f"AND pcx.type = {alias}.type AND pcx.category_id = {alias}.category_id AND pcx.hidden = 1)"
+                )
+                args.append(int(self.profile_id))
         return ("".join(f" AND {c}" for c in conds), args)
 
 
@@ -454,14 +460,32 @@ def favorite_keys(profile_id=None):
     return {(r["type"], r["item_id"]) for r in db.q("SELECT type, item_id FROM favorites WHERE profile_id = ?", (profile_id,))}
 
 
-def categories(kind, scope=ADMIN):
-    """Kategorier med antal objekt. Boxarna ser bara synliga kategorier i egen ordning."""
+SPORT_RE = re.compile(r"(sport|replay|events?\b|\blive\b|\bnfl\b|\bnba\b|\bnhl\b|\bmlb\b|\bufc\b|\bwwe\b|\bf1\b|formula|"
+                      r"motogp|football|soccer|premier league|champions league|boxing|wrestling|tennis|golf|cricket)", re.IGNORECASE)
+
+
+def is_sport_name(name):
+    return bool(SPORT_RE.search(name or ""))
+
+
+def profile_prefs(profile_id, kind):
+    """{category_id: (hidden, position)} för en profil."""
+    if not profile_id:
+        return {}
+    return {r["category_id"]: (bool(r["hidden"]), r["position"]) for r in db.q(
+        "SELECT category_id, hidden, position FROM profile_category_prefs WHERE profile_id = ? AND type = ?",
+        (int(profile_id), kind))}
+
+
+def categories(kind, scope=ADMIN, for_profile=None):
+    """Kategorier med antal objekt. Boxarna ser bara synliga kategorier i egen ordning.
+    for_profile (bara admin): visar profilens egna val av dold/ordning ovanpå de gemensamma."""
     if scope.group_id is not None:
         return []
     cond, args = scope.sql("i", hide=False)
     rows = db.rows(db.q(
         f"""SELECT c.category_id, COALESCE(NULLIF(p.display_name, ''), c.name) AS name, c.name AS original_name,
-                   p.display_name, c.sort, c.adult, p.adult_override,
+                   p.display_name, c.sort, c.adult, p.adult_override, p.skip_all,
                    COALESCE(p.hidden, 0) AS hidden, p.position,
                    (SELECT COUNT(*) FROM items i WHERE i.type = c.type AND i.category_id = c.category_id{cond}) AS count
             FROM categories c LEFT JOIN category_prefs p ON p.type = c.type AND p.category_id = c.category_id
@@ -469,14 +493,32 @@ def categories(kind, scope=ADMIN):
             ORDER BY CASE WHEN p.position IS NULL THEN 1 ELSE 0 END, p.position, c.sort""",
         (*args, kind),
     ))
+    profile = for_profile if scope is ADMIN else scope.profile_id
+    overlay = profile_prefs(profile, kind)
+    decided = {r["category_id"] for r in db.q(
+        "SELECT category_id FROM category_prefs WHERE type = ? AND skip_all IS NOT NULL", (kind,))}
     for c in rows:
         c["adult"] = bool(c["adult"])
         c["hidden"] = bool(c["hidden"])
         c["auto_adult"] = is_adult_name(c["original_name"])
         c["start"] = start_category(kind) == c["category_id"]
+        c["skip_all"] = bool(c["skip_all"])
+        # Föreslagen sport: bara när inget val har gjorts för kategorin
+        c["suggest_sport"] = (kind != "live" and not c["adult"] and c["category_id"] not in decided
+                              and is_sport_name(c["original_name"]))
+    if overlay:
+        placed = sorted((c for c in rows if overlay.get(c["category_id"], (False, None))[1] is not None),
+                        key=lambda c: overlay[c["category_id"]][1])
+        rest = [c for c in rows if c not in placed]
+        rows = placed + rest
+        for c in rows:
+            c["profile_hidden"] = overlay.get(c["category_id"], (False, None))[0]
+    elif for_profile and scope is ADMIN:
+        for c in rows:
+            c["profile_hidden"] = False
     if scope is ADMIN:
         return rows
-    return [c for c in rows if c["count"] > 0 and not (scope.hide_hidden and c["hidden"])]
+    return [c for c in rows if c["count"] > 0 and not (scope.hide_hidden and (c["hidden"] or c.get("profile_hidden")))]
 
 
 SORTS = {
@@ -487,6 +529,11 @@ SORTS = {
     "duration": "i.duration_min IS NULL, i.duration_min, i.name",
     "duration_desc": "i.duration_min IS NULL, i.duration_min DESC, i.name",
     "num": "i.num IS NULL, i.num, i.name",
+    "name_desc": "i.name COLLATE NOCASE DESC",
+    "added_asc": "i.added IS NULL, i.added, i.name",
+    "year_asc": "i.year IS NULL, i.year, i.name",
+    # Titlar med affisch först, sedan de utan; i varje grupp på namn.
+    "poster": "(i.icon IS NULL OR i.icon = ''), i.name COLLATE NOCASE",
 }
 
 # Alla kolumner som går att sortera och filtrera på, samlade i en vy (alias i).
@@ -540,10 +587,47 @@ def _filters(params):
     if str(params.get("new_only") or "") in ("1", "true"):
         # "Nytt tillagt": bara titlar som TV Hub själv har sett dyka upp (eget datum), inte källans datum.
         conds.append("i.first_seen IS NOT NULL")
+        if browse_options()["new_requires_poster"]:
+            conds.append("(i.icon IS NOT NULL AND i.icon != '')")
     for token in normalize(params.get("q") or "").split():
         conds.append("i.name_norm LIKE ?")
         args.append(f"%{token}%")
     return conds, args
+
+
+BROWSE_OPTIONS = {"hide_sport_titles": False, "new_requires_poster": False}
+SPORT_TITLE_SQL = "NOT (i.name GLOB '[0-9][0-9][.:][0-9][0-9] *' AND i.name LIKE '% vs%')"
+SKIPPED_SQL = ("EXISTS (SELECT 1 FROM category_prefs sk WHERE sk.type = i.type "
+               "AND sk.category_id = i.category_id AND sk.skip_all = 1)")
+
+
+def browse_options():
+    out = dict(BROWSE_OPTIONS)
+    out.update(db.get_setting("browse_options") or {})
+    return out
+
+
+def save_browse_options(data):
+    cur = browse_options()
+    for key in BROWSE_OPTIONS:
+        if key in data:
+            cur[key] = bool(data[key])
+    db.set_setting("browse_options", cur)
+    return cur
+
+
+def _aggregate_conds(kind, params):
+    """Villkor för listor över flera kategorier (Alla, Nytt tillagt). Sök (q) påverkas inte,
+    och inte heller fliken Sport (skipped_only), som visar just de kategorier som lämnas utanför Alla."""
+    if params.get("q"):
+        return []
+    if str(params.get("skipped_only") or "") in ("1", "true"):
+        return [SKIPPED_SQL]
+    conds = [f"NOT {SKIPPED_SQL}"]
+    options = browse_options()
+    if options["hide_sport_titles"] and kind in ("vod", "series"):
+        conds.append(SPORT_TITLE_SQL)
+    return conds
 
 
 def browse(kind, scope=ADMIN, category_id=None, params=None, offset=0, limit=300):
@@ -560,6 +644,8 @@ def browse(kind, scope=ADMIN, category_id=None, params=None, offset=0, limit=300
         scope_cond, scope_args = scope.sql("i", hide=False)
     else:
         scope_cond, scope_args = scope.sql("i")
+        extra = _aggregate_conds(kind, params)
+        where += extra
     conds, cond_args = _filters(params)
     where_sql = " AND ".join(where + conds) + scope_cond
     all_args = args + cond_args + scope_args
@@ -583,6 +669,7 @@ def new_summary(scope, days=14):
     Bygger på TV Hubs eget datum (first_seen). Dolda kategorier och vuxeninnehåll följer boxens läge."""
     cutoff = day_start(time.time()) - (days - 1) * 86400
     cond, args = scope.sql("i")
+    cond += f" AND NOT {SKIPPED_SQL}"
     rows = db.q(
         f"""SELECT i.type, i.category_id, i.category_name, i.first_seen FROM {BROWSE_FROM}
             WHERE i.first_seen >= ?{cond}""",
@@ -712,7 +799,7 @@ def set_category_prefs(kind, changes):
         for change in changes:
             cid = str(change.get("category_id"))
             current = conn.execute(
-                "SELECT hidden, position, adult_override, display_name FROM category_prefs WHERE type = ? AND category_id = ?",
+                "SELECT hidden, position, adult_override, display_name, skip_all FROM category_prefs WHERE type = ? AND category_id = ?",
                 (kind, cid),
             ).fetchone()
             if "display_name" in change:
@@ -726,13 +813,44 @@ def set_category_prefs(kind, changes):
                 override = None if change["adult"] is None else int(bool(change["adult"]))
             else:
                 override = current["adult_override"] if current else None
+            if "skip_all" in change:
+                skip = None if change["skip_all"] is None else int(bool(change["skip_all"]))
+            else:
+                skip = current["skip_all"] if current else None
             conn.execute(
-                """INSERT OR REPLACE INTO category_prefs (type, category_id, hidden, position, adult_override, display_name)
-                   VALUES (?,?,?,?,?,?)""",
-                (kind, cid, hidden, position, override, display),
+                """INSERT OR REPLACE INTO category_prefs (type, category_id, hidden, position, adult_override, display_name, skip_all)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (kind, cid, hidden, position, override, display, skip),
             )
     if any("adult" in change for change in changes):
         mark_adult()
+
+
+def set_profile_category_prefs(profile_id, kind, changes):
+    """Dold/ordning för en profil (ovanpå de gemensamma valen)."""
+    from . import profiles
+    if kind not in TYPES:
+        raise ValueError("Okänd typ")
+    if not profiles.get(profile_id):
+        raise LookupError("Profilen finns inte.")
+    with db.tx() as conn:
+        for change in changes:
+            cid = str(change.get("category_id"))
+            current = conn.execute(
+                "SELECT hidden, position FROM profile_category_prefs WHERE profile_id = ? AND type = ? AND category_id = ?",
+                (int(profile_id), kind, cid)).fetchone()
+            hidden = int(bool(change["hidden"])) if "hidden" in change else (current["hidden"] if current else 0)
+            position = change["position"] if "position" in change else (current["position"] if current else None)
+            if not hidden and position is None:
+                conn.execute("DELETE FROM profile_category_prefs WHERE profile_id = ? AND type = ? AND category_id = ?",
+                             (int(profile_id), kind, cid))
+                continue
+            conn.execute("INSERT OR REPLACE INTO profile_category_prefs (profile_id, type, category_id, hidden, position) "
+                         "VALUES (?,?,?,?,?)", (int(profile_id), kind, cid, hidden, position))
+
+
+def reset_profile_category_prefs(profile_id, kind):
+    db.x("DELETE FROM profile_category_prefs WHERE profile_id = ? AND type = ?", (int(profile_id), kind))
 
 
 # ====================================================================
@@ -762,6 +880,64 @@ def favorites(scope=ADMIN):
         (scope.pid, *args),
     )
     return _resolved(rows)
+
+
+def favorites_overview(profile_id=None):
+    """Webbadmin: favoriterna (vanligt innehåll) för en profil, med vilka profiler som har var och en."""
+    from . import profiles
+    pid = int(profile_id) if profile_id else profiles.owner_id()
+    items = favorites(Scope(adult=0, profile_id=pid))
+    owners = {}
+    for r in db.q("SELECT profile_id, type, item_id FROM favorites"):
+        owners.setdefault((r["type"], r["item_id"]), []).append(r["profile_id"])
+    for item in items:
+        item["profiles"] = sorted(owners.get((item["type"], str(item["id"])), []))
+    return items
+
+
+def _shareable_profiles():
+    return [r["id"] for r in db.q("SELECT id FROM viewers WHERE COALESCE(guest, 0) = 0 ORDER BY position, id")]
+
+
+def assign_favorite(kind, item_id, profile_ids):
+    """Favoriten ska finnas hos exakt de profilerna (gäster har inga favoriter). Vuxenfavoriter hanteras inte här."""
+    if kind not in TYPES:
+        raise ValueError("Okänd typ")
+    row = db.q1("SELECT adult FROM items WHERE type = ? AND item_id = ?", (kind, str(item_id)))
+    if row and row["adult"]:
+        raise ValueError("Vuxenfavoriter kan inte delas härifrån.")
+    allowed = _shareable_profiles()
+    wanted = allowed if profile_ids == "all" else [int(p) for p in (profile_ids or []) if int(p) in allowed]
+    with db.tx() as conn:
+        for pid in allowed:
+            if pid in wanted:
+                conn.execute("INSERT OR IGNORE INTO favorites (profile_id, type, item_id, added) VALUES (?, ?, ?, ?)",
+                             (pid, kind, str(item_id), db.iso()))
+            else:
+                conn.execute("DELETE FROM favorites WHERE profile_id = ? AND type = ? AND item_id = ?",
+                             (pid, kind, str(item_id)))
+    return wanted
+
+
+def copy_favorites(from_profile, to_profiles):
+    """Kopierar profilens vanliga favoriter till andra profiler. Returnerar antal nya favoriter."""
+    from . import profiles
+    if not profiles.get(from_profile):
+        raise LookupError("Profilen finns inte.")
+    allowed = _shareable_profiles()
+    targets = [p for p in allowed if p != int(from_profile)] if to_profiles == "all" \
+        else [int(p) for p in (to_profiles or []) if int(p) in allowed and int(p) != int(from_profile)]
+    added = 0
+    with db.tx() as conn:
+        rows = conn.execute(
+            """SELECT f.type, f.item_id, f.added FROM favorites f
+               LEFT JOIN items i ON i.type = f.type AND i.item_id = f.item_id
+               WHERE f.profile_id = ? AND COALESCE(i.adult, 0) = 0""", (int(from_profile),)).fetchall()
+        for pid in targets:
+            for r in rows:
+                added += conn.execute("INSERT OR IGNORE INTO favorites (profile_id, type, item_id, added) VALUES (?,?,?,?)",
+                                      (pid, r["type"], r["item_id"], r["added"])).rowcount
+    return {"added": added, "profiles": len(targets)}
 
 
 def set_favorite(kind, item_id, on, profile_id=None):

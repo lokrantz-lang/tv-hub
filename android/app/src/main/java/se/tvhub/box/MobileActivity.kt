@@ -710,11 +710,24 @@ class MobileActivity : Activity(), CardListener {
             rows.add(Row("Alla", key = "all"))
             rows.add(Row("Favoriter", key = "fav"))
             rows.add(Row("Nytt tillagt (med datum)", key = "new"))
+            val catList = data.optJSONObject("categories")?.optJSONArray(type)
+            if (catList != null && (0 until catList.length()).any { catList.optJSONObject(it)?.optBoolean("skip_all") == true }) {
+                rows.add(Row("Sport", key = "sport"))
+            }
             rows.addAll(categoryRows(data, type))
             chipAdapter.submit(rows)
             startCategory(data, type, rows)?.let { start ->
                 chipKey = start.key
                 categoryId = start.payload as? String
+            }
+            if (prefs.rememberTab) {
+                prefs.lastTab(type)?.let { saved ->
+                    rows.firstOrNull { it.key == saved }?.let {
+                        chipKey = it.key
+                        categoryId = it.payload as? String
+                        if (it.key == "sport") params["skipped_only"] = "1"
+                    }
+                }
             }
             chipAdapter.select(chipKey)
             catButton.text = "Kategori: ${rows.firstOrNull { it.key == chipKey }?.title ?: "Alla"}  ▾"
@@ -727,12 +740,15 @@ class MobileActivity : Activity(), CardListener {
             catButton.text = "Kategori: ${row.title}  ▾"
             chipAdapter.select(row.key)
             categoryId = row.payload as? String
+            params.remove("skipped_only")
             if (row.key == "new") {
                 params["sort"] = "added"
                 params["new_only"] = "1"
             } else {
                 params.remove("new_only")
+                if (row.key == "sport") params["skipped_only"] = "1"
             }
+            if (prefs.rememberTab) prefs.setLastTab(type, row.key)
             updateSort()
             load(reset = true)
         }
@@ -780,11 +796,17 @@ class MobileActivity : Activity(), CardListener {
         }
 
         private fun sortOptions(): List<Pair<String, String>> = if (type == "series") {
-            listOf("added" to "Senast tillagda", "rating" to "Betyg", "year" to "Årtal", "name" to "Namn")
+            listOf(
+                "added" to "Senast tillagda", "added_asc" to "Äldst tillagda", "rating" to "Betyg",
+                "year" to "Årtal, nyast först", "year_asc" to "Årtal, äldst först",
+                "name" to "Namn A–Ö", "name_desc" to "Namn Ö–A", "poster" to "Med affisch först",
+            )
         } else {
             listOf(
-                "added" to "Senast tillagda", "rating" to "Betyg", "year" to "Årtal",
-                "duration" to "Längd, kortast först", "duration_desc" to "Längd, längst först", "name" to "Namn",
+                "added" to "Senast tillagda", "added_asc" to "Äldst tillagda", "rating" to "Betyg",
+                "year" to "Årtal, nyast först", "year_asc" to "Årtal, äldst först",
+                "duration" to "Längd, kortast först", "duration_desc" to "Längd, längst först",
+                "name" to "Namn A–Ö", "name_desc" to "Namn Ö–A", "poster" to "Med affisch först",
             )
         }
 

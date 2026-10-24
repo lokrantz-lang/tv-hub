@@ -86,6 +86,24 @@ grupp: Favoriter, Senaste kanaler eller en kategori. Guiden sträcker sig ett dy
 **Spelarlisten** för live visar programmets namn, tider, minuter kvar, hur långt programmet har kommit,
 vad som kommer sedan och klockan.
 
+## Favoriter för alla eller valda profiler
+
+Favoriter är per profil. I webbadmin under *Favoriter och grupper*: välj profil i *Favoriter för*. På varje favorit öppnar *Visa för…* kryssrutor
+för profilerna (*Alla* kryssar i alla), och *Spara* gör att favoriten finns hos exakt de profilerna. *Kopiera alla till* lägger profilens favoriter hos
+en annan profil eller alla andra. Vuxenfavoriter, favoritavsnitt och gäster ingår inte; de hanteras i boxen.
+
+## Kategorier: start, sport och profiler
+
+I webbadmin under *Kategorier*:
+
+- **Start:** kategorin som Filmer, Serier eller Live öppnar med i stället för *Alla*. Använd ⤒ för att flytta en kategori överst i flikraden.
+- **Inte i Alla:** kategorin (t.ex. sport) räknas inte in i *Alla* och *Nytt tillagt*, men har kvar sin egen flik, finns i sök och samlas i fliken **Sport**.
+  Kategorier som ser ut som sport föreslås (*Markera föreslagna sportkategorier…*). Du bekräftar själv. En ny kategori hos leverantören måste markeras första gången.
+- **Dölj** (kryssrutan) tar bort kategorin helt från listor och sök.
+- **Visa och ordna för:** välj en profil för att dölja kategorier eller ordna om bara för den profilen. *Börja om för profilen* tar bort profilens val.
+- **Filmfilter** (valfria): dölj sportreprisor (titlar som börjar med klockslag och innehåller "vs") och visa bara titlar med affisch i *Nytt tillagt*.
+- **Kom ihåg senaste fliken** slås på i appens inställningar och gäller Filmer och Serier på den boxen.
+
 ## Dolt vuxenläge
 
 Kategorier med "For Adults", "Porn" eller "XXX" i namnet räknas som vuxeninnehåll. Under **Kategorier** i webbadminen
@@ -160,8 +178,13 @@ Uppspelningen går inte via Toucan och räknas inte som en anslutning där.
   och alla undermappar i datumordning. Datumet tas ur filnamnet (t.ex. `VID_20190612_…`) och annars från NAS:en.
 - **Filer boxen inte kan avkoda** (vanligt för gamla DivX/Xvid-filmer) öppnas automatiskt i **VLC** om den finns på boxen
   (gratis i Play Butik). I VLC sparar TV Hub ingen position, det gör VLC själv.
+- **Sortera** på namn (A–Ö/Ö–A), datum, storlek eller längd, åt båda håll. Valet sparas. I läget *Alla videor* sparas sorteringen separat.
+- **Alla videor här:** håll in OK på en mapp → *Alla videor här (alla undermappar)*. Gör du mappen till favorit kan du välja
+  att den ska öppnas direkt i det läget, med vald sortering.
+- **Sök:** *Mer… → Sök i Mina media* söker på filnamn i mappen och under den.
 - **Ingenting härifrån visas i Fortsätt titta på Hem.**
 - **Dölj:** håll in OK på en NAS-mapp → *Dölj mappen*. Dolda mappar, och mappar med XXX, 18+, Adult eller Porn i namnet, syns bara i vuxenläget.
+  *Dölj mappen helt (även undermappar)* döljer den i alla lägen, också i Alla videor och sök. Ångra under *Mer… → Dolda mappar*.
 - **Begränsningar:** filerna spelas som de är (ingen omkodning). Tunga 4K-filer kan hacka över wifi och på Z Alpha.
   Filmer med bara DTS- eller TrueHD-ljud kan bli tysta: välj ett annat ljudspår. ISO-filer och Blu-ray-mappar fungerar inte.
   USB-disken: FAT32 och exFAT fungerar, NTFS beror på boxen. En 2,5"-disk kan behöva egen ström.
@@ -186,6 +209,15 @@ Uppspelningen går inte via Toucan och räknas inte som en anslutning där.
 
 - **Kanaler med arkiv hos Toucan** kan spolas så långt bakåt som arkivet räcker. Det gäller de flesta svenska huvudkanalerna.
 - **Kanaler utan arkiv** kan bara pausas, och bara så länge boxens minne räcker: ett par minuter på Z Alpha och några minuter på Z10 Pro.
+
+## Avbrottsnotiser, säkerhetskopia och boxöversikt
+
+- **Avbrottsnotiser:** webbadmin → *Boxar → Avbrottsnotiser*. Notis till telefonen när leverantören inte svarar (tre misslyckade
+  kontroller i rad på alla portaler), en inspelning misslyckas eller en box inte hörts av på vald tid (av som standard, eftersom en box
+  som är avstängd annars ger falsklarm). Kräver notify-tjänsten under *Påminnelser till telefonen*. Vuxentitlar nämns aldrig.
+- **Säkerhetskopia:** *Ladda ner kopia* sparar profiler (utan koder), snabbval, kategorival, sport och boxinställningar. *Importera kopia…*
+  slår ihop filen med det som finns. Portaluppgifter, nycklar och parade boxar ingår inte; boxar måste paras om.
+- **Boxöversikt:** under *Boxar* visas appversion, om boxen är uppkopplad (hört av sig senaste 10 minuterna) och om en nyare version finns.
 
 ## Filmkväll
 

@@ -282,6 +282,9 @@ def main():
         version_26(ta, tb, pa, pb)
         version_27(ta, tb, pa, pb)
         version_28(ta, tb, pa, pb)
+        version_29(ta, tb, pa, pb)
+        version_291(ta, tb, pa, pb)
+        version_292()
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -468,7 +471,9 @@ def version_13(ta, tb, pa, pb):
                                                      "end": now + 600}, token=ta, mode="adult")
     check("vuxenkanal i vuxenläge", s == 201 and r3["adult"] is True, r3)
     s, normal = call("GET", f"{D}/device/recordings", token=ta)
-    s, adult = call("GET", f"{D}/device/recordings", token=ta, mode="adult")
+    s, adult = call("GET", f"{D}/device/recordings", token=ta, mode="adult", history="show")
+    s, adult_private = call("GET", f"{D}/device/recordings", token=ta, mode="adult")
+    check("2.9: vuxeninspelningar syns inte utan historik", adult_private == [], adult_private)
     s, everything = call("GET", f"{D}/device/recordings?all=1", token=ta)
     check("inspelningar separeras per läge", r3["id"] not in [r["id"] for r in normal]
           and [r["id"] for r in adult] == [r3["id"]], (normal, adult))
@@ -1881,6 +1886,220 @@ def version_28(ta, tb, pa, pb):
     check("2.8: Diagnostik har sökruta och filter", all(x in page for x in ("ev-search", "ev-box", "ev-kind", "ev-time", "ev-hide-start")))
     check("2.8: gesterna beskrivs inte i dokumentationen", all(
         "tre gånger" not in open(os.path.join(ROOT, f), encoding="utf-8").read() for f in ("README.md", os.path.join("tv_hub", "DOCS.md"))))
+
+
+def version_29(ta, tb, pa, pb):
+    """2.9: efterhandsadress, sorteringar, backup, avbrottsnotiser, boxöversikt."""
+    print("Version 2.9: efterhandsadress, sorteringar, backup, notiser")
+    s, data = call("GET", f"{A}/api/profiles")
+    owner = {p["name"]: p for p in data["profiles"]}["Själv"]["id"]
+    fake = f"http://127.0.0.1:{FAKE_PORT}"
+
+    def stop_all():
+        s, ov = call("GET", f"{A}/api/overview")
+        for x in ov.get("sessions", []):
+            tok = ta if x["device_id"] == pa["device_id"] else tb
+            call("POST", f"{D}/device/stop", {"session_id": x["id"]}, token=tok)
+
+    def ts_calls():
+        return json.loads(urllib.request.urlopen(f"{fake}/__timeshift_calls").read())["calls"]
+
+    def ts_mode(mode, **extra):
+        query = "&".join([f"mode={mode}"] + [f"{k}={v}" for k, v in extra.items()])
+        urllib.request.urlopen(f"{fake}/__timeshift_mode?{query}").read()
+
+    start = int(time.time()) - 7200
+    stop_all()
+    try:
+        # Leverantören ger tomt svar på sökvägsadressen men video på php-adressen
+        ts_mode("php_only")
+        s, cu = call("POST", f"{D}/device/play", {"type": "catchup", "id": "101", "start": start, "duration": 60},
+                     token=ta, profile=owner)
+        check("2.9: efterhandsström startar", cu.get("status") == "ok", cu)
+        check("2.9: hittar adressen som ger video", "timeshift.php" in cu.get("url", ""), cu.get("url"))
+        forms = [c.split("|")[0] for c in ts_calls()]
+        check("2.9: prövade sökvägsadressen först", forms[:1] == ["path"] and "php" in forms, forms)
+        stop_all()
+        ts_mode("php_only")
+        s, cu2 = call("POST", f"{D}/device/play", {"type": "catchup", "id": "101", "start": start, "duration": 60},
+                      token=ta, profile=owner)
+        check("2.9: sparad adress används utan ny sökning", "timeshift.php" in cu2.get("url", "") and ts_calls() == [], ts_calls())
+        # Containerfel + inget video → sparad adress glöms
+        def probe_count():
+            s, d = call("GET", f"{A}/api/diagnostics?limit=500")
+            return len([e for e in d["events"] if e["kind"] == "probe" and e["detail"].get("video") is False])
+        base = probe_count()
+        ts_mode("none")
+        time.sleep(3.5)
+        call("POST", f"{D}/device/report", {"kind": "error", "session_id": cu2["session_id"],
+             "detail": {"code": "ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED", "message": "x"}}, token=ta)
+        end = time.time() + 8
+        gone = False
+        while time.time() < end and not gone:
+            time.sleep(0.5)
+            gone = probe_count() > base
+        check("2.9: tomt svar loggas som ingen video", gone)
+        time.sleep(1.0)
+        ts_mode("none")
+        s, cu3 = call("POST", f"{D}/device/play", {"type": "catchup", "id": "101", "start": start, "duration": 60},
+                      token=ta, profile=owner)
+        n = len(ts_calls())
+        check("2.9: ny sökning görs efter att adressen glömts", n >= 2, n)
+        check("2.9: sökningen misslyckas men spelning startas ändå", cu3.get("status") == "ok", cu3)
+        stop_all()
+        s, cu4 = call("POST", f"{D}/device/play", {"type": "catchup", "id": "101", "start": start, "duration": 60},
+                      token=ta, profile=owner)
+        check("2.9: misslyckad sökning upprepas inte direkt", len(ts_calls()) == n, (n, len(ts_calls())))
+        s, d = call("GET", f"{A}/api/diagnostics?limit=500")
+        ev = [e for e in d["events"] if e["kind"] == "timeshift"]
+        check("2.9: sökningen loggas utan kontouppgifter", ev and "testpass" not in json.dumps(ev), ev[:1])
+    finally:
+        ts_mode("ok")
+        stop_all()
+
+    # Sorteringar
+    def names(sort):
+        s, r = call("GET", f"{D}/device/browse?type=vod&sort={sort}&limit=500", token=ta)
+        return r["items"]
+    for sort in ("name_desc", "added_asc", "year_asc", "poster"):
+        s, r = call("GET", f"{D}/device/browse?type=vod&sort={sort}&limit=500", token=ta)
+        check(f"2.9: sortering {sort} fungerar", s == 200 and len(r["items"]) > 3, (s, r))
+    asc, desc = [i["name"].lower() for i in names("name")], [i["name"].lower() for i in names("name_desc")]
+    check("2.9: Ö–A är A–Ö baklänges", asc == desc[::-1], (asc[:3], desc[:3]))
+    items = names("poster")
+    flags = [bool(i.get("icon")) for i in items]
+    check("2.9: affisch först, sedan utan", flags == sorted(flags, reverse=True) and True in flags and False in flags, flags)
+
+    # Boxöversikt
+    s, devs = call("GET", f"{A}/api/devices")
+    row = next(d for d in devs if d["id"] == pa["device_id"])
+    check("2.9: boxöversikt visar uppkopplad", row.get("online") is True and "update_available" in row, row)
+
+    # Avbrottsnotiser: inställningar och testfel utan notify-tjänst
+    s, al = call("GET", f"{A}/api/alerts/settings")
+    check("2.9: avbrottsnotiser har standardvärden", al == {"provider": True, "recording": True, "box_hours": 0}, al)
+    s, bad = call("PUT", f"{A}/api/alerts/settings", {"box_hours": 5000})
+    check("2.9: orimlig tid nekas", s == 400, bad)
+    s, ok = call("PUT", f"{A}/api/alerts/settings", {"box_hours": 24, "recording": False})
+    check("2.9: inställningarna sparas", ok["box_hours"] == 24 and ok["recording"] is False, ok)
+    call("PUT", f"{A}/api/alerts/settings", {"box_hours": 0, "recording": True})
+    s, bad = call("POST", f"{A}/api/alerts/test")
+    check("2.9: testnotis skickas eller kräver notify-tjänst", s in (200, 400), (s, bad))
+
+    # Backup
+    s, prof = call("POST", f"{A}/api/profiles", {"name": "Backuptest", "emoji": "B", "pin": "4321"})
+    s, bk = call("GET", f"{A}/api/backup")
+    raw = json.dumps(bk)
+    check("2.9: kopian har rätt format", bk.get("format") == "tvhub-settings" and bk.get("profiles"), list(bk))
+    check("2.9: kopian innehåller inga koder, nycklar eller token", all(x not in raw for x in (
+        "pin_hash", "pin_salt", "token_hash", "ai_key", "adult_pin", "testpass", "testuser", "remote_token")), raw[:200])
+    check("2.9: profilen finns i kopian", any(p["name"] == "Backuptest" for p in bk["profiles"]))
+
+    call("DELETE", f"{A}/api/profiles/{prof['id']}")
+    s, r = call("POST", f"{A}/api/backup", bk)
+    check("2.9: import lyckas", s == 200 and r["profiler"] >= 1, (s, r))
+    s, data = call("GET", f"{A}/api/profiles")
+    back = [p for p in data["profiles"] if p["name"] == "Backuptest"]
+    check("2.9: profilen är tillbaka utan kod", len(back) == 1 and back[0]["has_pin"] is False, back)
+    s, r2 = call("POST", f"{A}/api/backup", bk)
+    s, data = call("GET", f"{A}/api/profiles")
+    check("2.9: ny import skapar inga dubbletter", len([p for p in data["profiles"] if p["name"] == "Backuptest"]) == 1)
+    s, bad = call("POST", f"{A}/api/backup", {"format": "annat"})
+    check("2.9: främmande fil nekas", s == 400, bad)
+    s, bad = call("POST", f"{A}/api/backup", {"format": "tvhub-settings", "version": 1, "profiles": "x"})
+    check("2.9: trasig kopia nekas", s == 400, bad)
+    call("DELETE", f"{A}/api/profiles/{back[0]['id']}")
+
+    # Webbadminen
+    s, html = call("GET", f"{A}/", raw=True)
+    page = html.decode()
+    check("2.9: webbadminen har backup och avbrottsnotiser", all(x in page for x in ("bk-export", "bk-file", "al-form", "al-test")))
+
+
+def version_291(ta, tb, pa, pb):
+    """2.9.1: Inte i Alla, Sport-flik, profilval och filmfilter via API:t."""
+    print("Version 2.9.1: kategorival")
+    s, cats = call("GET", f"{A}/api/categories?type=vod")
+    check("2.9.1: kategorierna har skip_all och suggest_sport", cats and all("skip_all" in c and "suggest_sport" in c for c in cats), cats[:1])
+    target = cats[0]["category_id"]
+    s, items0 = call("GET", f"{D}/device/browse?type=vod&limit=500", token=ta)
+    s, r = call("POST", f"{A}/api/categories/prefs", {"type": "vod", "changes": [{"category_id": target, "skip_all": True}]})
+    s, items1 = call("GET", f"{D}/device/browse?type=vod&limit=500", token=ta)
+    s, only = call("GET", f"{D}/device/browse?type=vod&skipped_only=1&limit=500", token=ta)
+    s, incat = call("GET", f"{D}/device/browse?type=vod&category_id={target}&limit=500", token=ta)
+    check("2.9.1: kategorin lämnar Alla", items1["total"] == items0["total"] - incat["total"] and incat["total"] > 0, (items0["total"], items1["total"], incat["total"]))
+    check("2.9.1: Sport-fliken visar kategorin", only["total"] == incat["total"], (only["total"], incat["total"]))
+    s, home = call("GET", f"{D}/device/home", token=ta)
+    flagged = [c for c in home["categories"]["vod"] if c["category_id"] == target]
+    check("2.9.1: appen får veta vilka kategorier som är utanför Alla", flagged and flagged[0]["skip_all"] is True, flagged)
+    # Profilval
+    s, data = call("GET", f"{A}/api/profiles")
+    owner = {p["name"]: p for p in data["profiles"]}["Själv"]["id"]
+    other = next(c["category_id"] for c in cats if c["category_id"] != target and c["count"] > 0 and not c["adult"])
+    s, r = call("POST", f"{A}/api/categories/prefs", {"type": "vod", "profile": owner, "changes": [{"category_id": other, "hidden": True}]})
+    s, home = call("GET", f"{D}/device/home", token=ta, profile=owner)
+    check("2.9.1: profilen ser inte sin dolda kategori", other not in [c["category_id"] for c in home["categories"]["vod"]], home["categories"]["vod"])
+    s, home2 = call("GET", f"{D}/device/home", token=ta)
+    s, adm = call("GET", f"{A}/api/categories?type=vod&profile={owner}")
+    check("2.9.1: admin ser profilens val", any(c["category_id"] == other and c["profile_hidden"] for c in adm), adm[:2])
+    call("POST", f"{A}/api/categories/prefs", {"type": "vod", "profile": owner, "changes": [], "reset": True})
+    s, home = call("GET", f"{D}/device/home", token=ta, profile=owner)
+    check("2.9.1: återställning ger tillbaka kategorin", other in [c["category_id"] for c in home["categories"]["vod"]])
+    # Filmfilter
+    s, o = call("PUT", f"{A}/api/categories/options", {"hide_sport_titles": True, "new_requires_poster": True})
+    check("2.9.1: filmfiltren sparas", o["hide_sport_titles"] and o["new_requires_poster"], o)
+    s, o = call("PUT", f"{A}/api/categories/options", {"hide_sport_titles": False, "new_requires_poster": False})
+    call("POST", f"{A}/api/categories/prefs", {"type": "vod", "changes": [{"category_id": target, "skip_all": None}]})
+    s, items2 = call("GET", f"{D}/device/browse?type=vod&limit=500", token=ta)
+    check("2.9.1: allt tillbaka när valet tas bort", items2["total"] == items0["total"], (items2["total"], items0["total"]))
+    s, html = call("GET", f"{A}/", raw=True)
+    page = html.decode()
+    check("2.9.1: webbadminen har profilval och Inte i Alla", all(x in page for x in ("cat-profile", "data-act=\"skip\"", "cat-suggest", "opt-poster")))
+
+
+def version_292():
+    """2.9.2: favoriter för alla eller valda profiler."""
+    print("Version 2.9.2: favoriter per profil")
+    s, extra = call("POST", f"{A}/api/profiles", {"name": "Favtest"})
+    s, pl = call("GET", f"{A}/api/favorites/profiles")
+    byname = {p["name"]: p for p in pl["profiles"]}
+    owner, kids, guest = byname["Själv"]["id"], extra["id"], byname["Gäst"]["id"]
+    check("2.9.2: profillistan markerar ägaren", byname["Själv"]["owner"] is True and byname["Gäst"]["guest"] is True, pl)
+    s, lib = call("GET", f"{A}/api/library/browse?type=vod&limit=10")
+    ids = [i["id"] for i in lib["items"]][:2]
+    x, y = ids[0], ids[1]
+    for p in (owner, kids):
+        for i in ids:
+            call("POST", f"{A}/api/favorites", {"type": "vod", "id": i, "on": False, "profile": p})
+
+    def favs(profile):
+        s, r = call("GET", f"{A}/api/favorites?profile={profile}")
+        return {i["id"]: i for i in r}
+    call("POST", f"{A}/api/favorites", {"type": "vod", "id": x, "profile": owner})
+    check("2.9.2: favorit för en vald profil", x in favs(owner) and x not in favs(kids) and favs(owner)[x]["profiles"] == [owner])
+    s, r = call("POST", f"{A}/api/favorites/assign", {"type": "vod", "id": x, "profiles": "all"})
+    check("2.9.2: visa för alla profiler (inte gäster)", x in favs(kids) and guest not in r["profiles"] and kids in r["profiles"], r)
+    s, r = call("POST", f"{A}/api/favorites/assign", {"type": "vod", "id": x, "profiles": [kids]})
+    check("2.9.2: bara valda profiler", x in favs(kids) and x not in favs(owner), (list(favs(owner)), r))
+    call("POST", f"{A}/api/favorites/assign", {"type": "vod", "id": x, "profiles": [owner]})
+    call("POST", f"{A}/api/favorites", {"type": "vod", "id": y, "profile": owner})
+    s, r = call("POST", f"{A}/api/favorites/copy", {"from": owner, "to": "all"})
+    check("2.9.2: kopiera alla favoriter", r["added"] >= 2 and x in favs(kids) and y in favs(kids), r)
+    s, r2 = call("POST", f"{A}/api/favorites/copy", {"from": owner, "to": [kids]})
+    check("2.9.2: kopiering skapar inga dubbletter", r2["added"] == 0, r2)
+    s, bad = call("POST", f"{A}/api/favorites/copy", {"from": 99999, "to": "all"})
+    check("2.9.2: okänd profil nekas", s in (400, 404), bad)
+    s, lib2 = call("GET", f"{A}/api/library/browse?type=vod&adult=1&limit=5")
+    adult_items = lib2.get("items") or []
+    if adult_items:
+        s, bad = call("POST", f"{A}/api/favorites/assign", {"type": "vod", "id": adult_items[0]["id"], "profiles": "all"})
+        check("2.9.2: vuxenfavoriter delas inte härifrån", s == 400, (s, bad))
+    for p in (owner, kids):
+        for i in ids:
+            call("POST", f"{A}/api/favorites", {"type": "vod", "id": i, "on": False, "profile": p})
+    call("DELETE", f"{A}/api/profiles/{kids}")
+    s, html = call("GET", f"{A}/", raw=True)
+    check("2.9.2: webbadminen har profilval för favoriter", all(w in html.decode() for w in ("fav-profile", "fav-copy", "fav-share")))
 
 
 if __name__ == "__main__":

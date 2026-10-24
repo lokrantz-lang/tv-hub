@@ -51,6 +51,11 @@ def latest(force=False):
         return _cache["latest"]
 
 
+def cached_latest():
+    """Senast kända version utan nätverksanrop."""
+    return _cache["latest"]
+
+
 def status():
     info = latest()
     return {"latest": info, "error": _cache["error"], "repo": CFG.get("app_repo")}

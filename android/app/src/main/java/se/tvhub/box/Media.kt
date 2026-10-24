@@ -70,6 +70,33 @@ object Media {
         prefs(context).edit().putStringSet("hidden", set).apply()
     }
 
+    /**
+     * Mappar som du dolt helt (alla lägen) för att slippa onödiga mappar. Gäller även undermapparna: de når man bara
+     * via mappen, och "Alla videor" och sökningen hoppar över den. Namnen sparas för listan där man visar dem igen.
+     */
+    fun excludedKeys(context: Context): Set<String> = prefs(context).getStringSet("excluded", emptySet()) ?: emptySet()
+
+    fun excludedNames(context: Context): Map<String, String> = try {
+        val o = JSONObject(prefs(context).getString("excluded_names", "{}") ?: "{}")
+        o.keys().asSequence().associateWith { o.optString(it) }
+    } catch (_: Exception) {
+        emptyMap()
+    }
+
+    fun setExcluded(context: Context, key: String, label: String, excluded: Boolean) {
+        val set = HashSet(excludedKeys(context))
+        val names = JSONObject()
+        excludedNames(context).forEach { (k, v) -> names.put(k, v) }
+        if (excluded) {
+            set.add(key)
+            names.put(key, label)
+        } else {
+            set.remove(key)
+            names.remove(key)
+        }
+        prefs(context).edit().putStringSet("excluded", set).putString("excluded_names", names.toString()).apply()
+    }
+
     /** Får mappen visas i läget boxen är i? */
     fun visible(context: Context, e: Entry): Boolean = Prefs(context).adultMode || !e.hidden
 
@@ -86,14 +113,18 @@ object Media {
      * Favoriter från Mina media. Sparas bara på boxen (inte i Home Assistant).
      * NAS-favoriter syns som andra favoriter. USB-favoriter bara i vuxenläget med historik påslagen.
      */
-    data class Fav(val entry: Entry, val sourceId: String, val sourceLabel: String, val usb: Boolean)
+    data class Fav(
+        val entry: Entry, val sourceId: String, val sourceLabel: String, val usb: Boolean,
+        /** Mapp som öppnas direkt i "Alla videor här" (alla undermappar) med den sortering som sparades. */
+        val flat: Boolean = false, val sort: String? = null,
+    )
 
     private fun favJson(f: Fav): JSONObject {
         val e = f.entry
         return JSONObject().put("key", e.key).put("name", e.name).put("folder", e.folder).put("kind", e.kind).put("ref", e.ref)
             .put("url", e.url).put("view", e.viewUrl).put("thumb", e.thumb).put("sub", e.subtitle).put("dur", e.durationMs ?: 0L)
             .put("date", e.date ?: 0L).put("source", f.sourceId).put("label", f.sourceLabel).put("usb", f.usb)
-            .put("hidden", e.hidden)
+            .put("hidden", e.hidden).put("flat", f.flat).put("sort", f.sort)
     }
 
     private fun favFrom(o: JSONObject): Fav {
@@ -104,7 +135,8 @@ object Media {
             durationMs = o.optLong("dur").takeIf { it > 0 }, date = o.optLong("date").takeIf { it > 0 },
             hidden = o.optBoolean("hidden"),
         )
-        return Fav(e, o.optString("source"), o.optString("label"), o.optBoolean("usb"))
+        return Fav(e, o.optString("source"), o.optString("label"), o.optBoolean("usb"),
+            flat = o.optBoolean("flat"), sort = str("sort"))
     }
 
     fun favorites(context: Context): List<Fav> = try {
@@ -123,7 +155,7 @@ object Media {
     fun isFavorite(context: Context, key: String): Boolean = favorites(context).any { it.entry.key == key }
 
     /** Lägger till eller tar bort. Returnerar true om den nu är favorit. */
-    fun toggleFavorite(context: Context, entry: Entry, source: Source): Boolean {
+    fun toggleFavorite(context: Context, entry: Entry, source: Source, flat: Boolean = false, sort: String? = null): Boolean {
         val list = favorites(context).toMutableList()
         val existing = list.indexOfFirst { it.entry.key == entry.key }
         if (existing >= 0) {
@@ -133,7 +165,7 @@ object Media {
         }
         // Det som sparas som favorit i vuxenläget (eller är dolt/vuxenmärkt) förblir dolt i vanligt läge.
         val hide = entry.hidden || Prefs(context).adultMode
-        list.add(0, Fav(entry.copy(parent = null, hidden = hide), source.id, source.label, source is UsbSource))
+        list.add(0, Fav(entry.copy(parent = null, hidden = hide), source.id, source.label, source is UsbSource, flat = flat && entry.folder, sort = sort))
         saveFavorites(context, list)
         return true
     }
@@ -178,7 +210,7 @@ object Media {
                         nameDate(e.title) ?: parseDate(e.date))
                     else -> null
                 }
-            }.filter { it.url != null || it.folder }
+            }.filter { it.url != null || it.folder }.filterNot { it.folder && it.key in excludedKeys(context) }
         }
     }
 
@@ -297,12 +329,14 @@ object Media {
                     }
                 }
             }
-            return out
+            val excluded = excludedKeys(context)
+            return if (excluded.isEmpty()) out else out.filterNot { it.folder && it.key in excluded }
         }
     }
 
     /**
-     * "Alla videor": videorna i mappen och alla undermappar (dolda mappar bara i vuxenläget), nyast först.
+     * "Alla videor": videorna i mappen och alla undermappar (helt dolda mappar hoppas över, dolda mappar finns bara i vuxenläget).
+     * Sorteras av den som visar listan.
      * Blockerar. progress(klara mappar, kända mappar).
      */
     fun allVideos(context: Context, source: Source, ref: String, progress: (Int, Int) -> Unit): List<Entry> {
@@ -332,19 +366,40 @@ object Media {
             done++
             progress(done, known)
         }
-        return videos.distinctBy { it.url }.sortedByDescending { it.date ?: 0L }
+        return videos.distinctBy { it.url }
     }
 
-    /** Mappar först, sedan efter namn (naturlig ordning) eller datum (nyast först). */
-    /** Sortering: "name", "date" (nyast först), "size" (störst först) eller "length" (längst först). Mappar först, alltid på namn. */
-    fun sort(list: List<Entry>, mode: String): List<Entry> {
-        val folders = list.filter { it.folder }.sortedWith(compareBy(naturalOrder) { it.name })
+    /** Sorteringar: nyckel → rubrik. Nyckeln är fält_riktning, t.ex. "date_desc" (nyast först). */
+    val SORTS = listOf(
+        "name_asc" to "Namn A–Ö", "name_desc" to "Namn Ö–A",
+        "date_desc" to "Datum, nyast först", "date_asc" to "Datum, äldst först",
+        "size_desc" to "Storlek, störst först", "size_asc" to "Storlek, minst först",
+        "length_desc" to "Längd, längst först", "length_asc" to "Längd, kortast först",
+    )
+
+    fun sortLabel(key: String): String = SORTS.firstOrNull { it.first == key }?.second ?: SORTS.first().second
+
+    /** Mappar först (på namn, i samma riktning), sedan filerna. Filer utan datum/storlek/längd hamnar sist. */
+    fun sort(list: List<Entry>, key: String): List<Entry> {
+        val desc = key.endsWith("_desc")
+        val field = key.substringBefore('_')
+        val byName = compareBy<Entry, String>(naturalOrder) { it.name }
+        val nameOrder: Comparator<Entry> = if (desc && field == "name") byName.reversed() else byName
+        val folders = list.filter { it.folder }.sortedWith(nameOrder)
         val rest = list.filter { !it.folder }
-        val sorted = when (mode) {
-            "date" -> rest.sortedByDescending { it.date ?: 0 }
-            "size" -> rest.sortedWith(compareByDescending<Entry> { it.sizeBytes ?: -1L }.then(compareBy(naturalOrder) { it.name }))
-            "length" -> rest.sortedWith(compareByDescending<Entry> { it.durationMs ?: -1L }.then(compareBy(naturalOrder) { it.name }))
-            else -> rest.sortedWith(compareBy(naturalOrder) { it.name })
+        fun value(e: Entry): Long? = when (field) {
+            "date" -> e.date
+            "size" -> e.sizeBytes
+            "length" -> e.durationMs
+            else -> null
+        }
+        val sorted = if (field == "name") {
+            rest.sortedWith(nameOrder)
+        } else {
+            val known = rest.filter { value(it) != null }
+            val unknown = rest.filter { value(it) == null }.sortedWith(byName)
+            val order = if (desc) compareByDescending<Entry> { value(it) } else compareBy<Entry> { value(it) }
+            known.sortedWith(order.then(byName)) + unknown
         }
         return folders + sorted
     }

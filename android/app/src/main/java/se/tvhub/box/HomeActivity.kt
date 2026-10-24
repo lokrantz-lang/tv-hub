@@ -999,14 +999,27 @@ class HomeActivity : Activity(), CardListener {
             if (favorites(data).isNotEmpty()) rows.add(Row("★ Favoriter", key = "fav"))
             rows.add(Row("Nytt tillagt", key = "new"))
             val cats = data.optJSONObject("categories")?.optJSONArray(type) ?: JSONArray()
+            // Kategorier som webbadminen markerat "Inte i Alla" (t.ex. sport) samlas i fliken Sport.
+            if ((0 until cats.length()).any { cats.optJSONObject(it)?.optBoolean("skip_all") == true }) {
+                rows.add(Row("Sport", key = "sport"))
+            }
             for (i in 0 until cats.length()) {
                 val c = cats.optJSONObject(i) ?: continue
                 rows.add(Row(c.optString("name"), key = "cat:${c.optString("category_id")}", payload = c.optString("category_id")))
             }
             chipAdapter.submit(rows)
-            // Startkategori från webbadminen (Kategorier → Start).
+            // Startkategori från webbadminen (Kategorier → Start), eller fliken du senast använde.
             data.optJSONObject("start_categories")?.optStringOrNull(type)?.let { id ->
                 rows.firstOrNull { it.key == "cat:$id" }?.let { chipKey = it.key; categoryId = id }
+            }
+            if (prefs.rememberTab) {
+                prefs.lastTab(type)?.let { saved ->
+                    rows.firstOrNull { it.key == saved }?.let {
+                        chipKey = it.key
+                        categoryId = it.payload as? String
+                        applyChipParams(it.key)
+                    }
+                }
             }
             chipAdapter.select(chipKey)
             load(reset = true)
@@ -1051,18 +1064,26 @@ class HomeActivity : Activity(), CardListener {
             handler.postDelayed(task, 450)
         }
 
+        /** Filter som hör till fliken: Nytt tillagt (bara nya) och Sport (kategorier utanför Alla). */
+        private fun applyChipParams(key: String) {
+            params.remove("new_only")
+            params.remove("skipped_only")
+            if (key == "new") {
+                params["sort"] = "added"
+                params["new_only"] = "1"
+            } else if (key == "sport") {
+                params["skipped_only"] = "1"
+            }
+        }
+
         private fun selectChip(row: Row, focusGrid: Boolean) {
             chipTask?.let { handler.removeCallbacks(it) }
             if (row.key != chipKey) {
                 chipKey = row.key
                 chipAdapter.select(row.key)
                 categoryId = row.payload as? String
-                if (row.key == "new") {
-                    params["sort"] = "added"
-                    params["new_only"] = "1"
-                } else {
-                    params.remove("new_only")
-                }
+                applyChipParams(row.key)
+                if (prefs.rememberTab) prefs.setLastTab(type, row.key)
                 load(reset = true, focusFirst = focusGrid)
             } else if (focusGrid) {
                 focusEntry()
@@ -1210,7 +1231,7 @@ class HomeActivity : Activity(), CardListener {
             when (e.kind) {
                 "folder" -> {
                     showPage("media")
-                    mediaPage?.openFolder(f.sourceId, e.ref, e.name)
+                    if (f.flat) mediaPage?.openFlat(f.sourceId, e.ref, e.name, f.sort) else mediaPage?.openFolder(f.sourceId, e.ref, e.name)
                 }
                 "video" -> {
                     val url = e.url ?: return
@@ -1248,11 +1269,17 @@ class HomeActivity : Activity(), CardListener {
         // ---------- sortering och filter (samma som i det klassiska utseendet)
 
         private fun sortOptions(): List<Pair<String, String>> = if (type == "series") {
-            listOf("added" to "Senast tillagda", "rating" to "Betyg", "year" to "Årtal", "name" to "Namn")
+            listOf(
+                "added" to "Senast tillagda", "added_asc" to "Äldst tillagda", "rating" to "Betyg",
+                "year" to "Årtal, nyast först", "year_asc" to "Årtal, äldst först",
+                "name" to "Namn A–Ö", "name_desc" to "Namn Ö–A", "poster" to "Med affisch först",
+            )
         } else {
             listOf(
-                "added" to "Senast tillagda", "rating" to "Betyg", "year" to "Årtal",
-                "duration" to "Längd, kortast först", "duration_desc" to "Längd, längst först", "name" to "Namn",
+                "added" to "Senast tillagda", "added_asc" to "Äldst tillagda", "rating" to "Betyg",
+                "year" to "Årtal, nyast först", "year_asc" to "Årtal, äldst först",
+                "duration" to "Längd, kortast först", "duration_desc" to "Längd, längst först",
+                "name" to "Namn A–Ö", "name_desc" to "Namn Ö–A", "poster" to "Med affisch först",
             )
         }
 
@@ -1985,7 +2012,6 @@ class HomeActivity : Activity(), CardListener {
         private val gridManager: GridLayoutManager
         private val columns: Int
         private var style = prefs.viewStyle("media")
-        private var sortMode = "name"   // name, date, size, length
         private var sources: List<Media.Source> = emptyList()
         private var source: Media.Source? = null
         private val stack = ArrayList<Pair<String, String>>()  // (ref, namn) från roten och nedåt
@@ -1997,6 +2023,12 @@ class HomeActivity : Activity(), CardListener {
 
         /** Visar "Alla videor" (alla undermappar, nyast först) just nu? */
         private fun flat(): Boolean = stack.lastOrNull()?.first?.startsWith("flat:") == true
+
+        /** Sökresultat (filnamn genom alla mappar) visas som "Alla videor här". */
+        private fun search(): Boolean = stack.lastOrNull()?.first?.startsWith("search:") == true
+
+        /** Sorteringen som gäller just nu: egen för mappar och egen för "Alla videor här" och sökning (sparas). */
+        private fun sortKey(): String = if (flat() || search()) prefs.mediaSortFlat else prefs.mediaSort
 
         private fun openAll(ref: String, name: String) {
             stack.add("flat:$ref" to "Alla videor i $name")
@@ -2024,16 +2056,16 @@ class HomeActivity : Activity(), CardListener {
                 }
             }
             sortButton.setOnClickListener {
-                val modes = listOf("name", "date", "size", "length")
-                val labels = listOf("Namn", "Datum (nyast först)", "Storlek (störst först)", "Längd (längst först)",
-                    "Alla videor i undermapparna, nyast först")
-                Look.choose(this@HomeActivity, "Sortera", labels, if (flat()) 4 else modes.indexOf(sortMode).coerceAtLeast(0)) { which ->
-                    when (which) {
-                        4 -> if (!flat()) stack.lastOrNull()?.let { (ref, name) -> openAll(ref, name) }
-                        else -> {
-                            sortMode = modes[which]
-                            if (flat()) onBack() else { render(); ensureDurations() }
-                        }
+                val keys = Media.SORTS.map { it.first }
+                val labels = Media.SORTS.map { it.second } + (if (flat() || search()) emptyList() else listOf("Alla videor i undermapparna"))
+                val current = keys.indexOf(sortKey()).coerceAtLeast(0)
+                Look.choose(this@HomeActivity, "Sortera", labels, current) { which ->
+                    if (which >= keys.size) {
+                        stack.lastOrNull()?.let { (ref, name) -> openAll(ref, name) }
+                    } else {
+                        if (flat() || search()) prefs.mediaSortFlat = keys[which] else prefs.mediaSort = keys[which]
+                        render()
+                        ensureDurations()
                     }
                 }
             }
@@ -2051,11 +2083,11 @@ class HomeActivity : Activity(), CardListener {
                     }
                 }
             }
-            addButton.setOnClickListener { addServer() }
+            addButton.setOnClickListener { moreMenu() }
             Look.focusGrow(sortButton, 1.04f)
             Look.focusGrow(viewButton, 1.04f)
             Look.focusGrow(addButton, 1.04f)
-            addButton.text = "Lägg till NAS…"
+            addButton.text = "Mer…"
             applyStyle()
             updateButtons()
         }
@@ -2223,19 +2255,29 @@ class HomeActivity : Activity(), CardListener {
             val (ref, _) = stack.lastOrNull() ?: return
             val t = ++token
             info.text = "Hämtar…"
-            val all = ref.startsWith("flat:")
-            val cached = if (all) allCache[ref] else null
+            val searchQuery = if (ref.startsWith("search:")) ref.removePrefix("search:") else null
+            // Alla videor under en mapp (eller hela källan vid sökning) hämtas en gång och sparas tills man byter källa.
+            val crawlRef = when {
+                ref.startsWith("flat:") -> ref.removePrefix("flat:")
+                searchQuery != null -> s.rootRef
+                else -> null
+            }
+            val cacheKey = crawlRef?.let { "flat:$it" }
+            val cached = cacheKey?.let { allCache[it] }
             if (cached != null) {
-                entries = cached
+                entries = filterSearch(cached, searchQuery)
                 render()
                 if (focusFirst) focusEntry()
+                ensureDurations()
                 return
             }
             Api.async({
-                if (all) {
-                    Media.allVideos(this@HomeActivity, s, ref.removePrefix("flat:")) { done, known ->
+                if (crawlRef != null) {
+                    val videos = Media.allVideos(this@HomeActivity, s, crawlRef) { done, known ->
                         handler.post { if (t == token) info.text = "Hämtar alla videor: $done av $known mappar…" }
-                    }.also { allCache[ref] = it }
+                    }
+                    allCache[cacheKey!!] = videos
+                    filterSearch(videos, searchQuery)
                 } else {
                     s.list(ref)
                 }
@@ -2261,7 +2303,7 @@ class HomeActivity : Activity(), CardListener {
          */
         private fun ensureDurations() {
             val s = source as? Media.UsbSource ?: return
-            if (flat() || !(sortMode == "length" || prefs.mediaMeta)) return
+            if (!(sortKey().startsWith("length") || prefs.mediaMeta)) return
             val missing = entries.filter { it.kind == "video" && it.durationMs == null && it.url != null }
             if (missing.isEmpty()) return
             val t = token
@@ -2279,8 +2321,15 @@ class HomeActivity : Activity(), CardListener {
             }
         }
 
+        /** Sökning: alla ord ska finnas i filnamnet (gemener). */
+        private fun filterSearch(list: List<Media.Entry>, query: String?): List<Media.Entry> {
+            if (query == null) return list
+            val words = query.lowercase().split(' ').filter { it.isNotEmpty() }
+            return list.filter { e -> val n = e.name.lowercase(); words.all { it in n } }
+        }
+
         private fun render() {
-            val visible = if (flat()) entries else Media.sort(entries.filter { Media.visible(this@HomeActivity, it) }, sortMode)
+            val visible = Media.sort(if (flat() || search()) entries else entries.filter { Media.visible(this@HomeActivity, it) }, sortKey())
             applyStyle()
             gridAdapter.submit(visible.map { card(it) })
             grid.scrollToPosition(0)
@@ -2331,12 +2380,7 @@ class HomeActivity : Activity(), CardListener {
         }
 
         private fun updateButtons() {
-            sortButton.text = "Sortera: " + if (flat()) "Alla videor" else when (sortMode) {
-                "date" -> "Datum"
-                "size" -> "Storlek"
-                "length" -> "Längd"
-                else -> "Namn"
-            }
+            sortButton.text = "Sortera: " + Media.sortLabel(sortKey())
         }
 
         private fun shown(): List<Media.Entry> = gridAdapter.cards.mapNotNull { it.payload as? Media.Entry }
@@ -2377,7 +2421,7 @@ class HomeActivity : Activity(), CardListener {
             when (e.kind) {
                 "folder" -> {
                     options.add("Öppna" to { onCardClick(card, shelf) })
-                    options.add("Alla videor här, nyast först" to { openAll(e.ref, e.name) })
+                    options.add("Alla videor här (alla undermappar)" to { openAll(e.ref, e.name) })
                     options.add("Bildspel av mappen" to { slideshow(e) })
                     if (e.hidden) {
                         if (!Media.isAdultName(e.name)) options.add("Visa mappen igen" to {
@@ -2385,7 +2429,13 @@ class HomeActivity : Activity(), CardListener {
                             load()
                         })
                     } else {
-                        options.add("Dölj mappen" to {
+                        options.add("Dölj mappen helt (även undermappar)" to {
+                            Media.setExcluded(this@HomeActivity, e.key, "${e.name} (${source?.label ?: ""})", true)
+                            allCache.clear()
+                            Toast.makeText(this@HomeActivity, "Dold i alla lägen. Visa igen: Mer… → Dolda mappar.", Toast.LENGTH_LONG).show()
+                            load()
+                        })
+                        options.add("Dölj mappen (syns bara i vuxenläget)" to {
                             Media.setHidden(this@HomeActivity, e.key, true)
                             Toast.makeText(this@HomeActivity, "Dold. Syns bara i vuxenläget.", Toast.LENGTH_LONG).show()
                             load()
@@ -2413,12 +2463,19 @@ class HomeActivity : Activity(), CardListener {
             }
             source?.let { src ->
                 val fav = Media.isFavorite(this@HomeActivity, e.key)
-                options.add((if (fav) "★ Ta bort ur favoriter" else "☆ Lägg till i favoriter") to {
-                    val on = Media.toggleFavorite(this@HomeActivity, e, src)
+                fun toggle(flat: Boolean) {
+                    val on = Media.toggleFavorite(this@HomeActivity, e, src, flat = flat, sort = if (flat) prefs.mediaSortFlat else null)
                     val group = if (src is Media.UsbSource) "USB-disk" else "NAS"
                     Toast.makeText(this@HomeActivity, if (on) "★ Finns under Favoriter → $group" else "Borttagen ur favoriter",
                         Toast.LENGTH_SHORT).show()
                     render()
+                }
+                options.add((if (fav) "★ Ta bort ur favoriter" else "☆ Lägg till i favoriter") to {
+                    if (!fav && e.folder) {
+                        Look.choose(this@HomeActivity, "Öppna favoriten som", listOf("Mapp för mapp", "Alla videor under mappen (med vald sortering)")) { toggle(it == 1) }
+                    } else {
+                        toggle(false)
+                    }
                 })
             }
             if (options.isEmpty()) return
@@ -2441,6 +2498,69 @@ class HomeActivity : Activity(), CardListener {
             if (ref != s.rootRef) stack.add(ref to name)
             chipAdapter.select("src:${s.id}")
             load(focusFirst = true)
+        }
+
+        /** Från Favoriter: en mapp där alla undermappars videor visas direkt, med den sortering som sparades. */
+        fun openFlat(sourceId: String, ref: String, name: String, sort: String?) {
+            refreshSources(discover = false)
+            val s = sources.firstOrNull { it.id == sourceId }
+            if (s == null) {
+                Toast.makeText(this@HomeActivity, if (sourceId.startsWith("usb:")) "Sätt i USB-disken först." else "NAS:en hittas inte just nu.",
+                    Toast.LENGTH_LONG).show()
+                return
+            }
+            source = s
+            allCache.clear()
+            stack.clear()
+            stack.add(s.rootRef to s.label)
+            if (ref != s.rootRef) stack.add(ref to name)
+            if (sort != null && Media.SORTS.any { it.first == sort }) prefs.mediaSortFlat = sort
+            stack.add("flat:$ref" to "Alla videor i $name")
+            chipAdapter.select("src:${s.id}")
+            load(focusFirst = true)
+        }
+
+        /** Mer…: sök, dolda mappar och lägg till NAS. */
+        private fun moreMenu() {
+            val hiddenCount = Media.excludedKeys(this@HomeActivity).size
+            val options = ArrayList<Pair<String, () -> Unit>>()
+            if (source != null) options.add("Sök i Mina media…" to { askSearch() })
+            if (hiddenCount > 0) options.add("Dolda mappar ($hiddenCount)…" to { showExcluded() })
+            options.add("Lägg till NAS…" to { addServer() })
+            Look.choose(this@HomeActivity, "Mer", options.map { it.first }) { options[it].second() }
+        }
+
+        private fun showExcluded() {
+            val names = Media.excludedNames(this@HomeActivity)
+            val keys = Media.excludedKeys(this@HomeActivity).toList().sortedBy { names[it] ?: it }
+            if (keys.isEmpty()) return
+            Look.choose(this@HomeActivity, "Dolda mappar: välj en för att visa den igen", keys.map { names[it] ?: it }) { which ->
+                Media.setExcluded(this@HomeActivity, keys[which], "", false)
+                allCache.clear()
+                Toast.makeText(this@HomeActivity, "Visas igen", Toast.LENGTH_SHORT).show()
+                if (source != null) load()
+            }
+        }
+
+        private fun askSearch() {
+            val input = android.widget.EditText(this@HomeActivity)
+            input.hint = "Del av filnamnet"
+            input.inputType = android.text.InputType.TYPE_CLASS_TEXT
+            val pad = Look.dp(this@HomeActivity, 20)
+            input.setPadding(pad, pad / 2, pad, pad / 2)
+            android.app.AlertDialog.Builder(this@HomeActivity)
+                .setTitle("Sök i ${source?.label ?: "Mina media"}")
+                .setView(input)
+                .setPositiveButton("Sök") { _, _ ->
+                    val q = input.text.toString().trim()
+                    if (q.isEmpty()) return@setPositiveButton
+                    if (search()) stack.removeAt(stack.size - 1)
+                    stack.add("search:$q" to "Sök: $q")
+                    load(focusFirst = true)
+                }
+                .setNegativeButton("Avbryt", null)
+                .show()
+            input.requestFocus()
         }
 
         /** Bildspel av alla bilder i en mapp (inte undermappar). */
@@ -2562,6 +2682,8 @@ class HomeActivity : Activity(), CardListener {
             "Mobilläge (för telefon)",
             "Nytt per dag",
             "Starta på senaste kanalen: " + if (prefs.startOnLastChannel) "På" else "Av",
+            "Ruta för nästa avsnitt: " + if (prefs.showNextCard) "På" else "Av",
+            "Kom ihåg senaste fliken i Filmer och Serier: " + if (prefs.rememberTab) "På" else "Av",
         )
         Look.choose(this, "Inställningar", labels) { which ->
             when (which) {
@@ -2591,6 +2713,16 @@ class HomeActivity : Activity(), CardListener {
                     prefs.startOnLastChannel = !prefs.startOnLastChannel
                     Toast.makeText(this, if (prefs.startOnLastChannel) "Appen startar på senaste kanalen" else "Appen startar på Hem",
                         Toast.LENGTH_SHORT).show()
+                }
+                12 -> {
+                    prefs.showNextCard = !prefs.showNextCard
+                    Toast.makeText(this, if (prefs.showNextCard) "Rutan för nästa avsnitt visas" else "Rutan för nästa avsnitt visas inte (nästa spelas ändå automatiskt)",
+                        Toast.LENGTH_LONG).show()
+                }
+                13 -> {
+                    prefs.rememberTab = !prefs.rememberTab
+                    Toast.makeText(this, if (prefs.rememberTab) "Filmer och Serier öppnar där du senast var" else "Filmer och Serier öppnar på startkategorin",
+                        Toast.LENGTH_LONG).show()
                 }
                 9 -> Look.confirm(this, "Byta till mobilläge?", "Mobilläget är gjort för touch på en telefon. På en TV-box behövs det inte.", "Byt") {
                     prefs.layoutMode = "mobile"

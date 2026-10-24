@@ -165,6 +165,13 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/__timeshift_html":
             STATE["timeshift_html"] = q.get("on") == "1"
             return self.send(200, {"ok": True})
+        if url.path == "/__timeshift_mode":
+            STATE["timeshift_mode"] = q.get("mode", "ok")
+            STATE["expect_start"] = q.get("start")
+            STATE["timeshift_calls"] = []
+            return self.send(200, {"ok": True})
+        if url.path == "/__timeshift_calls":
+            return self.send(200, {"calls": STATE.get("timeshift_calls", [])})
         if url.path == "/__last_timeshift":
             return self.send(200, {"path": STATE.get("last_timeshift")})
         if url.path == "/__mode":
@@ -267,13 +274,25 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, APK, "application/vnd.android.package-archive")
 
         parts = url.path.strip("/").split("/")
+
+        def timeshift_reply(form, start):
+            STATE.setdefault("timeshift_calls", []).append(f"{form}|{start}")
+            mode = STATE.get("timeshift_mode", "ok")
+            if STATE.get("timeshift_html"):
+                return self.send(200, b"<html><body>Programmet finns inte i arkivet</body></html>", "text/html")
+            if (mode == "php_only" and form == "path") or (mode == "expect" and start != STATE.get("expect_start")) or mode == "none":
+                return self.send(200, b"", "video/mp2t")
+            return self.send(200, b"\x47" * 188 * 100, "video/mp2t")
+
+        if url.path == "/streaming/timeshift.php":
+            if q.get("username") != USER or q.get("password") != PASS:
+                return self.send(403, b"forbidden", "text/plain")
+            return timeshift_reply("php", q.get("start"))
         if len(parts) == 6 and parts[0] == "timeshift":
             if parts[1] != USER or parts[2] != PASS:
                 return self.send(403, b"forbidden", "text/plain")
             STATE["last_timeshift"] = url.path
-            if STATE.get("timeshift_html"):
-                return self.send(200, b"<html><body>Programmet finns inte i arkivet</body></html>", "text/html")
-            return self.send(200, b"\x47" * 188 * 100, "video/mp2t")
+            return timeshift_reply("path", parts[4])
         if len(parts) == 4 and parts[0] in ("live", "movie", "series"):
             if parts[1] != USER or parts[2] != PASS:
                 return self.send(403, b"forbidden", "text/plain")
