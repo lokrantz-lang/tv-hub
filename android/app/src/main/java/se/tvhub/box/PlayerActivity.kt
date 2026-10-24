@@ -112,6 +112,10 @@ class PlayerActivity : Activity() {
 
         private const val DEFAULT_HEARTBEAT_MS = 10_000L
         private const val STALL_REPORT_MIN_MS = 700L
+        /** Ingen bild så här länge efter start: avbryt med ett felmeddelande i stället för att hänga. */
+        private const val NO_PICTURE_MS = 25_000L
+        /** Håll in Tillbaka så här länge för att tvinga stängning av spelaren. */
+        private const val FORCE_CLOSE_MS = 3_000L
         private const val SEEK_STEP_MS = 60_000L
         private const val LIVE_EDGE_MS = 30_000L
     }
@@ -125,6 +129,25 @@ class PlayerActivity : Activity() {
     private lateinit var spinner: ProgressBar
     private lateinit var bandwidthMeter: DefaultBandwidthMeter
     private val handler = Handler(Looper.getMainLooper())
+    private var pictureShown = false
+
+    /** Övervakare: ingen bild efter NO_PICTURE_MS (svart skärm, fast i buffring). Ljud utan video (radio) berörs inte. */
+    private val noPictureCheck = Runnable {
+        val p = player
+        if (closing || casting || p == null || pictureShown || fatalShown) return@Runnable
+        val hasVideo = p.currentTracks.groups.any { it.type == C.TRACK_TYPE_VIDEO }
+        val audioOnly = p.playbackState == Player.STATE_READY && !hasVideo
+        if (audioOnly) return@Runnable
+        Api.report("error", sessionId, metrics().put("code", "NO_PICTURE").put("message", "Ingen bild efter ${NO_PICTURE_MS / 1000} s"))
+        releasePlayer()
+        showFatal("Ingen bild efter ${NO_PICTURE_MS / 1000} sekunder.\nFilen eller strömmen går inte att spela på den här boxen.")
+    }
+
+    /** Håll in Tillbaka: stäng spelaren även om något annat hänger sig. */
+    private val forceClose = Runnable {
+        close("forced")
+        finish()
+    }
     private val timeFormat = SimpleDateFormat("HH:mm", Locale("sv", "SE"))
     private var player: ExoPlayer? = null
 
@@ -288,6 +311,11 @@ class PlayerActivity : Activity() {
                 Player.STATE_ENDED -> onEnded()
                 else -> Unit
             }
+        }
+
+        override fun onRenderedFirstFrame() {
+            pictureShown = true
+            handler.removeCallbacks(noPictureCheck)
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -698,6 +726,7 @@ class PlayerActivity : Activity() {
         releasePlayer()
         currentUrl = url
         wasReady = false
+        pictureShown = false
         stallStart = 0L
         val http = DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
@@ -767,10 +796,13 @@ class PlayerActivity : Activity() {
         player = newPlayer
         handler.removeCallbacks(heartbeat)
         handler.postDelayed(heartbeat, heartbeatMs)
+        handler.removeCallbacks(noPictureCheck)
+        handler.postDelayed(noPictureCheck, NO_PICTURE_MS)
     }
 
     private fun releasePlayer() {
         handler.removeCallbacks(heartbeat)
+        handler.removeCallbacks(noPictureCheck)
         player?.let {
             if (type != "live" && it.currentPosition > 0) lastPositionMs = it.currentPosition
             if (type == "file" && it.currentPosition > 0) saveFilePosition(it)
@@ -864,6 +896,21 @@ class PlayerActivity : Activity() {
             "error", sessionId,
             metrics().put("code", error.errorCodeName).put("message", error.message ?: ""),
         )
+        val containerError = error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+            error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
+        if (containerError && type == "catchup") {
+            // Källan skickade något som inte är video för programmet. Andra portaler ger samma svar.
+            releasePlayer()
+            showFatal("Leverantören skickade ingen video för det här programmet.\nDet kan saknas i arkivet. Försök med ett annat program.")
+            return
+        }
+        if (containerError && type == "live" && shiftStart > 0) {
+            // Gå tillbaka till direktsändningen i stället för att försöka samma arkivbit igen.
+            releasePlayer()
+            Toast.makeText(this, "Arkivet gick inte att spela. Tillbaka till direktsändningen.", Toast.LENGTH_LONG).show()
+            goLive()
+            return
+        }
         if (type == "live" && shiftStart == 0L) {
             // En ny anslutning hamnar i direktsändningen; en paus i bufferten går förlorad.
             pausedAt = 0L
@@ -1332,6 +1379,14 @@ class PlayerActivity : Activity() {
     // ---------------------------------------------------------------- fjärrkontroll
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                handler.removeCallbacks(forceClose)
+                handler.postDelayed(forceClose, FORCE_CLOSE_MS)
+            } else if (event.action == KeyEvent.ACTION_UP) {
+                handler.removeCallbacks(forceClose)
+            }
+        }
         val arrow = event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
         if (type != "live" && arrow && !fatalShown) {
             if (event.action == KeyEvent.ACTION_DOWN) {

@@ -501,6 +501,14 @@ SCHEMA = [
         ('Sverige, fotbollslandslagen', 'team', '["sverige + fotboll", "sweden + football", "sverige + landskamp", "damlandslaget", "herrlandslaget", "sverige + em kval", "sverige + vm kval", "sverige + nations league", "blågult + fotboll"]',
          '["ishockey", "handboll", "bandy", "innebandy", "tre kronor", "damkronorna", "basket", "friidrott", "volleyboll"]', 0, 5, datetime('now'))
     """,
+    # version 13: hur länge vuxenläget får stå utan knapptryck, per box (minuter)
+    """
+    ALTER TABLE devices ADD COLUMN adult_idle_minutes INTEGER NOT NULL DEFAULT 15
+    """,
+    # version 14: vilka enheter som får hämta Home Assistant-nyckeln för Nabu Casa (bara telefonen)
+    """
+    ALTER TABLE devices ADD COLUMN remote_allowed INTEGER NOT NULL DEFAULT 0
+    """,
 ]
 
 

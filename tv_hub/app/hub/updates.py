@@ -13,6 +13,8 @@ from .config import CFG
 
 CHECK_EVERY_S = 30 * 60
 _lock = threading.Lock()
+_download_lock = threading.Lock()
+MAX_APK_BYTES = 200 * 1024 * 1024
 _cache = {"checked": 0.0, "latest": None, "error": None}
 
 
@@ -41,7 +43,7 @@ def latest(force=False):
             return None
         try:
             with urllib.request.urlopen(url, timeout=20) as response:
-                data = json.loads(response.read().decode("utf-8"))
+                data = json.loads(response.read(1_000_000).decode("utf-8"))
             _cache.update(latest={"version_code": int(data["versionCode"]),
                                   "version_name": str(data.get("versionName", ""))}, error=None)
         except Exception as exc:
@@ -59,18 +61,31 @@ def ensure_apk(version_code):
     path = _apk_path(version_code)
     if os.path.exists(path):
         return path
-    url = _url("tvhub.apk")
-    tmp = path + ".part"
-    with urllib.request.urlopen(url, timeout=120) as response, open(tmp, "wb") as fh:
-        while True:
-            chunk = response.read(256 * 1024)
-            if not chunk:
-                break
-            fh.write(chunk)
-    if os.path.getsize(tmp) < 100_000:
-        os.remove(tmp)
-        raise IOError("Nedladdad APK är för liten")
-    os.replace(tmp, path)
+    with _download_lock:  # en nedladdning åt gången; de som väntar får den färdiga filen
+        if os.path.exists(path):
+            return path
+        url = _url("tvhub.apk")
+        tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.part"
+        total = 0
+        try:
+            with urllib.request.urlopen(url, timeout=120) as response, open(tmp, "wb") as fh:
+                while True:
+                    chunk = response.read(256 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > MAX_APK_BYTES:
+                        raise IOError("Nedladdad APK är för stor")
+                    fh.write(chunk)
+            if os.path.getsize(tmp) < 100_000:
+                raise IOError("Nedladdad APK är för liten")
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
     # Rensa äldre versioner.
     for name in os.listdir(CFG["data_dir"]):
         if name.startswith("tvhub-") and name.endswith(".apk") and name != os.path.basename(path):

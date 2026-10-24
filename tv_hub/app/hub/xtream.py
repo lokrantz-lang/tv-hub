@@ -62,6 +62,9 @@ def tcp_probe(host, port, timeout):
         return False, None, f"{classify(exc)}: {exc}"
 
 
+MAX_API_BYTES = 128 * 1024 * 1024  # största svar från källans API (hela listor kan vara tiotals MB)
+
+
 class XtreamClient:
     def __init__(self, url, username, password, timeout=None):
         self.base = normalize_base(url)
@@ -88,7 +91,9 @@ class XtreamClient:
         start = time.perf_counter()
         try:
             with self._open(url, timeout or self.timeout) as response:
-                body = response.read()
+                body = response.read(MAX_API_BYTES + 1)
+                if len(body) > MAX_API_BYTES:
+                    raise XtreamError("too_large", "Svaret från källan är för stort", 0)
         except urllib.error.HTTPError as exc:
             ms = round((time.perf_counter() - start) * 1000)
             raise XtreamError(f"http_{exc.code}", f"HTTP {exc.code}", ms) from None

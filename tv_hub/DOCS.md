@@ -89,16 +89,15 @@ vad som kommer sedan och klockan.
 ## Dolt vuxenläge
 
 Kategorier med "For Adults", "Porn" eller "XXX" i namnet räknas som vuxeninnehåll. Under **Kategorier** i webbadminen
-kan en kategori markeras som *Alltid 18+* eller *Aldrig 18+*. I boxen: markera **Inställningar** och tryck **vänster tre gånger**.
+kan en kategori markeras som *Alltid 18+* eller *Aldrig 18+*. Hur läget slås på beskrivs inte här (förrådet är publikt). Ägaren har gesten i sina egna anteckningar.
 
-I vuxenläget döljs favoriter, Fortsätt titta, senaste kanaler och sedda. Tryck **höger tre gånger** på **Inställningar**
-för att visa dem, och igen för att dölja dem. Tittandet sparas alltid, men visas bara när du har valt att visa det.
-Läget stängs av efter 15 minuter utan aktivitet, efter högst 3 timmar och när appen eller boxen startas om.
+I vuxenläget döljs favoriter, Fortsätt titta, senaste kanaler och sedda. Ett dolt val visar dem och döljer dem igen. Tittandet sparas alltid, men visas bara när du har valt att visa det.
+Läget stängs av efter en tid utan aktivitet (15 minuter som standard, ändras per box i webbadminen under Boxar), efter högst 3 timmar och när appen eller boxen startas om.
 En box med innehållet *Utan vuxenläge* eller *Bara gruppen …* kan inte byta läge, och bara profiler med
 *Får använda vuxenläget* kan slå på det (för andra händer ingenting). Läget stängs av när någon byter profil.
 
 **PIN-kod (valfritt):** webbadminen, *Boxar → PIN-kod för vuxenläget*. Med en kod frågar boxen och telefonen efter
-den efter de tre trycken, på boxar där *Kräv kod för vuxenläget* är ikryssat. Utan kod fungerar det som förut. Koden sparas krypterad och kan bara bytas, inte visas.
+den när läget slås på, på boxar där *Kräv kod för vuxenläget* är ikryssat. Utan kod fungerar det som förut. Koden sparas krypterad och kan bara bytas, inte visas.
 Efter fem fel i rad går det inte att försöka igen på 5 minuter.
 
 ## Utseende i boxarna
@@ -152,8 +151,8 @@ Uppspelningen går inte via Toucan och räknas inte som en anslutning där.
   Hittas den inte: *Lägg till NAS…* uppe till höger och skriv in dess IP-adress.
 - **USB-disken** syns bara i **vuxenläget**. Den dyker upp när den sätts i. Första gången frågar boxen om TV Hub får läsa filer: svara *Tillåt*.
 - **Favoriter:** håll in OK på en mapp, video eller bild → *☆ Lägg till i favoriter*. De visas under *Favoriter* i grupperna
-  **NAS** och **USB-disk**. De sparas bara på den boxen. USB-favoriter syns bara i vuxenläget med historik påslagen (höger tre gånger på Inställningar).
-- **Mappar som på disken.** OK öppnar, Tillbaka går upp en mapp. *Sortera* (namn eller datum) och *Visa* fungerar som i Filmer.
+  **NAS** och **USB-disk**. De sparas bara på den boxen. USB-favoriter syns bara i vuxenläget med historik påslagen.
+- **Mappar som på disken.** OK öppnar, Tillbaka går upp en mapp. *Sortera* (namn, datum, storlek eller längd) och *Visa* fungerar som i Filmer. Under *Visa* finns också *Visa storlek och längd*, som visar dem vid titeln. På NAS:en kommer längden från mediaservern (om den anger den); på USB-disken läses den ur filerna i bakgrunden första gången och sparas.
 - **Film och video** spelas i TV Hubs spelare och fortsätter där du slutade. Filerna i en mapp spelas i ordning
   (t.ex. avsnitt). En `.srt` med samma namn som filmen läses in (USB).
 - **Bilder:** OK visar bilden, vänster/höger bläddrar, OK startar bildspelet. Håll in OK på en mapp för *Bildspel av mappen*.
@@ -265,11 +264,16 @@ Hemma pratar appen direkt med Home Assistant. Utanför hemmet går den via Nabu 
    Kopiera nyckeln och logga ut.
 3. I TV Hub (som du själv, administratör): *Boxar → Telefon utanför hemmet*. Fyll i Nabu Casa-adressen
    (*Inställningar → Home Assistant Cloud*, adressen under Fjärrstyrning) och nyckeln. Tryck *Spara* och *Testa vägen*.
-4. Para telefonen som en box, hemma på wifi. Appen hämtar uppgifterna för Nabu Casa automatiskt.
+4. Para telefonen som en box, hemma på wifi.
+5. I TV Hub: *Boxar*, hos telefonen kryssa i **Får hämta fjärråtkomst (Nabu Casa), bara för telefonen**. Bara enheter som du
+   har kryssat i får Home Assistant-nyckeln; TV-boxarna ska inte ha den. Appen hämtar sedan uppgifterna för Nabu Casa
+   automatiskt, nästa gång den är hemma på wifi. Tas krysset bort tappar enheten nyckeln vid nästa kontroll.
 
 - Bara anrop till TV Hub går via Nabu Casa. Videon kommer direkt från Toucan (2–4 GB per timme i HD på mobildata).
 - Toucan ser telefonens IP-adress när du tittar borta, och tittandet räknas som en anslutning.
-- Användaren `tvhub` är inte administratör. Ta bort nyckeln i Home Assistant om telefonen försvinner.
+- Användaren `tvhub` är inte administratör. Försvinner telefonen: ta bort telefonen under *Boxar* **och** ta bort nyckeln
+  (den långlivade åtkomsttoken) i Home Assistant. Att ta bort boxen i TV Hub återkallar inte en nyckel som redan kopierats.
+  Byt nyckel genom att skapa en ny token för `tvhub`, klistra in den under *Telefon utanför hemmet* och ta bort den gamla.
 
 **Chromecast:** tryck på bilden under en film eller ett avsnitt och välj *Casta*. Chromecasten hämtar videon
 direkt från Toucan och telefonen blir fjärrkontroll (paus, spola, sluta casta). Fortsätt titta sparas som vanligt.
@@ -284,6 +288,11 @@ direkt från Toucan och telefonen blir fjärrkontroll (paus, spola, sluta casta)
 - Webbadminen nås bara genom Home Assistant (och därmed Nabu Casa med din inloggning och tvåfaktor). Den svarar inte på andra adresser.
 - Vanliga användare i Home Assistant kan öppna tillägget (krävs för telefonen via Nabu Casa), men webbadminen visas bara för administratörer. Telefonen måste dessutom ha sin egen parningsnyckel.
 - Port 8099 är till för boxarna i hemnätet. Den kräver en nyckel som boxen får vid parning. Öppna **inte** porten i routern.
+- Webbadminen nekar om Home Assistant inte kan bekräfta vem du är (saknat användar-id eller uppslag som misslyckas). Kommer du inte in:
+  vänta en stund och ladda om, eller starta om Home Assistant.
+- Det som visas i webbadminen, i sensorn *TV Hub status* och i meddelanden till andra boxar nämner aldrig titeln på vuxeninnehåll (visas som 18+).
+- Profil-PIN är ett skydd i appen mellan familjemedlemmar, inte ett skydd i servern. Fem fel låser PIN-frågan i fem minuter.
+- Parningskoder, PIN-koder och bildproxyn har spärrar mot gissning och mot adresser i hemnätet.
 - Lösenordet till Toucan sparas i add-on:ens databas i Home Assistant, ingår i säkerhetskopiorna och visas aldrig i webbadminen.
 
 ## Inställningar

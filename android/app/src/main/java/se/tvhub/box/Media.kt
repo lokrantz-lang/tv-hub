@@ -34,6 +34,8 @@ object Media {
         val hidden: Boolean = false,
         /** "Alla videor": mappen filen ligger i. */
         val parent: String? = null,
+        /** Filstorlek i byte (NAS: ur serverns svar, USB: filens storlek). */
+        val sizeBytes: Long? = null,
     )
 
     interface Source {
@@ -91,6 +93,7 @@ object Media {
         return JSONObject().put("key", e.key).put("name", e.name).put("folder", e.folder).put("kind", e.kind).put("ref", e.ref)
             .put("url", e.url).put("view", e.viewUrl).put("thumb", e.thumb).put("sub", e.subtitle).put("dur", e.durationMs ?: 0L)
             .put("date", e.date ?: 0L).put("source", f.sourceId).put("label", f.sourceLabel).put("usb", f.usb)
+            .put("hidden", e.hidden)
     }
 
     private fun favFrom(o: JSONObject): Fav {
@@ -99,6 +102,7 @@ object Media {
             key = o.optString("key"), name = o.optString("name"), folder = o.optBoolean("folder"), kind = o.optString("kind"),
             ref = o.optString("ref"), url = str("url"), viewUrl = str("view"), thumb = str("thumb"), subtitle = str("sub"),
             durationMs = o.optLong("dur").takeIf { it > 0 }, date = o.optLong("date").takeIf { it > 0 },
+            hidden = o.optBoolean("hidden"),
         )
         return Fav(e, o.optString("source"), o.optString("label"), o.optBoolean("usb"))
     }
@@ -127,7 +131,9 @@ object Media {
             saveFavorites(context, list)
             return false
         }
-        list.add(0, Fav(entry.copy(parent = null), source.id, source.label, source is UsbSource))
+        // Det som sparas som favorit i vuxenläget (eller är dolt/vuxenmärkt) förblir dolt i vanligt läge.
+        val hide = entry.hidden || Prefs(context).adultMode
+        list.add(0, Fav(entry.copy(parent = null, hidden = hide), source.id, source.label, source is UsbSource))
         saveFavorites(context, list)
         return true
     }
@@ -144,7 +150,11 @@ object Media {
         val p = Prefs(context)
         val ok = if (usb) p.adultMode && p.adultHistory else (!p.adultMode || p.adultHistory)
         if (!ok) return emptyList()
-        return favorites(context).filter { it.usb == usb }
+        val hiddenNow = hiddenKeys(context)
+        // Återvalidera mot dagens dolda mappar och vuxennamn: en gammal sparad kopia litar vi inte på.
+        return favorites(context).filter { it.usb == usb }.filter { f ->
+            p.adultMode || !(f.entry.hidden || f.entry.key in hiddenNow || isAdultName(f.entry.name))
+        }
     }
 
     // ---------------------------------------------------------------- NAS (DLNA)
@@ -162,7 +172,8 @@ object Media {
                     e.container -> Entry(key, e.title, true, "folder", e.id, null, null, e.art, null, null, null,
                         hidden = key in hidden || isAdultName(e.title))
                     e.isVideo -> Entry(key, cleanTitle(e.title), false, "video", e.id, e.mainUrl, null, e.thumbUrl, e.subtitle,
-                        e.durationMs, nameDate(e.title) ?: parseDate(e.date))
+                        e.durationMs, nameDate(e.title) ?: parseDate(e.date),
+                        sizeBytes = e.res.firstNotNullOfOrNull { it.size })
                     e.isImage -> Entry(key, e.title, false, "image", e.id, e.mainUrl, e.viewUrl, e.thumbUrl, null, null,
                         nameDate(e.title) ?: parseDate(e.date))
                     else -> null
@@ -266,7 +277,8 @@ object Media {
                         val own = listOf("jpg", "png").map { File(dir, "$base.$it") }.firstOrNull { it.isFile }?.absolutePath
                         val sub = SUB.map { File(dir, "$base.$it") }.firstOrNull { it.isFile }?.absolutePath
                         out.add(Entry("$id:${f.absolutePath}", cleanTitle(name), false, "video", f.absolutePath, f.absolutePath, null,
-                            own ?: "frame:${f.absolutePath}", sub, null, nameDate(name) ?: (f.lastModified() / 1000)))
+                            own ?: "frame:${f.absolutePath}", sub, null, nameDate(name) ?: (f.lastModified() / 1000),
+                            sizeBytes = f.length()))
                     }
                     ext in IMAGE && name.lowercase() !in setOf("poster.jpg", "folder.jpg", "cover.jpg") -> {
                         // En bild med samma namn som en video är videons omslag, inte ett foto.
@@ -324,6 +336,41 @@ object Media {
     }
 
     /** Mappar först, sedan efter namn (naturlig ordning) eller datum (nyast först). */
+    /** Sortering: "name", "date" (nyast först), "size" (störst först) eller "length" (längst först). Mappar först, alltid på namn. */
+    fun sort(list: List<Entry>, mode: String): List<Entry> {
+        val folders = list.filter { it.folder }.sortedWith(compareBy(naturalOrder) { it.name })
+        val rest = list.filter { !it.folder }
+        val sorted = when (mode) {
+            "date" -> rest.sortedByDescending { it.date ?: 0 }
+            "size" -> rest.sortedWith(compareByDescending<Entry> { it.sizeBytes ?: -1L }.then(compareBy(naturalOrder) { it.name }))
+            "length" -> rest.sortedWith(compareByDescending<Entry> { it.durationMs ?: -1L }.then(compareBy(naturalOrder) { it.name }))
+            else -> rest.sortedWith(compareBy(naturalOrder) { it.name })
+        }
+        return folders + sorted
+    }
+
+    /**
+     * Längd för filer på USB-disken (där finns ingen server som anger den). Läses ur filen och sparas, så att
+     * samma fil bara läses en gång. Blockerar: anropa i bakgrunden. 0 sparas för "kan inte läsas" (försöks inte igen).
+     */
+    fun fileDuration(context: Context, f: File): Long? {
+        val key = "dur:${f.absolutePath}|${f.length()}|${f.lastModified()}"
+        val sp = prefs(context)
+        if (sp.contains(key)) return sp.getLong(key, 0L).takeIf { it > 0 }
+        var ms = 0L
+        val retriever = android.media.MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(f.absolutePath)
+            ms = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        } catch (_: Exception) {
+            ms = 0L
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
+        }
+        sp.edit().putLong(key, ms).apply()
+        return ms.takeIf { it > 0 }
+    }
+
     fun sort(list: List<Entry>, byDate: Boolean): List<Entry> {
         val folders = list.filter { it.folder }.sortedWith(compareBy(naturalOrder) { it.name })
         val rest = list.filter { !it.folder }

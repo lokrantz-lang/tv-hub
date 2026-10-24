@@ -7,6 +7,7 @@ tills den andra boxen har stoppat.
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import threading
@@ -14,7 +15,7 @@ import time
 
 from datetime import datetime, timezone
 
-from . import catalog, db, extras, portals, recordings
+from . import catalog, db, extras, limits, portals, recordings
 from .config import CFG
 
 ACTIVE_WINDOW_S = 35        # session räknas som aktiv om heartbeat inom detta
@@ -37,19 +38,33 @@ def new_pair_code():
     return {"code": code, "expires": expires}
 
 
+# Gissning av parningskoder: högst 30 felaktiga försök på 10 minuter totalt (koden gäller 10 minuter).
+_pair_limit = limits.AttemptLimiter(30, 600)
+
+
+class TooManyAttempts(Exception):
+    def __init__(self, seconds):
+        super().__init__(f"För många försök. Vänta {max(1, seconds // 60 + 1)} min.")
+        self.seconds = seconds
+
+
 def pair(code, name, model, app_version, ip):
+    """Förbrukar koden och skapar enheten i en och samma transaktion: samma kod kan bara ge en enhet."""
     code = str(code or "").strip()
-    row = db.q1("SELECT * FROM pair_codes WHERE code = ? AND expires >= ?", (code, db.iso()))
-    if not row:
-        return None
-    db.x("DELETE FROM pair_codes WHERE code = ?", (code,))
     token = secrets.token_urlsafe(32)
     name = (str(name or "").strip() or "TV-box")[:40]
-    device_id = db.x(
-        """INSERT INTO devices (name, model, app_version, token_hash, created, last_seen, last_ip)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (name, str(model or "")[:60], str(app_version or "")[:20], _hash(token), db.iso(), db.iso(), ip),
-    ).lastrowid
+    with db.tx():
+        used = db.x("DELETE FROM pair_codes WHERE code = ? AND expires >= ?", (code, db.iso())).rowcount
+        if used != 1:
+            wait = _pair_limit.reserve("pair")
+            if wait is not None:
+                raise TooManyAttempts(wait)
+            return None
+        device_id = db.x(
+            """INSERT INTO devices (name, model, app_version, token_hash, created, last_seen, last_ip)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (name, str(model or "")[:60], str(app_version or "")[:20], _hash(token), db.iso(), db.iso(), ip),
+        ).lastrowid
     db.log_event("paired", {"name": name, "model": model}, device_id=device_id)
     return {"token": token, "device_id": device_id, "name": name}
 
@@ -76,11 +91,12 @@ def authenticate(header, ip):
 def list_devices():
     out = []
     for row in db.q("""SELECT id, name, model, app_version, created, last_seen, last_ip, allow_adult, only_group_id,
-                              pin_required, default_profile_id, revert_hours
+                              pin_required, default_profile_id, revert_hours, adult_idle_minutes, remote_allowed
                        FROM devices ORDER BY id"""):
         item = dict(row)
         item["allow_adult"] = bool(item["allow_adult"])
         item["pin_required"] = bool(item["pin_required"])
+        item["remote_allowed"] = bool(item["remote_allowed"])
         item["playing"] = active_session_for(row["id"])
         out.append(item)
     return out
@@ -109,6 +125,13 @@ def update_device(device_id, data):
         if not 0 <= hours <= 48:
             raise ValueError("Ange 0–48 timmar.")
         db.x("UPDATE devices SET revert_hours = ? WHERE id = ?", (hours, device_id))
+    if "remote_allowed" in data:
+        db.x("UPDATE devices SET remote_allowed = ? WHERE id = ?", (1 if data["remote_allowed"] else 0, device_id))
+    if "adult_idle_minutes" in data:
+        minutes = int(data["adult_idle_minutes"] or 0)
+        if not 1 <= minutes <= 180:
+            raise ValueError("Ange 1–180 minuter.")
+        db.x("UPDATE devices SET adult_idle_minutes = ? WHERE id = ?", (minutes, device_id))
     if "only_group_id" in data:
         group_id = data["only_group_id"]
         if group_id in (None, "", 0, "0"):
@@ -122,7 +145,7 @@ def update_device(device_id, data):
 
 def scope_for(device, wants_adult, wants_history=True, profile=None):
     """Vad boxen får se: läget från appen, begränsat av boxens profil och vem som tittar.
-    wants_history gäller bara vuxenläget (dolt val i appen: höger tre gånger på Inställningar)."""
+    wants_history gäller bara vuxenläget (dolt val i appen)."""
     adult = 1 if wants_adult and device["allow_adult"] else 0
     return catalog.Scope(adult=adult, group_id=device["only_group_id"], hide_hidden=True,
                          history=bool(wants_history) or not adult,
@@ -159,11 +182,18 @@ def _active_rows(exclude_device=None, watching_only=False):
     return db.q(sql, args)
 
 
+ADULT_LABEL = "18+"
+
+
 def active_sessions():
+    """Vuxensessioner visas aldrig med titel (webbadmin, Home Assistant, meddelanden till andra boxar)."""
     out = []
     for row in _active_rows():
         item = dict(row)
         item["metrics"] = json.loads(item["metrics"]) if item["metrics"] else None
+        if item.get("adult"):
+            item["item_name"] = ADULT_LABEL
+            item["item_id"] = ""
         out.append(item)
     return out
 
@@ -173,8 +203,9 @@ def active_session_for(device_id):
     if not rows:
         return None
     r = rows[0]
-    return {"session_id": r["id"], "type": r["type"], "item_id": r["item_id"],
-            "item_name": r["item_name"], "started": r["started"]}
+    adult = bool(r["adult"])
+    return {"session_id": r["id"], "type": r["type"], "item_id": "" if adult else r["item_id"],
+            "item_name": ADULT_LABEL if adult else r["item_name"], "started": r["started"]}
 
 
 def _end(session_id, reason):
@@ -195,9 +226,91 @@ def _timeshift_start(portal, start_ts):
     return datetime.fromtimestamp(int(start_ts), zone).strftime("%Y-%m-%d:%H-%M")
 
 
-def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(), name=None,
-                 scope=None, series_id=None, start=None, duration=None, icon=None, recording_id=None,
-                 viewer_id=None):
+_play_lock = threading.RLock()
+
+# Senaste strömadressen per session, bara i minnet (den innehåller kontouppgifter och får aldrig loggas).
+# Används för att undersöka vad källan svarar när boxen inte kan läsa strömmen.
+_recent_urls = {}
+_RECENT_URLS_MAX = 100
+_probe_last = {}   # device_id -> tid för senaste undersökning
+PROBE_MIN_GAP_S = float(os.environ.get("TVHUB_PROBE_MIN_GAP", "60"))   # kortare bara i tester
+PROBE_BYTES = 512
+PROBE_TIMEOUT_S = 8
+
+
+def _remember_url(session_id, url, adult):
+    with _pin_lock_urls:
+        _recent_urls[session_id] = (url, bool(adult))
+        while len(_recent_urls) > _RECENT_URLS_MAX:
+            _recent_urls.pop(next(iter(_recent_urls)))
+
+
+_pin_lock_urls = threading.Lock()
+
+
+def _printable(data, limit=160):
+    """Svarets första byte som text om det ser ut som text, annars som hex. Aldrig mer än limit tecken."""
+    head = bytes(data[:limit])
+    if head and all(b in (9, 10, 13) or 32 <= b < 127 for b in head):
+        return " ".join(head.decode("ascii").split())[:limit]
+    return "binärt: " + head[:8].hex(" ")
+
+
+def probe_stream(session_id):
+    """Hämtar de första byten av strömmen och loggar vad källan svarade (statuskod, innehållstyp, början).
+    Körs bara när boxen inte kan läsa strömmen. Strömadressen loggas aldrig."""
+    import urllib.error
+    import urllib.request
+    with _pin_lock_urls:
+        entry = _recent_urls.get(session_id)
+    if not entry:
+        return None
+    url, adult = entry
+    detail = {"adult": adult}
+    try:
+        request = urllib.request.Request(url, headers={
+            "User-Agent": CFG["user_agent"], "Range": f"bytes=0-{PROBE_BYTES - 1}"})
+        with urllib.request.urlopen(request, timeout=PROBE_TIMEOUT_S) as resp:
+            body = resp.read(PROBE_BYTES)
+            detail.update(status=resp.status, content_type=(resp.headers.get("Content-Type") or "")[:80],
+                          length=resp.headers.get("Content-Length"), bytes=len(body))
+            detail["start"] = _printable(body)
+    except urllib.error.HTTPError as exc:
+        detail.update(status=exc.code, content_type=(exc.headers.get("Content-Type") or "")[:80])
+        try:
+            detail["start"] = _printable(exc.read(PROBE_BYTES))
+        except Exception:
+            pass
+    except Exception as exc:
+        detail["error"] = type(exc).__name__
+    if detail.get("length") is not None:
+        detail["length"] = str(detail["length"])[:20]
+    if adult:
+        detail.pop("start", None)   # vuxeninnehåll: ingen text ur svaret i loggen
+    return detail
+
+
+def request_play(*args, **kwargs):
+    """Kontroll av andra boxar och skapandet av sessionen sker under ett lås, så att två boxar som
+    startar samtidigt inte båda får ström."""
+    with _play_lock:
+        return _request_play(*args, **kwargs)
+
+
+def _recording_playable(rec):
+    """Ett inspelningsjobb får bara hämta en ström när det är aktuellt: inte redan klart, och en
+    direktinspelning bara nära sin sändningstid."""
+    if rec["status"] not in ("scheduled", "recording", "failed"):
+        return False
+    if rec["source"] == "live" and rec["status"] == "scheduled":
+        now = time.time()
+        return rec["start"] - 1800 <= now <= rec["end"] + 3600
+    return True
+
+
+def _request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(), name=None,
+                  scope=None, series_id=None, start=None, duration=None, icon=None, recording_id=None,
+                  viewer_id=None):
     """recording_id: strömmen är en inspelning. Den räknas inte av anslutningsvakten
     (man kan titta på en kanal och spela in en annan) och avslutar inte boxens tittande.
 
@@ -219,7 +332,8 @@ def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(
     recording = None
     if recording_id is not None:
         recording = recordings.lookup_for_play(device, recording_id)
-        if recording is None or str(recording["stream_id"]) != item_id or RECORD_KIND.get(recording["source"]) != kind:
+        if recording is None or str(recording["stream_id"]) != item_id or RECORD_KIND.get(recording["source"]) != kind \
+                or not _recording_playable(recording):
             return {"status": "error", "error": "Inspelningen finns inte längre."}
         if kind in ("vod", "episode"):
             ext = ext or recording.get("ext")
@@ -237,6 +351,16 @@ def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(
         elif not catalog.in_scope(ref[0], ref[1], scope) and \
                 (catalog.get_item(*ref) is not None or scope.group_id is not None):
             return {"status": "error", "error": "Finns inte."}
+
+    # Bara det som finns i källans lista får spelas (kanaler, filmer och serier), inte påhittade id:n.
+    if recording is None:
+        if kind in ("live", "catchup") and catalog.get_item("live", item_id) is None:
+            return {"status": "error", "error": "Kanalen finns inte i listan."}
+        if kind == "vod" and catalog.get_item("vod", item_id) is None:
+            return {"status": "error", "error": "Filmen finns inte i listan."}
+        # Avsnitt finns inte i listan på egen hand; ett angivet serie-id ska åtminstone vara en känd serie.
+        if kind == "episode" and series_id and catalog.get_item("series", series_id) is None:
+            return {"status": "error", "error": "Serien finns inte i listan."}
 
     if kind == "catchup":
         try:
@@ -256,9 +380,10 @@ def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(
         pending = [o for o in others if o["stop_requested"]]
         if not force and not pending:
             o = others[0]
+            shown = ADULT_LABEL if o["adult"] else o["item_name"]
             return {
                 "status": "conflict",
-                "conflict": {"device": o["device_name"], "item_name": o["item_name"], "since": o["started"]},
+                "conflict": {"device": o["device_name"], "item_name": shown, "since": o["started"]},
                 "message": f"{o['device_name']} tittar redan. Toucan tillåter bara en ström åt gången.",
             }
         for o in others:
@@ -327,6 +452,7 @@ def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(
         (session_id, device["id"], session_type, item_id, display, portal["id"], db.iso(), db.iso(),
          adult, series_id, ext_final, str(icon)[:500] if icon else None, viewer_id),
     )
+    _remember_url(session_id, url, adult)
     if kind == "catchup" and recording is None and start:
         # Mina program: var man är i ett program ur arkivet sparas per profil.
         try:
@@ -353,13 +479,38 @@ def request_play(device, kind, item_id, ext=None, force=False, exclude_portals=(
     }
 
 
+_METRIC_NUMBERS = ("bandwidth_bps", "stalls", "stall_ms", "position_ms", "duration_ms", "buffered_ms",
+                   "bitrate_bps", "recorded_bytes")
+_RESOLUTION = re.compile(r"^\d{1,5}x\d{1,5}$")
+
+
+def clean_metrics(metrics):
+    """Boxens mätvärden: bara kända fält med rätt typ. Allt annat kastas (webbadminen visar värdena)."""
+    if not isinstance(metrics, dict):
+        return {}
+    out = {}
+    for key in _METRIC_NUMBERS:
+        value = metrics.get(key)
+        if type(value) in (int, float) and value == value and 0 <= value <= 10**13:
+            out[key] = int(value)
+    portal = metrics.get("portal")
+    if isinstance(portal, str):
+        out["portal"] = re.sub(r"[^\w .\-]", "", portal)[:60]
+    resolution = metrics.get("resolution")
+    if isinstance(resolution, str) and _RESOLUTION.match(resolution):
+        out["resolution"] = resolution
+    if metrics.get("cast") is True:
+        out["cast"] = True
+    return out
+
+
 def heartbeat(device, session_id, metrics):
     row = db.q1("SELECT * FROM sessions WHERE id = ? AND device_id = ?", (session_id, device["id"]))
     if not row:
         return {"stop": True, "reason": "unknown_session"}
     if row["ended"]:
         return {"stop": row["end_reason"] != "replaced", "reason": row["end_reason"]}
-    metrics = metrics if isinstance(metrics, dict) else {}
+    metrics = clean_metrics(metrics)
     db.x("UPDATE sessions SET last_heartbeat = ?, metrics = ? WHERE id = ?",
          (db.iso(), json.dumps(metrics), session_id))
     extras.update_progress(row, metrics.get("position_ms"), metrics.get("duration_ms"))
@@ -374,7 +525,8 @@ def heartbeat(device, session_id, metrics):
 def end_session(device, session_id, reason="stopped", metrics=None):
     row = db.q1("SELECT * FROM sessions WHERE id = ? AND device_id = ?", (session_id, device["id"]))
     if row:
-        if isinstance(metrics, dict):
+        metrics = clean_metrics(metrics)
+        if metrics:
             extras.update_progress(row, metrics.get("position_ms"), metrics.get("duration_ms"))
         _end(session_id, str(reason)[:40])
         db.log_event("stop", {"reason": reason}, device_id=device["id"], session_id=session_id)
@@ -391,6 +543,26 @@ def report(device, kind, session_id, detail):
         detail = {}
     detail = {k: v for k, v in list(detail.items())[:30]}
     db.log_event(kind, detail, device_id=device["id"], session_id=session_id)
+    if kind == "error" and str(detail.get("code", "")).startswith("ERROR_CODE_PARSING_CONTAINER") and session_id:
+        _start_probe(device, session_id)
+
+
+def _start_probe(device, session_id):
+    now = time.time()
+    with _pin_lock_urls:
+        if now - _probe_last.get(device["id"], 0) < PROBE_MIN_GAP_S:
+            return
+        _probe_last[device["id"]] = now
+
+    def run():
+        try:
+            detail = probe_stream(session_id)
+            if detail is not None:
+                db.log_event("probe", detail, device_id=device["id"], session_id=session_id)
+        except Exception:
+            pass
+
+    threading.Thread(target=run, daemon=True, name="probe").start()
 
 
 def cleanup():
@@ -406,7 +578,7 @@ UNLOCK_S = 3 * 3600
 MAX_TRIES = 5
 LOCKOUT_S = 300
 _unlocks = {}   # device_id -> (nyckel, giltig till)
-_tries = {}     # device_id -> (antal fel, första felet)
+_adult_limit = limits.AttemptLimiter(MAX_TRIES, LOCKOUT_S)
 _pin_lock = threading.Lock()
 
 
@@ -444,21 +616,16 @@ def unlock_adult(device, pin):
     if pin in (None, ""):
         return {"pin_required": True, "token": None, "error": None}
     now = time.time()
-    with _pin_lock:
-        count, first = _tries.get(device["id"], (0, now))
-        if now - first > LOCKOUT_S:
-            count, first = 0, now
-        if count >= MAX_TRIES:
-            left = int(LOCKOUT_S - (now - first)) // 60 + 1
-            return {"pin_required": True, "token": None, "error": f"För många försök. Vänta {left} min."}
+    # Försöket räknas innan hashningen, så att parallella gissningar inte slinker förbi spärren.
+    wait = _adult_limit.reserve(device["id"])
+    if wait is not None:
+        return {"pin_required": True, "token": None, "error": f"För många försök. Vänta {wait // 60 + 1} min."}
     if not hmac.compare_digest(_pin_hash(str(pin), stored["salt"]), stored["hash"]):
         time.sleep(1)
-        with _pin_lock:
-            _tries[device["id"]] = (count + 1, first)
         return {"pin_required": True, "token": None, "error": "Fel kod."}
     token = secrets.token_urlsafe(24)
+    _adult_limit.success(device["id"])
     with _pin_lock:
-        _tries.pop(device["id"], None)
         _unlocks[device["id"]] = (token, now + UNLOCK_S)
     return {"pin_required": True, "token": token, "error": None}
 

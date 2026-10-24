@@ -34,8 +34,7 @@ import java.util.Locale
  *  - Hem: stor bild överst med det markerade, och rader med Fortsätt titta, favoritkanaler,
  *    nytt, topprankat, grupper och sparade filter.
  *  - Live-TV, Filmer, Serier, Sök (eget bokstavsrutnät), Inspelningar och Inställningar.
- *  - Dolda knapptryck på Inställningar som i det klassiska utseendet:
- *    vänster tre gånger = vuxenläge, höger tre gånger (i vuxenläge) = visa/dölj historik.
+ *  - Dolda gester som i det klassiska utseendet (se interna anteckningar).
  *  - Tillbaka två gånger i menyn stänger appen.
  *
  * Det klassiska utseendet (MainActivity) finns kvar och väljs under Inställningar → Utseende.
@@ -723,6 +722,12 @@ class HomeActivity : Activity(), CardListener {
             val list = ArrayList<Shelf>()
             MyPrograms.cached?.takeIf { it.isNotEmpty() && data.optString("mode") != "adult" }?.let { progs ->
                 list.add(Shelf("myprog", "Mina program", progs.map { MyPrograms.card(it) }))
+            }
+            if (MyPrograms.cached?.isEmpty() == true && data.optString("mode") != "adult") {
+                // Inga snabbval för profilen: en ledtext i stället för en rad som saknas helt.
+                list.add(Shelf("myprog_hint", "Mina program", listOf(
+                    Card(Card.WIDE, "hint:myprog", "Inga snabbval ännu", subtitle = "Lägg till dem i webbadminen under Profiler"),
+                )))
             }
             Sports.homeCards(Sports.cached).takeIf { it.isNotEmpty() && data.optString("mode") != "adult" }?.let { cards ->
                 list.add(Shelf("sport", "Sport: nu och snart", cards))
@@ -1980,7 +1985,7 @@ class HomeActivity : Activity(), CardListener {
         private val gridManager: GridLayoutManager
         private val columns: Int
         private var style = prefs.viewStyle("media")
-        private var byDate = false
+        private var sortMode = "name"   // name, date, size, length
         private var sources: List<Media.Source> = emptyList()
         private var source: Media.Source? = null
         private val stack = ArrayList<Pair<String, String>>()  // (ref, namn) från roten och nedåt
@@ -2019,22 +2024,31 @@ class HomeActivity : Activity(), CardListener {
                 }
             }
             sortButton.setOnClickListener {
-                val labels = listOf("Namn", "Datum (nyast först)", "Alla videor i undermapparna, nyast först")
-                Look.choose(this@HomeActivity, "Sortera", labels, if (flat()) 2 else if (byDate) 1 else 0) { which ->
+                val modes = listOf("name", "date", "size", "length")
+                val labels = listOf("Namn", "Datum (nyast först)", "Storlek (störst först)", "Längd (längst först)",
+                    "Alla videor i undermapparna, nyast först")
+                Look.choose(this@HomeActivity, "Sortera", labels, if (flat()) 4 else modes.indexOf(sortMode).coerceAtLeast(0)) { which ->
                     when (which) {
-                        2 -> if (!flat()) stack.lastOrNull()?.let { (ref, name) -> openAll(ref, name) }
+                        4 -> if (!flat()) stack.lastOrNull()?.let { (ref, name) -> openAll(ref, name) }
                         else -> {
-                            byDate = which == 1
-                            if (flat()) onBack() else render()
+                            sortMode = modes[which]
+                            if (flat()) onBack() else { render(); ensureDurations() }
                         }
                     }
                 }
             }
             viewButton.setOnClickListener {
-                Look.choose(this@HomeActivity, "Visa", ViewStyle.LABELS, ViewStyle.index(style)) { which ->
-                    style = ViewStyle.fromIndex(which)
-                    prefs.setViewStyle("media", style)
-                    applyStyle()
+                val labels = ViewStyle.LABELS + (if (prefs.mediaMeta) "✓ Visa storlek och längd" else "Visa storlek och längd")
+                Look.choose(this@HomeActivity, "Visa", labels, ViewStyle.index(style)) { which ->
+                    if (which >= ViewStyle.LABELS.size) {
+                        prefs.mediaMeta = !prefs.mediaMeta
+                        render()
+                        ensureDurations()
+                    } else {
+                        style = ViewStyle.fromIndex(which)
+                        prefs.setViewStyle("media", style)
+                        applyStyle()
+                    }
                 }
             }
             addButton.setOnClickListener { addServer() }
@@ -2231,6 +2245,7 @@ class HomeActivity : Activity(), CardListener {
                     entries = list
                     render()
                     if (focusFirst) focusEntry()
+                    ensureDurations()
                 }.onFailure {
                     entries = emptyList()
                     gridAdapter.submit(emptyList())
@@ -2240,8 +2255,32 @@ class HomeActivity : Activity(), CardListener {
             }
         }
 
+        /**
+         * USB-disken: längden läses ur filerna i bakgrunden, men bara när den behövs (sortering på längd eller
+         * visning av storlek och längd). Listan ritas om en gång när den är klar.
+         */
+        private fun ensureDurations() {
+            val s = source as? Media.UsbSource ?: return
+            if (flat() || !(sortMode == "length" || prefs.mediaMeta)) return
+            val missing = entries.filter { it.kind == "video" && it.durationMs == null && it.url != null }
+            if (missing.isEmpty()) return
+            val t = token
+            Api.async({
+                missing.mapNotNull { e ->
+                    val ms = Media.fileDuration(this@HomeActivity, java.io.File(e.url!!))
+                    if (ms != null) e.key to ms else null
+                }.toMap()
+            }) { result ->
+                if (t != token || source !== s) return@async
+                val found = result.getOrNull().orEmpty()
+                if (found.isEmpty()) return@async
+                entries = entries.map { e -> found[e.key]?.let { e.copy(durationMs = it) } ?: e }
+                render()
+            }
+        }
+
         private fun render() {
-            val visible = if (flat()) entries else Media.sort(entries.filter { Media.visible(this@HomeActivity, it) }, byDate)
+            val visible = if (flat()) entries else Media.sort(entries.filter { Media.visible(this@HomeActivity, it) }, sortMode)
             applyStyle()
             gridAdapter.submit(visible.map { card(it) })
             grid.scrollToPosition(0)
@@ -2260,10 +2299,14 @@ class HomeActivity : Activity(), CardListener {
 
         private fun card(e: Media.Entry): Card {
             val dateText = e.date?.let { java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale("sv", "SE")).format(java.util.Date(it * 1000)) }
+            val meta = prefs.mediaMeta
+            val sizeText = if (meta) e.sizeBytes?.let { Format.size(it) } else null
             val sub = when {
-                e.parent != null -> listOfNotNull(dateText, e.durationMs?.let { Format.minutes((it / 60_000).toInt().coerceAtLeast(1)) },
+                e.parent != null -> listOfNotNull(dateText, sizeText, e.durationMs?.let { Format.minutes((it / 60_000).toInt().coerceAtLeast(1)) },
                     e.parent).joinToString("  ·  ")
                 e.folder -> "Mapp"
+                e.kind == "video" && meta -> listOfNotNull(sizeText, e.durationMs?.let { Format.minutes((it / 60_000).toInt().coerceAtLeast(1)) })
+                    .joinToString("  ·  ").ifEmpty { dateText }
                 e.kind == "video" -> e.durationMs?.let { Format.minutes((it / 60_000).toInt().coerceAtLeast(1)) }
                     ?: e.date?.let { java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale("sv", "SE")).format(java.util.Date(it * 1000)) }
                 else -> e.date?.let { java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale("sv", "SE")).format(java.util.Date(it * 1000)) }
@@ -2288,7 +2331,12 @@ class HomeActivity : Activity(), CardListener {
         }
 
         private fun updateButtons() {
-            sortButton.text = "Sortera: " + if (flat()) "Alla videor" else if (byDate) "Datum" else "Namn"
+            sortButton.text = "Sortera: " + if (flat()) "Alla videor" else when (sortMode) {
+                "date" -> "Datum"
+                "size" -> "Storlek"
+                "length" -> "Längd"
+                else -> "Namn"
+            }
         }
 
         private fun shown(): List<Media.Entry> = gridAdapter.cards.mapNotNull { it.payload as? Media.Entry }

@@ -146,6 +146,20 @@ object RecStorage {
         return dir
     }
 
+    /** Är filen en vanlig fil direkt i Inspelningar/ eller .privat/ på någon av våra enheter (efter symlänkar)? */
+    fun isOwnRecording(context: Context, file: File): Boolean {
+        return try {
+            val real = file.canonicalFile
+            if (!real.isFile) return false
+            val parent = real.parentFile?.canonicalFile ?: return false
+            volumes(context).any { v ->
+                parent == File(v.dir, "Inspelningar").canonicalFile || parent == File(v.dir, ".privat").canonicalFile
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun folderFor(volume: Volume, rec: Rec): File = if (rec.adult) privateFolder(volume) else folder(volume)
 
     fun fileFor(folder: File, rec: Rec): File {
@@ -383,7 +397,8 @@ class RecordService : Service() {
             return
         }
         val known = rec ?: Rec.list(Api.requestBlocking("GET", "/device/recordings?all=1") as? JSONArray).firstOrNull { it.id == id }
-        known?.file?.let { File(it).delete() }
+        // Servern rapporterar filens sökväg; radera bara en fil som ligger direkt i en av våra inspelningsmappar.
+        known?.file?.let { path -> File(path).takeIf { RecStorage.isOwnRecording(this, it) }?.delete() }
         RecScheduler.cancel(this, id)
         Api.requestBlocking("DELETE", "/device/recordings/$id")
     }

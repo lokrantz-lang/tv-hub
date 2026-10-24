@@ -8,7 +8,7 @@ class Prefs(context: Context) {
     private val sp = appContext.getSharedPreferences("tvhub", Context.MODE_PRIVATE)
 
     companion object {
-        /** Vuxenläget stängs av efter så här lång tid utan knapptryck. */
+        /** Vuxenläget stängs av efter så här lång tid utan knapptryck (om boxen inte har fått en annan tid). */
         const val ADULT_IDLE_MS = 15 * 60 * 1000L
 
         /** … och senast så här länge efter att det slogs på. */
@@ -34,8 +34,8 @@ class Prefs(context: Context) {
         }
 
     /**
-     * Dolt läge: visar bara vuxeninnehåll. Växlas med tre tryck vänster på Inställningar.
-     * Stängs av automatiskt efter 15 minuter utan aktivitet, efter högst 3 timmar
+     * Dolt läge: visar bara vuxeninnehåll. Växlas med en dold gest (se interna anteckningar).
+     * Stängs av automatiskt efter inaktivitet (15 minuter, ställs in per box i webbadminen), efter högst 3 timmar
      * och när appen startas om (se MainActivity).
      */
     var adultMode: Boolean
@@ -44,7 +44,7 @@ class Prefs(context: Context) {
             val now = System.currentTimeMillis()
             val idle = now - sp.getLong("adult_last_active", 0L)
             val age = now - sp.getLong("adult_since", 0L)
-            if (idle > ADULT_IDLE_MS || age > ADULT_MAX_MS) {
+            if (idle > adultIdleMs || age > ADULT_MAX_MS) {
                 sp.edit().putBoolean("adult_mode", false).apply()
                 return false
             }
@@ -62,7 +62,7 @@ class Prefs(context: Context) {
         }
 
     /**
-     * Vuxenläget: visa favoriter, Fortsätt titta och sedda (dolt val: höger tre gånger på Inställningar).
+     * Vuxenläget: visa favoriter, Fortsätt titta och sedda (dolt val, se interna anteckningar).
      * Tittandet sparas alltid; det här styr bara vad som visas.
      */
     var adultHistory: Boolean
@@ -114,6 +114,15 @@ class Prefs(context: Context) {
             sp.edit().putInt("box_default_profile", value).apply()
         }
 
+    /** Minuter utan knapptryck innan vuxenläget stängs (webbadminen, per box). 1–180, annars 15. */
+    var boxAdultIdleMinutes: Int
+        get() = sp.getInt("box_adult_idle_min", 15).takeIf { it in 1..180 } ?: 15
+        set(value) {
+            sp.edit().putInt("box_adult_idle_min", if (value in 1..180) value else 15).apply()
+        }
+
+    private val adultIdleMs: Long get() = boxAdultIdleMinutes * 60_000L
+
     var boxRevertHours: Int
         get() = sp.getInt("box_revert_hours", 0)
         set(value) {
@@ -155,6 +164,13 @@ class Prefs(context: Context) {
     }
 
     /** Utseende: modernt (standard) eller klassiskt (tre kolumner som tidigare). Mobilen är alltid modern. */
+    /** Mina media: visa storlek och längd vid titeln. */
+    var mediaMeta: Boolean
+        get() = sp.getBoolean("media_meta", false)
+        set(value) {
+            sp.edit().putBoolean("media_meta", value).apply()
+        }
+
     /** TV: visningsläge per sida ("vod", "series", "favorites", "new"), se [ViewStyle]. */
     fun viewStyle(page: String): Int = sp.getInt("view_$page", ViewStyle.TITLE)
 
@@ -262,7 +278,8 @@ class Prefs(context: Context) {
         get() = server.isNotEmpty() && token.isNotEmpty()
 
     fun clearPairing() {
-        sp.edit().remove("token").apply()
+        // Också nyckeln till Home Assistant (fjärråtkomst), inte bara boxnyckeln.
+        sp.edit().remove("token").remove("remote_url").remove("remote_ingress").remove("remote_ha_token").apply()
     }
 }
 

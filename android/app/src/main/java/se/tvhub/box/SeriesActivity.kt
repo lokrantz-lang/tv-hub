@@ -116,7 +116,7 @@ class SeriesActivity : Activity() {
 
     private fun show(data: JSONObject) {
         val focused = Focus.focusedPosition(list)
-        data.optStringOrNull("plot")?.let { findViewById<TextView>(R.id.plot).text = it }
+        data.optStringOrNull("plot")?.let { Expandable.attach(findViewById(R.id.plot), it) }
         cover = data.optStringOrNull("cover")
         ImageLoader.load(findViewById<ImageView>(R.id.cover), cover)
         findViewById<ImageView?>(R.id.backdrop)?.let {

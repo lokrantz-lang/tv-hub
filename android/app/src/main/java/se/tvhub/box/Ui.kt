@@ -68,3 +68,28 @@ object SpeedTest {
         }
     }
 }
+
+/** En handlingstext som klipps av: tryck (telefon) eller OK (TV) visar hela texten, och igen för att fälla ihop den. */
+object Expandable {
+    fun attach(view: android.widget.TextView, text: String) {
+        val collapsedMax = view.maxLines
+        val normalColor = view.currentTextColor
+        view.text = text
+        view.post {
+            val layout = view.layout ?: return@post
+            val truncated = layout.lineCount > 0 && layout.getEllipsisCount(layout.lineCount - 1) > 0
+            if (!truncated) return@post
+            var expanded = false
+            view.isFocusable = true
+            view.isClickable = true
+            view.setBackgroundResource(R.drawable.m_row)
+            view.setOnFocusChangeListener { v, focused ->
+                (v as android.widget.TextView).setTextColor(if (focused) v.context.getColor(R.color.m_on_focus) else normalColor)
+            }
+            view.setOnClickListener {
+                expanded = !expanded
+                view.maxLines = if (expanded) Int.MAX_VALUE else collapsedMax
+            }
+        }
+    }
+}

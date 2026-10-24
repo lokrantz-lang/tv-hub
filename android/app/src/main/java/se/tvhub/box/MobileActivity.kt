@@ -39,8 +39,8 @@ import java.util.Locale
  * Mobilläget: samma app på telefonen. Stående, touch och flikar längst ner:
  * Hem, Live, Filmer, Serier och Sök. Inställningar uppe till höger.
  *
- * Dolt vuxenläge som på TV:n: tryck tre gånger snabbt på "TV Hub" överst.
- * I vuxenläget: håll in "TV Hub" för att visa eller dölja favoriter och historik.
+ * Dolt läge som på TV:n (se projektets interna anteckningar).
+ * Dolt val i det läget för favoriter och historik.
  */
 class MobileActivity : Activity(), CardListener {
     private lateinit var prefs: Prefs
@@ -498,11 +498,7 @@ class MobileActivity : Activity(), CardListener {
                 status.visibility = View.GONE
                 return
             }
-            status.text = if (privateMode()) {
-                "Favoriter och historik är dolda i det här läget.\nHåll in \"TV Hub\" överst för att visa dem, eller välj Live, Filmer eller Serier nedan."
-            } else {
-                "Välkommen till TV Hub.\nVälj Live, Filmer eller Serier nedan."
-            }
+            status.text = "Välkommen till TV Hub.\nVälj Live, Filmer eller Serier nedan."
             status.visibility = View.VISIBLE
             status.bringToFront()
         }
@@ -749,7 +745,6 @@ class MobileActivity : Activity(), CardListener {
             show(reset = true, more = fav)
             info.text = when {
                 fav.isNotEmpty() -> "${fav.size} favoriter"
-                privateMode() -> "Favoriter är dolda i det här läget. Håll in \"TV Hub\" överst för att visa dem."
                 else -> "Inga favoriter ännu. Håll in en titel och välj Lägg till i favoriter."
             }
         }

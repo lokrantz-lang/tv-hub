@@ -87,11 +87,11 @@ class MainActivity : Activity() {
     private var retryTask: Runnable? = null
     private val timeFormat = SimpleDateFormat("HH:mm", Locale("sv", "SE"))
 
-    // Dolt lägesbyte: tre tryck åt vänster inom två sekunder med markören på "Inställningar".
+    // Dolt lägesbyte (gesten beskrivs i de interna anteckningarna, inte här).
     private var secretPresses = 0
     private var secretStartedAt = 0L
 
-    // Dolt val i vuxenläget: tre tryck åt höger på "Inställningar" visar eller döljer favoriter och historik.
+    // Dolt val i det dolda läget (se interna anteckningar).
     private var historyPresses = 0
     private var historyStartedAt = 0L
 

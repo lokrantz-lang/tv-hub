@@ -6,7 +6,7 @@ Tjänster:
   custom     egen server som följer OpenAI:s standard, t.ex. Ollama hemma
              (http://192.168.x.x:11434/v1). Ingen nyckel krävs om servern inte vill ha någon.
 
-Det som skickas: tittarlägets namn och smaktext, titlar ni gillat/inte gillat/sett och ett
+Det som skickas: en neutral beteckning (inte profilens namn) och smaktext, titlar ni gillat/inte gillat/sett och ett
 urval kandidater (titel, år, genre, längd, betyg, kort handling). Inga namn på personer,
 inga konton, inga adresser.
 
@@ -89,7 +89,7 @@ def _post(url, headers, body, timeout):
                                      headers=dict(headers, **{"Content-Type": "application/json"}))
     try:
         with urllib.request.urlopen(request, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            return json.loads(resp.read(4_000_000).decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")[:300]
         try:
@@ -188,7 +188,8 @@ def build_prompt(viewer_id, kind="vod", question=None, count=15, candidates=None
     wishes = db.q("SELECT title FROM wishlist WHERE type = ? AND (viewer_id IS NULL OR viewer_id = ?) LIMIT 20",
                   (kind, v["id"]))
     what = "filmer" if kind == "vod" else "serier"
-    lines = [f"Tittarläge: {v['name']}"]
+    # Inga personnamn till en extern tjänst: bara en neutral beteckning.
+    lines = ["Tittarläge: en tittare i hushållet" + (" (barn)" if (v.get("rules") or {}).get("kids") else "")]
     if v.get("taste"):
         lines.append(f"Det här uppskattar vi: {v['taste']}")
     rule_text = []

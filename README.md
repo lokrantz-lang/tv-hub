@@ -81,8 +81,6 @@ Se `homeassistant/tv_hub_package.yaml`. Ger status, svarstid, vem som tittar, n�
 | Listor | Håll in OK | Fler val: favorit, programguide, detaljer |
 | Helskärm | Upp till översta raden | Sortera och Filter |
 | Helskärm | Tillbaka, eller vänster från första kolumnen | Tillbaka till tre kolumner |
-| Menyraden Inställningar | Vänster tre gånger | Dolt vuxenläge på/av |
-| Menyraden Inställningar (i vuxenläget) | Höger tre gånger | Visa/dölj favoriter och historik |
 | Menyn | Tillbaka två gånger | Stäng appen |
 | Film, avsnitt, inspelning | Vänster / höger | Spola 10 s bakåt / 30 s framåt (håll in för snabbare) |
 | Sparat filter i menyn | Håll in OK | Ta bort |
@@ -106,7 +104,7 @@ Se `homeassistant/tv_hub_package.yaml`. Ger status, svarstid, vem som tittar, n�
 ## Utveckling
 
 ```
-python3 tests/test_e2e.py     # 420 kontroller mot en simulerad Xtream-server
+python3 tests/test_e2e.py     # 477 kontroller mot en simulerad Xtream-server
 sh tests/dlna/run.sh          # appens DLNA-klient mot en simulerad Synology
 python3 tests/demo.py         # demodata: admin på http://127.0.0.1:28080
 ```

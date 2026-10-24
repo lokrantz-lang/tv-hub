@@ -153,6 +153,16 @@ object Format {
         return if (m == 0) "$h h" else "$h h $m min"
     }
 
+    /** Filstorlek: "850 MB", "1,4 GB". */
+    fun size(bytes: Long): String {
+        val sv = java.util.Locale("sv", "SE")
+        return when {
+            bytes < 1_000_000L -> "${(bytes / 1_000L).coerceAtLeast(1)} kB"
+            bytes < 1_000_000_000L -> String.format(sv, "%.0f MB", bytes / 1e6)
+            else -> String.format(sv, "%.1f GB", bytes / 1e9)
+        }
+    }
+
     fun clock(ms: Long): String {
         val totalSec = ms / 1000
         val h = totalSec / 3600

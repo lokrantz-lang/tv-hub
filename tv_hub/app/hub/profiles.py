@@ -116,8 +116,10 @@ def delete(profile_id):
             conn.execute(f"DELETE FROM {table} WHERE profile_id = ?", (pid,))
         for table in ("ratings", "hidden_picks", "ai_picks"):
             conn.execute(f"DELETE FROM {table} WHERE viewer_id = ?", (pid,))
-        conn.execute("UPDATE seen_log SET viewer_id = NULL WHERE viewer_id = ?", (pid,))
-        conn.execute("UPDATE wishlist SET viewer_id = NULL WHERE viewer_id = ?", (pid,))
+        # Allt som hör till profilen tas bort, också sett-logg, önskelista och sessionshistorik.
+        conn.execute("DELETE FROM seen_log WHERE viewer_id = ?", (pid,))
+        conn.execute("DELETE FROM wishlist WHERE viewer_id = ?", (pid,))
+        conn.execute("DELETE FROM sessions WHERE viewer_id = ?", (pid,))
         conn.execute("UPDATE devices SET default_profile_id = NULL WHERE default_profile_id = ?", (pid,))
         conn.execute("DELETE FROM viewers WHERE id = ?", (pid,))
     return True

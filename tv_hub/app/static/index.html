@@ -701,6 +701,19 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
     </div>
     <div class="panel" style="margin-top:16px">
       <div class="hd"><h2>Händelser</h2></div>
+      <div class="bd">
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <input id="ev-search" type="search" placeholder="Sök i händelser" aria-label="Sök i händelser" style="flex:1;min-width:160px">
+          <select id="ev-box" aria-label="Box"><option value="">Alla boxar</option></select>
+          <select id="ev-kind" aria-label="Händelse"><option value="">Alla händelser</option></select>
+          <select id="ev-time" aria-label="Tid">
+            <option value="0">All tid</option><option value="1">Senaste timmen</option>
+            <option value="24">Senaste dygnet</option><option value="168">Senaste veckan</option>
+          </select>
+          <label class="small" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="ev-hide-start"> Dölj Startade</label>
+        </div>
+        <p class="small muted" id="ev-count"></p>
+      </div>
       <div class="bd scroll"><table><thead><tr><th>Tid</th><th>Box</th><th>Händelse</th><th>Detaljer</th></tr></thead><tbody id="events"></tbody></table></div>
     </div>
   </section>
@@ -764,7 +777,7 @@ loaders.overview = async () => {
   $("verdict").innerHTML = `<span class="lvl ${d.level}"></span><div><div class="big">${esc(top ? (d.level === "ok" ? "Allt fungerar" : top.title) : "Inga data ännu")}</div><div>${esc(top && d.level !== "ok" ? top.detail : "Toucan, internet och listorna ser bra ut.")}</div></div>`;
   $("findings").innerHTML = d.findings.map(findingHtml).join("") || '<li class="empty">Inga kontroller ännu.</li>';
   const s = overview.sessions;
-  $("playing").innerHTML = s.length ? `<ul class="list">${s.map((x) => `<li><span class="lvl ok" style="margin:0"></span><div class="grow"><div class="ellipsis"><strong>${esc(x.device_name)}</strong>: ${esc(x.item_name)}</div><div class="small muted">sedan ${fmtTime(x.started)}${x.metrics && x.metrics.bandwidth_bps ? ` · ${(x.metrics.bandwidth_bps / 1e6).toFixed(1)} Mbit/s` : ""}${x.metrics && x.metrics.stalls ? ` · ${x.metrics.stalls} avbrott i bilden` : ""}</div></div></li>`).join("")}</ul>` : '<div class="empty">Ingen box tittar.</div>';
+  $("playing").innerHTML = s.length ? `<ul class="list">${s.map((x) => `<li><span class="lvl ok" style="margin:0"></span><div class="grow"><div class="ellipsis"><strong>${esc(x.device_name)}</strong>: ${esc(x.item_name)}</div><div class="small muted">sedan ${fmtTime(x.started)}${x.metrics && Number(x.metrics.bandwidth_bps) ? ` · ${(Number(x.metrics.bandwidth_bps) / 1e6).toFixed(1)} Mbit/s` : ""}${x.metrics && Number(x.metrics.stalls) ? ` · ${esc(String(Math.trunc(Number(x.metrics.stalls))))} avbrott i bilden` : ""}</div></div></li>`).join("")}</ul>` : '<div class="empty">Ingen box tittar.</div>';
   const c = overview.catalog;
   $("counts").innerHTML = [["Kanaler", c.live.items], ["Filmer", c.vod.items], ["Serier", c.series.items]].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v.toLocaleString("sv-SE")}</div></div>`).join("");
   const ls = overview.last_sync;
@@ -1893,6 +1906,8 @@ loaders.devices = async () => {
     const opts = isBox ? `<div class="dev-opts">
         <label class="f">Startprofil<select data-act="default_profile">${profs.map((p) => `<option value="${p.id}" ${p.id === (d.default_profile_id || (profs.find((x) => x.allow_adult) || profs[0] || {}).id) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
         <label class="f">Tillbaka till startprofilen<select data-act="revert">${hours.map((h) => `<option value="${h}" ${h === (d.revert_hours || 0) ? "selected" : ""}>${h ? `efter ${h} h utan användning` : "Aldrig"}</option>`).join("")}</select></label>
+        <label class="f">Vuxenläget stängs efter<select data-act="adult_idle">${[5, 15, 30, 60, 120, 180].map((m) => `<option value="${m}" ${m === (d.adult_idle_minutes || 15) ? "selected" : ""}>${m < 60 ? `${m} min` : `${m / 60} h`} utan knapptryck</option>`).join("")}</select></label>
+        <label class="chk" style="min-height:38px" title="Bara telefonen behöver det här. TV-boxar ska inte få Home Assistant-nyckeln."><input type="checkbox" data-act="remote_allowed" ${d.remote_allowed ? "checked" : ""}> Får hämta fjärråtkomst (Nabu Casa), bara för telefonen</label>
         <label class="chk" style="min-height:38px"><input type="checkbox" data-act="pin_required" ${d.pin_required ? "checked" : ""}> Kräv kod för vuxenläget</label>
       </div>` : "";
     return `<li class="dev" data-id="${d.id}"><div class="grow"><div><strong>${esc(d.name)}</strong> ${d.playing ? `<span class="pill ok">tittar: ${esc(d.playing.item_name)}</span>` : ""}</div>
@@ -1914,6 +1929,8 @@ $("device-list").addEventListener("change", (e) => {
   const put = (body, msg) => guarded(async () => { await api(`devices/${did}`, { method: "PUT", body }); toast(msg); });
   if (el.dataset.act === "default_profile") return put({ default_profile_id: Number(el.value) }, "Sparat. Boxen startar med den profilen.");
   if (el.dataset.act === "revert") return put({ revert_hours: Number(el.value) }, Number(el.value) ? `Sparat. Boxen går tillbaka till startprofilen efter ${el.value} h utan användning.` : "Sparat. Boxen stannar på vald profil.");
+  if (el.dataset.act === "adult_idle") return put({ adult_idle_minutes: Number(el.value) }, `Sparat. Vuxenläget på den här boxen stängs efter ${el.value} min utan knapptryck (och senast efter 3 h).`);
+  if (el.dataset.act === "remote_allowed") return put({ remote_allowed: el.checked }, el.checked ? "Sparat. Den här enheten får hämta nyckeln för fjärråtkomst. Slå bara på det för telefonen." : "Sparat. Enheten får ingen fjärråtkomstnyckel och tappar den vid nästa kontroll.");
   if (el.dataset.act === "pin_required") return put({ pin_required: el.checked }, el.checked ? "Sparat. Boxen frågar efter koden för vuxenläget (om en kod är satt)." : "Sparat. Boxen frågar inte efter koden.");
   const sel = e.target.closest("select[data-act=profile]"); if (!sel) return;
   const id = sel.closest("li").dataset.id;
@@ -2073,13 +2090,47 @@ $("rm-test").addEventListener("click", (e) => guarded(async () => {
 
 /* ---------- diagnostik ---------- */
 let capType = "vod";
+let allEvents = [];
+function renderEvents() {
+  const q = $("ev-search").value.trim().toLowerCase();
+  const box = $("ev-box").value, kind = $("ev-kind").value, hours = parseInt($("ev-time").value, 10) || 0;
+  const hideStart = $("ev-hide-start").checked;
+  const since = hours ? Date.now() - hours * 3600e3 : 0;
+  const list = allEvents.filter((ev) => {
+    if (box && (ev.device || "–") !== box) return false;
+    if (kind && ev.kind !== kind) return false;
+    if (hideStart && (ev.kind === "play" || ev.kind === "start")) return false;
+    if (since && new Date(ev.ts).getTime() < since) return false;
+    if (q) {
+      const text = `${fmtTime(ev.ts)} ${ev.device || ""} ${EVENT_LABEL[ev.kind] || ev.kind} ${describeEvent(ev)}`.toLowerCase();
+      if (!text.includes(q)) return false;
+    }
+    return true;
+  });
+  $("events").innerHTML = list.map((ev) => `<tr><td class="small">${fmtTime(ev.ts)}</td><td class="small">${esc(ev.device || "–")}</td><td>${esc(EVENT_LABEL[ev.kind] || ev.kind)}</td><td class="small muted">${esc(describeEvent(ev))}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">Inga händelser.</td></tr>';
+  $("ev-count").textContent = `Visar ${list.length} av ${allEvents.length} händelser.`;
+}
+function fillEventFilters() {
+  const boxSel = $("ev-box"), kindSel = $("ev-kind");
+  const boxes = [...new Set(allEvents.map((e) => e.device || "–"))].sort();
+  const kinds = [...new Set(allEvents.map((e) => e.kind))].sort((a, b) => (EVENT_LABEL[a] || a).localeCompare(EVENT_LABEL[b] || b, "sv"));
+  const keepBox = boxSel.value, keepKind = kindSel.value;
+  boxSel.innerHTML = '<option value="">Alla boxar</option>' + boxes.map((b) => `<option>${esc(b)}</option>`).join("");
+  kindSel.innerHTML = '<option value="">Alla händelser</option>' + kinds.map((k) => `<option value="${esc(k)}">${esc(EVENT_LABEL[k] || k)}</option>`).join("");
+  boxSel.value = boxes.includes(keepBox) ? keepBox : "";
+  kindSel.value = kinds.includes(keepKind) ? keepKind : "";
+}
+["ev-search", "ev-box", "ev-kind", "ev-time", "ev-hide-start"].forEach((id) =>
+  $(id).addEventListener(id === "ev-search" ? "input" : "change", renderEvents));
 loaders.diagnostics = async () => {
-  const [d, syncs] = await Promise.all([api("diagnostics").catch((e) => (toast(e.message), null)), api("catalog/syncs").catch(() => null)]);
+  const [d, syncs] = await Promise.all([api("diagnostics?limit=500").catch((e) => (toast(e.message), null)), api("catalog/syncs").catch(() => null)]);
   if (d) {
     sparkline($("net-spark"), d.net.slice().reverse().map((r) => ({ v: r.ms, ok: !!r.ok })));
     const fails = d.net.filter((r) => !r.ok).length;
     $("net-cap").textContent = d.net.length ? `${d.net.length} senaste kontroller, ${fails} utan svar. Röda streck betyder att internet var nere.` : "Inga kontroller ännu.";
-    $("events").innerHTML = d.events.map((ev) => `<tr><td class="small">${fmtTime(ev.ts)}</td><td class="small">${esc(ev.device || "–")}</td><td>${esc(EVENT_LABEL[ev.kind] || ev.kind)}</td><td class="small muted">${esc(describeEvent(ev))}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">Inga händelser.</td></tr>';
+    allEvents = d.events;
+    fillEventFilters();
+    renderEvents();
   }
   if (syncs) {
     $("sync-list").innerHTML = syncs.runs.slice(0, 8).map((r) => {
@@ -2089,7 +2140,7 @@ loaders.diagnostics = async () => {
     }).join("") || '<li class="empty">Ingen uppdatering ännu.</li>';
   }
 };
-const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden stannade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar" };
+const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden stannade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar", probe: "Källans svar", record: "Inspelning" };
 function describeEvent(ev) {
   const d = ev.detail || {};
   switch (ev.kind) {
@@ -2101,7 +2152,8 @@ function describeEvent(ev) {
     case "server_test": return d.ok ? `${d.mbps} Mbit/s` : (d.error || "");
     case "sync": return d.status + (d.failed_steps && d.failed_steps.length ? ": " + d.failed_steps.join(", ") : "");
     case "takeover_requested": return `${d.by} tar över från ${d.from}`;
-    case "error": return d.message || d.code || "";
+    case "error": return [d.code, d.message].filter(Boolean).join(": ");
+    case "probe": return d.error ? `Ingen kontakt (${d.error})` : [`HTTP ${d.status}`, d.content_type, d.length != null && `${d.length} byte`, d.start && `börjar med: ${d.start}`].filter(Boolean).join(" · ");
     case "paired": return d.model || "";
     default: return Object.entries(d).slice(0, 4).map(([k, v]) => `${k}: ${v}`).join(", ");
   }

@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (VERSION, ai, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
+from . import (VERSION, ai, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
                sports,
                recordings, reminders, remote, taste, updates)
 from .config import CFG
@@ -122,6 +122,7 @@ class BaseHandler(BaseHTTPRequestHandler):
     server_version = "TVHub"
     sys_version = ""
     routes = []
+    timeout = 60  # sekunder per läsning från klienten: en tyst eller långsam klient håller inte kvar en tråd
 
     def log_message(self, fmt, *args):
         pass
@@ -139,7 +140,12 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def read_json(self):
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            raise HttpError(400, "Ogiltig längd")
+        if length < 0:
+            raise HttpError(400, "Ogiltig längd")
         if length > MAX_BODY:
             raise HttpError(413, "För stor förfrågan")
         if not length:
@@ -158,6 +164,11 @@ class BaseHandler(BaseHTTPRequestHandler):
         try:
             if not self.allowed():
                 raise HttpError(403, "Åtkomst nekad")
+            if self.routes is ADMIN and method in ("POST", "PUT", "DELETE", "PATCH") \
+                    and int(self.headers.get("Content-Length") or 0) > 0 \
+                    and "json" not in (self.headers.get("Content-Type") or "").lower():
+                # Webbadminen skickar alltid JSON. Det stoppar enkla formulär från andra sidor (CSRF).
+                raise HttpError(415, "Förväntade JSON")
             for route_method, pattern, handler in self.routes:
                 if route_method != method:
                     continue
@@ -415,6 +426,43 @@ def admin_vod(h, vod_id):
 IMG_DIR = None
 IMG_MAX_BYTES = 3 * 1024 * 1024
 IMG_MAX_FILES = 4000
+IMG_MAX_TOTAL = 256 * 1024 * 1024   # cachens storlek i byte
+IMG_MIN_FREE = 500 * 1024 * 1024    # ingen cache om disken har mindre än så här ledigt
+
+
+def _portal_hosts():
+    out = []
+    try:
+        for row in db.q("SELECT url FROM portals"):
+            parts = urlparse(row["url"] if "://" in row["url"] else "http://" + row["url"])
+            if parts.hostname:
+                port = parts.port or (443 if parts.scheme == "https" else 80)
+                out.append({"host": f"{parts.hostname.lower()}:{port}"})
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+def _img_cache_store(path, body):
+    """Sparar en bild i cachen om det finns plats (antal filer, byte och ledigt diskutrymme)."""
+    import shutil
+    try:
+        if shutil.disk_usage(IMG_DIR).free < IMG_MIN_FREE:
+            return
+        with open(path, "wb") as fh:
+            fh.write(body)
+        entries = [(e.path, e.stat()) for e in os.scandir(IMG_DIR) if e.is_file()]
+        total = sum(st.st_size for _, st in entries)
+        if len(entries) > IMG_MAX_FILES or total > IMG_MAX_TOTAL:
+            entries.sort(key=lambda item: item[1].st_mtime)
+            for old, st in entries:
+                if len(entries) <= IMG_MAX_FILES - 200 and total <= IMG_MAX_TOTAL * 0.8:
+                    break
+                os.remove(old)
+                total -= st.st_size
+                entries = [e for e in entries if e[0] != old]
+    except OSError:
+        pass
 
 
 @route(ADMIN, "GET", r"/api/img")
@@ -438,28 +486,24 @@ def admin_img(h):
         ctype = "image/png" if body[:4] == b"\x89PNG" else ("image/webp" if body[8:12] == b"WEBP" else "image/jpeg")
     else:
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": CFG["user_agent"]})
-            with urllib.request.urlopen(req, timeout=8) as res:
+            # Bara publika adresser: hemnätet, loopback och Home Assistants interna tjänster spärras,
+            # också via omdirigeringar. Källans egen värd är undantagen.
+            own_hosts = {p_["host"] for p_ in _portal_hosts()}
+            res = limits.open_public(url, {"User-Agent": CFG["user_agent"]}, 8, allow_hosts=own_hosts)
+            with res:
                 ctype = (res.headers.get("Content-Type") or "").split(";")[0].strip()
                 if not ctype.startswith("image/") or ctype == "image/svg+xml":
                     raise HttpError(415, "Inte en bild")
                 body = res.read(IMG_MAX_BYTES + 1)
         except HttpError:
             raise
+        except limits.BlockedAddress:
+            raise HttpError(400, "Adressen är inte tillåten")
         except Exception:
             raise HttpError(502, "Bilden kunde inte hämtas")
         if len(body) > IMG_MAX_BYTES:
             raise HttpError(413, "För stor bild")
-        try:
-            with open(path, "wb") as fh:
-                fh.write(body)
-            names = os.listdir(IMG_DIR)
-            if len(names) > IMG_MAX_FILES:
-                full = sorted((os.path.join(IMG_DIR, n) for n in names), key=os.path.getmtime)
-                for old in full[: len(full) - IMG_MAX_FILES + 200]:
-                    os.remove(old)
-        except OSError:
-            pass
+        _img_cache_store(path, body)
     h.send_response(200)
     h.send_header("Content-Type", ctype)
     h.send_header("Content-Length", str(len(body)))
@@ -794,8 +838,11 @@ def dev_ping(h):
 @route(DEVICE, "POST", r"/device/pair")
 def dev_pair(h):
     data = h.read_json()
-    result = devices.pair(data.get("code"), data.get("name"), data.get("model"),
-                          data.get("app_version"), h.client_ip())
+    try:
+        result = devices.pair(data.get("code"), data.get("name"), data.get("model"),
+                              data.get("app_version"), h.client_ip())
+    except devices.TooManyAttempts as exc:
+        raise HttpError(429, str(exc))
     if result is None:
         time.sleep(1)  # bromsar gissning av koder
         raise HttpError(403, "Fel eller utgången kod. Skapa en ny kod i webbadminen.")
@@ -832,7 +879,8 @@ def dev_home(h):
         # Profiler: vem som tittar, och vad boxen går tillbaka till efter en stund utan användning.
         "active_profile": h.profile(),
         "profiles": profiles.all_profiles(),
-        "box": {"default_profile_id": dev["default_profile_id"] or profiles.owner_id(), "revert_hours": dev["revert_hours"]},
+        "box": {"default_profile_id": dev["default_profile_id"] or profiles.owner_id(), "revert_hours": dev["revert_hours"],
+                "adult_idle_minutes": dev["adult_idle_minutes"]},
     }
 
 
@@ -921,17 +969,26 @@ def dev_series(h, sid):
     return 200, detail
 
 
+def _live_visible(scope, stream_id):
+    """Kanaler som inte hör till boxens läge och profil visas inte (inte heller deras programguide)."""
+    return catalog.in_scope("live", stream_id, scope) or \
+        (catalog.get_item("live", stream_id) is None and scope.group_id is None and not scope.adult)
+
+
 @route(DEVICE, "GET", r"/device/epg/([\w\-]+)")
 def dev_epg(h, stream_id):
-    h.device()
+    dev, scope = h.context()
+    if not _live_visible(scope, stream_id):
+        return 200, []
     return 200, epg(stream_id)
 
 
 @route(DEVICE, "GET", r"/device/epg-now")
 def dev_epg_now(h):
     """Nu och nästa för upp till 40 kanaler i ett anrop (för kanallistan)."""
-    h.device()
+    dev, scope = h.context()
     ids = [i for i in (h.query.get("ids", [""])[0]).split(",") if re.match(r"^[\w\-]{1,40}$", i)][:40]
+    ids = [i for i in ids if _live_visible(scope, i)]
     now_s = time.time()
     futures = {i: _epg_pool.submit(epg, i) for i in ids}
     out = {}
@@ -1061,7 +1118,14 @@ def dev_recordings(h):
     """Utan all=1: det som syns i boxens nuvarande läge. Med all=1: hela schemat för inspelningstjänsten."""
     dev, scope = h.context()
     if h.query.get("all", ["0"])[0] == "1":
-        return 200, recordings.for_device(dev["id"])
+        rows = recordings.for_device(dev["id"])
+        if not scope.adult:
+            # Schemat behövs i sin helhet för inspelningstjänsten, men vuxentitlar och kanaler visas bara i vuxenläget.
+            for r in rows:
+                if r.get("adult"):
+                    r["title"] = "Inspelning"
+                    r["channel"] = None
+        return 200, rows
     return 200, recordings.for_device(dev["id"], adult=scope.adult or 0)
 
 
@@ -1471,14 +1535,22 @@ def dev_profiles(h):
     return 200, {"profiles": profiles.all_profiles(), "active": h.profile()}
 
 
+_profile_limit = limits.AttemptLimiter(5, 300)  # fem försök per box och profil, sedan fem minuters paus
+
+
 @route(DEVICE, "POST", r"/device/profile-check")
 def dev_profile_check(h):
     """Byte till en profil med PIN: appen kontrollerar koden här."""
-    h.device()
+    dev = h.device()
     data = h.read_json()
+    key = (dev["id"], str(data.get("profile_id")))
+    wait = _profile_limit.reserve(key)
+    if wait is not None:
+        raise HttpError(429, f"För många försök. Vänta {wait // 60 + 1} min.")
     if not profiles.check_pin(data.get("profile_id"), data.get("pin")):
         time.sleep(1)
         raise HttpError(403, "Fel kod.")
+    _profile_limit.success(key)
     return 200, {"ok": True, "profile": profiles.get(data.get("profile_id"))}
 
 
@@ -1911,9 +1983,12 @@ def admin_ai_clear(h):
 @route(DEVICE, "GET", r"/device/remote")
 def dev_remote(h):
     """Uppgifter för att nå TV Hub via Nabu Casa. Bara hemma, aldrig via Nabu Casa."""
-    h.device()
+    dev = h.device()
     if h.via_ingress:
         raise HttpError(404, "Hittades inte")
+    if not dev["remote_allowed"]:
+        # Bara enheter som du har slagit på det för (telefonen) får Home Assistant-nyckeln.
+        return 200, {"available": False, "missing": ["tillstånd i webbadminen (Boxar, Fjärråtkomst)"]}
     return 200, remote.device_config()
 
 
@@ -1935,7 +2010,7 @@ class IngressHandler(DeviceHandler):
     def dispatch(self, method):
         path = urlparse(self.path).path
         self.routes = DEVICE_VIA_INGRESS if path.startswith("/device/") else ADMIN
-        if self.routes is ADMIN and AdminHandler.allowed(self) and not remote.admin_allowed(self.headers):
+        if self.routes is ADMIN and AdminHandler.allowed(self) and not remote.admin_allowed(self.headers, self.client_ip()):
             if method == "GET" and path in ("/", "/index.html"):
                 body = DENIED_PAGE.encode("utf-8")
                 self.send_response(403)
@@ -1960,9 +2035,40 @@ class IngressHandler(DeviceHandler):
         return f"Nabu Casa ({forwarded})" if forwarded else "Nabu Casa"
 
 
+class BoundedServer(ThreadingHTTPServer):
+    """En tråd per anslutning, men högst max_threads samtidigt. Fler får 503 i stället för att
+    tillägget får slut på minne (långa förfrågningar för fjärrstart håller en tråd i upp till 55 s)."""
+    max_threads = 96
+    request_queue_size = 64
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._slots = threading.BoundedSemaphore(self.max_threads)
+
+    def process_request(self, request, client_address):
+        if not self._slots.acquire(blocking=False):
+            try:
+                request.sendall(b"HTTP/1.0 503 Service Unavailable\r\nRetry-After: 5\r\nContent-Length: 0\r\n\r\n")
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+
 def start_servers():
-    admin = ThreadingHTTPServer(("0.0.0.0", CFG["admin_port"]), IngressHandler)
-    device = ThreadingHTTPServer(("0.0.0.0", CFG["device_port"]), DeviceHandler)
+    admin = BoundedServer(("0.0.0.0", CFG["admin_port"]), IngressHandler)
+    device = BoundedServer(("0.0.0.0", CFG["device_port"]), DeviceHandler)
     admin.daemon_threads = device.daemon_threads = True
     threading.Thread(target=admin.serve_forever, daemon=True, name="admin").start()
     threading.Thread(target=device.serve_forever, daemon=True, name="device").start()

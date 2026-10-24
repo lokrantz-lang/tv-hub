@@ -140,7 +140,7 @@ class DetailActivity : Activity(), CardListener {
             if (data.optBoolean("watched")) "✓ Sedd" else null,
         ).joinToString("   ·   ")
         findViewById<TextView>(R.id.meta).text = meta
-        findViewById<TextView>(R.id.plot).text = data.optStringOrNull("plot") ?: "Ingen handling tillgänglig."
+        Expandable.attach(findViewById(R.id.plot), data.optStringOrNull("plot") ?: "Ingen handling tillgänglig.")
         findViewById<TextView>(R.id.people).text = listOfNotNull(
             data.optStringOrNull("director")?.let { "Regi: $it" },
             data.optStringOrNull("actors")?.let { "Medverkande: $it" },

@@ -85,6 +85,7 @@ object Profiles {
         data.optJSONObject("box")?.let {
             prefs.boxDefaultProfile = it.optInt("default_profile_id")
             prefs.boxRevertHours = it.optInt("revert_hours")
+            prefs.boxAdultIdleMinutes = it.optInt("adult_idle_minutes", 15)
         }
         // Profilen togs bort i webbadminen: tillbaka till startprofilen.
         if (prefs.profileId > 0 && list.isNotEmpty() && list.none { it.id == prefs.profileId }) prefs.profileId = 0

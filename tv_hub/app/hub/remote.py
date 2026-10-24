@@ -248,15 +248,18 @@ def app_user():
     return (db.get_setting("remote_user") or DEFAULT_APP_USER).strip()
 
 
-def admin_allowed(headers):
+LOOPBACK = ("127.0.0.1", "::1")
+
+
+def admin_allowed(headers, client_ip=""):
     """Webbadminen: bara administratörer i Home Assistant.
 
-    Saknas användaruppgifter (äldre Supervisor) släpps anropet igenom som tidigare.
-    Går användarlistan inte att hämta nekas bara appens egen användare, så att du
-    aldrig låses ute från din egen webbadmin."""
+    Supervisor skickar alltid X-Remote-User-Id via Ingress. Saknas det, eller går användarlistan
+    inte att hämta, nekas anropet (neka hellre en stund än att ge adminrätt till fel person).
+    Undantag: anrop inifrån tillägget självt (loopback) har inga användaruppgifter och släpps igenom."""
     user_id = (headers.get("X-Remote-User-Id") or "").strip()
     if not user_id:
-        return True
+        return client_ip in LOOPBACK
     username = (headers.get("X-Remote-User-Name") or "").strip().lower()
     display = (headers.get("X-Remote-User-Display-Name") or "").strip().lower()
     blocked_name = app_user().lower()
@@ -264,14 +267,11 @@ def admin_allowed(headers):
         return False
     try:
         info = user_info(user_id)
-    except WsError:
-        return True
-    if info is None:
-        try:
+        if info is None:
             info = user_info(user_id, refresh=True)
-        except WsError:
-            return True
-    return bool(info and info["admin"])
+    except WsError:
+        return False
+    return bool(info and info.get("admin") and info.get("active", True))
 
 
 # ====================================================================

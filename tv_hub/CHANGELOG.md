@@ -1,5 +1,47 @@
 # Ändringar
 
+## 2.8.0
+
+- **Menyn på TV:n** klipps inte längre överst, så profilbrickan (byt användare) går att nå. När profilen saknar Mina program visas en ledtext på Hem.
+- **Mina media:** sortera på *Storlek* och *Längd*, och *Visa storlek och längd* under *Visa*.
+- **Handlingstexten** på serie- och filmsidan kan fällas ut: tryck (telefon) eller OK (TV) på texten när den är avklippt.
+- **Spelaren hänger sig inte längre tyst:** utan bild efter 25 sekunder avbryts uppspelningen med ett felmeddelande.
+  Håll in Tillbaka i 3 sekunder för att tvinga stängning.
+- **Efterhandsuppspelning som misslyckas:** när boxen inte kan läsa strömmen undersöker tillägget vad källan svarar och visar det i Diagnostik
+  (*Källans svar*). Inget portalbyte görs för det felet, och boxen visar ett tydligare meddelande.
+- **Diagnostik:** sök och filter på box, händelse och tid, samt ett val för att dölja *Startade*.
+- Hemskärmens text i det dolda läget är neutral, och de dolda gesterna beskrivs inte längre i dokumentationen (förrådet är publikt).
+- Innehåller allt från 2.7.0 (revisionsåtgärderna) och 2.6.2.
+
+## 2.7.0
+
+Åtgärder efter en oberoende revision (fynd F01–F17). Allt har egna tester (468 kontroller).
+
+- **Fjärråtkomst bara för telefonen:** Home Assistant-nyckeln lämnas bara ut till enheter du kryssat i under *Boxar*.
+  **Efter uppdatering:** kryssa i *Får hämta fjärråtkomst* för telefonen, annars tappar den fjärråtkomst. (F02)
+- Webbadminen släpper inte längre in någon när Home Assistant inte kan bekräfta vem det är. (F03)
+- Mätvärden från boxarna saneras innan de visas (stoppar HTML-injektion i webbadminen). (F01)
+- Vuxentitlar visas aldrig i översikten, sensorn *TV Hub status*, konfliktmeddelanden eller schemat i vanligt läge.
+  Programguiden för vuxenkanaler är tom i vanligt läge. En inspelning får bara hämta en ström när den är aktuell. (F05)
+- Bara kanaler, filmer och serier som finns i listan kan spelas. (F05)
+- Två boxar som startar samtidigt kan inte båda få ström. Inspelningar räknas fortfarande inte som egen ström. (F06)
+- Parningskod kan bara användas en gång, också vid parallella försök. Spärr mot gissning av parningskoder och PIN
+  (också profil-PIN). (F07, F04)
+- Bildproxyn hämtar inte adresser i hemnätet eller via omdirigeringar. Bildcachen har en storleksgräns i byte. (F09)
+- Gränser: trådar, negativa längder, tidsgräns för tysta anslutningar, storlek på svar från källan. Admin-API:t kräver JSON. (F10, F16)
+- Appnedladdning: ett lås och en unik temporärfil per nedladdning. (F11)
+- GitHub-bygget: appen publiceras bara om backend-testerna går igenom och signeringsnyckeln finns; minimala rättigheter. (F12)
+- Android: filer raderas bara i inspelningsmapparna, VLC får bara filer på USB/lagring, favoriter från NAS som sparats i vuxenläget
+  är dolda i vanligt läge, och avparning tar också bort fjärrnyckeln. (F13, F15, F17)
+- AI-underlaget innehåller inte profilens namn. Borttagen profil tar också bort sett-logg, önskelista och sessionshistorik. (F14, F17)
+- Några punkter är medvetet kvar eller kommer senare; de hanteras i projektets egna anteckningar.
+
+## 2.6.2
+
+- **Vuxenläget stängs efter en tid du väljer, per box.** Webbadminen, Boxar: *Vuxenläget stängs efter* (5 min till 3 h
+  utan knapptryck, standard 15 minuter). Gränsen på högst 3 timmar totalt, omstart och profilbyte gäller som förut.
+  Boxarna hämtar tiden när hemskärmen laddas. Kräver databasversion 13 (läggs till automatiskt).
+
 ## 2.6.1
 
 - Inga namn på personer eller lokala lag i koden längre (förrådet är publikt). Profiler och lag läggs till i webbadminen.
@@ -139,7 +181,7 @@
     (Hem, Live, Filmer, Serier, Sök). Inställningar uppe till höger.
   - Spelaren: tryck på bilden för knappar (paus, −10/+30 s, kanal upp/ner, ljud, undertexter),
     dra i reglaget för att spola och vrid telefonen för helskärm.
-  - Dolt vuxenläge: tryck tre gånger snabbt på "TV Hub" överst. I vuxenläget: håll in "TV Hub"
+  - Dolt vuxenläge på telefonen (gesten beskrivs inte här). I vuxenläget: ett dolt val
     för att visa eller dölja favoriter och historik.
   - Inspelning görs fortfarande på boxarna och visas inte på telefonen.
 - Utanför hemmet via Nabu Casa, utan att öppna något i routern:
@@ -185,7 +227,7 @@
 
 - Vuxeninnehåll avgörs nu bara av kategorin ("For Adults", "Porn" eller "XXX" i namnet). Vanliga filmer
   som *xXx* eller *Hustlers* syns i vanligt läge igen. Kategorier kan markeras manuellt under Kategorier.
-- Vuxenläget: dolt val (höger tre gånger på Inställningar) som visar eller döljer favoriter, Fortsätt
+- Vuxenläget: dolt val som visar eller döljer favoriter, Fortsätt
   titta, senaste kanaler och sedda. Läget startar alltid med dem dolda. Tittandet sparas ändå.
 - Spola i filmer, avsnitt, inspelningar och tidigare program: vänster 10 s bakåt, höger 30 s framåt.
   Håll in för att spola snabbare.

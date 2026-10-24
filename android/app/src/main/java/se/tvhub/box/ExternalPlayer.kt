@@ -30,10 +30,19 @@ object ExternalPlayer {
         prefs(context).edit().putBoolean("vlc:$url", true).apply()
     }
 
+    private fun shareable(path: String): Boolean = try {
+        val real = File(path).canonicalPath
+        real.startsWith("/storage/") || real.startsWith("/mnt/")
+    } catch (_: Exception) {
+        false
+    }
+
     /** Öppnar filen (sökväg eller http-adress) i VLC. false om VLC saknas eller inte kunde startas. */
     fun openInVlc(activity: Activity, url: String, title: String, positionMs: Long = 0L): Boolean {
         if (!vlcInstalled(activity)) return false
         val uri = if (url.startsWith("/")) {
+            // Bara filer på USB/lagring delas med VLC, aldrig appens egna privata filer.
+            if (!shareable(url)) return false
             try {
                 FileProvider.getUriForFile(activity, "${activity.packageName}.files", File(url))
             } catch (_: Exception) {

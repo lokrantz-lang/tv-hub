@@ -162,6 +162,9 @@ class Handler(BaseHTTPRequestHandler):
             calls = STATE.get("epg_calls", [])
             STATE["epg_calls"] = []
             return self.send(200, {"calls": calls})
+        if url.path == "/__timeshift_html":
+            STATE["timeshift_html"] = q.get("on") == "1"
+            return self.send(200, {"ok": True})
         if url.path == "/__last_timeshift":
             return self.send(200, {"path": STATE.get("last_timeshift")})
         if url.path == "/__mode":
@@ -268,6 +271,8 @@ class Handler(BaseHTTPRequestHandler):
             if parts[1] != USER or parts[2] != PASS:
                 return self.send(403, b"forbidden", "text/plain")
             STATE["last_timeshift"] = url.path
+            if STATE.get("timeshift_html"):
+                return self.send(200, b"<html><body>Programmet finns inte i arkivet</body></html>", "text/html")
             return self.send(200, b"\x47" * 188 * 100, "video/mp2t")
         if len(parts) == 4 and parts[0] in ("live", "movie", "series"):
             if parts[1] != USER or parts[2] != PASS:

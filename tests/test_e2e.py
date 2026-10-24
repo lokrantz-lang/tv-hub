@@ -22,6 +22,7 @@ CERT_DIR = tempfile.mkdtemp(prefix="tvhub-cert-")
 A = f"http://127.0.0.1:{ADMIN}"
 D = f"http://127.0.0.1:{DEVICE}"
 FAILS = []
+DATA_DIR = None
 
 
 def call(method, url, body=None, token=None, raw=False, mode=None, history=None, unlock=None, profile=None):
@@ -69,7 +70,9 @@ def fake_mode(mode, **extra):
 
 def main():
     data_dir = tempfile.mkdtemp(prefix="tvhub-test-")
-    env = dict(os.environ, DATA_DIR=data_dir, ADMIN_PORT=str(ADMIN), DEVICE_PORT=str(DEVICE),
+    global DATA_DIR
+    DATA_DIR = data_dir
+    env = dict(os.environ, TVHUB_PROBE_MIN_GAP="3", DATA_DIR=data_dir, ADMIN_PORT=str(ADMIN), DEVICE_PORT=str(DEVICE),
                CHECK_INTERVAL="2", NET_CHECK_INTERVAL="2", TIMEOUT="3", SYNC_TIMEOUT="2",
                REFERENCE_HOSTS=f"127.0.0.1:{FAKE_PORT}", OPTIONS_PATH="/nonexistent",
                ADMIN_ALLOWED_IPS="127.0.0.1", NO_PROXY="*", no_proxy="*",
@@ -277,6 +280,8 @@ def main():
         version_21(ta, tb, pa, pb, cert)
         version_25(ta, tb, pa, pb)
         version_26(ta, tb, pa, pb)
+        version_27(ta, tb, pa, pb)
+        version_28(ta, tb, pa, pb)
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -445,10 +450,10 @@ def version_13(ta, tb, pa, pb):
     check("liveström talar om hur långt arkivet räcker (timeshift)", live101.get("archive_days") == 3, live101)
     s, w = call("POST", f"{D}/device/play", {"type": "live", "id": "102"}, token=ta)
     s, r1 = call("POST", f"{D}/device/recordings", {"stream_id": "101", "title": "Rapport",
-                                                     "start": now + 3600, "end": now + 5400}, token=ta)
+                                                     "start": now + 120, "end": now + 1800}, token=ta)
     check("planera inspelning framåt", s == 201 and r1["source"] == "live" and r1["status"] == "scheduled", r1)
     s, again = call("POST", f"{D}/device/recordings", {"stream_id": "101", "title": "Rapport",
-                                                        "start": now + 3600, "end": now + 5400}, token=ta)
+                                                        "start": now + 120, "end": now + 1800}, token=ta)
     check("samma program två gånger blir en inspelning", s == 200 and again["id"] == r1["id"], again)
     s, bad = call("POST", f"{D}/device/recordings", {"stream_id": "102", "start": now - 7200, "end": now - 3600}, token=ta)
     check("sänt program utan arkiv nekas", s == 400 and "arkiv" in bad["error"], bad)
@@ -1115,6 +1120,13 @@ def remote_access(ta, pa, cert):
                                             "token": "app-token-0123456789abcdef", "app_user": "tvhub"})
     check("spara Nabu Casa-uppgifter", s == 200 and res["ready"] and res["url"] == nabu
           and res["token_hint"] == "…cdef" and "token" not in res, res)
+    # 2.7 (F02): bara enheter som admin har slagit på det för får Home Assistant-nyckeln
+    s, res = call("GET", f"{D}/device/remote", token=ta)
+    check("enhet utan tillstånd får ingen nyckel", s == 200 and res["available"] is False and "ha_token" not in res
+          and "app-token" not in json.dumps(res), res)
+    s, devs = call("GET", f"{A}/api/devices")
+    check("fjärråtkomst är avstängd som standard", all(d["remote_allowed"] is False for d in devs), devs)
+    s, _ = call("PUT", f"{A}/api/devices/{pa['device_id']}", {"remote_allowed": True})
     s, res = call("GET", f"{D}/device/remote", token=ta)
     check("boxen får uppgifterna hemma", s == 200 and res["available"] and res["url"] == nabu
           and res["ingress"] == "/api/hassio_ingress/INGRESSTOK" and res["ha_token"], res)
@@ -1348,6 +1360,19 @@ def version_25(ta, tb, pa, pb):
     s, res = call("PUT", f"{A}/api/devices/{pb['device_id']}", {"revert_hours": 99})
     check("orimlig återgångstid nekas", s == 400, res)
 
+    # Vuxenlägets tid utan knapptryck, per box (standard 15 minuter)
+    s, hb = call("GET", f"{D}/device/home", token=tb)
+    check("vuxenlägets tid är 15 minuter som standard", hb["box"]["adult_idle_minutes"] == 15, hb["box"])
+    s, res = call("PUT", f"{A}/api/devices/{pb['device_id']}", {"adult_idle_minutes": 60})
+    s, hb = call("GET", f"{D}/device/home", token=tb)
+    check("vuxenlägets tid kan ändras per box", s == 200 and hb["box"]["adult_idle_minutes"] == 60, hb["box"])
+    s, hb2 = call("GET", f"{D}/device/home", token=ta)
+    check("andra boxen behåller sin tid", hb2["box"]["adult_idle_minutes"] == 15, hb2["box"])
+    for bad in (0, 181, -5):
+        s, res = call("PUT", f"{A}/api/devices/{pb['device_id']}", {"adult_idle_minutes": bad})
+        check(f"orimlig vuxenlägestid {bad} nekas", s == 400, res)
+    call("PUT", f"{A}/api/devices/{pb['device_id']}", {"adult_idle_minutes": 15})
+
     # Mina program
     fake_mode("ok", news=1)
     s, sug = call("POST", f"{A}/api/my-programs/suggest", {"profile_id": owner})
@@ -1536,6 +1561,326 @@ def _sync_done():
     if data["status"]["running"] or not data["runs"]:
         return None
     return data["runs"][0] if data["runs"][0]["status"] != "running" else None
+
+
+def _threads(count, fn):
+    """Kör fn(i) i count trådar som startar samtidigt. Returnerar resultaten i ordning."""
+    import threading
+    barrier = threading.Barrier(count)
+    out = [None] * count
+
+    def run(i):
+        barrier.wait()
+        try:
+            out[i] = fn(i)
+        except Exception as exc:  # noqa: BLE001
+            out[i] = ("fel", repr(exc))
+
+    ts = [threading.Thread(target=run, args=(i,)) for i in range(count)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    return out
+
+
+def version_27(ta, tb, pa, pb):
+    """2.7: åtgärder efter den oberoende revisionen (F01–F17). Negativa tester och samtidighetstester."""
+    import http.server
+    import socket
+    import sqlite3
+    import threading
+    sys.path.insert(0, os.path.join(ROOT, "tv_hub", "app"))
+    from hub import limits, remote as rm, updates, devices as dv
+    from hub.config import CFG
+    print("Version 2.7: revisionsåtgärder")
+    call("PUT", f"{A}/api/adult-pin", {"pin": ""})
+    s, data = call("GET", f"{A}/api/profiles")
+    profs = {p["name"]: p for p in data["profiles"]}
+    owner, child = profs["Själv"]["id"], profs["Testbarn"]["id"]
+
+    def stop_all():
+        s, ov = call("GET", f"{A}/api/overview")
+        for x in ov.get("sessions", []):
+            tok = ta if x["device_id"] == pa["device_id"] else tb
+            call("POST", f"{D}/device/stop", {"session_id": x["id"]}, token=tok)
+
+    stop_all()
+
+    # F01: mätvärden från boxen sanerade
+    s, p = call("POST", f"{D}/device/play", {"type": "live", "id": "101"}, token=ta)
+    evil = {"stalls": "<img src=x onerror=alert(1)>", "bandwidth_bps": {"a": 1}, "portal": "<b>x</b>", "resolution": "<script>",
+            "evil": "x", "position_ms": True, "stall_ms": 10 ** 30}
+    call("POST", f"{D}/device/heartbeat", {"session_id": p["session_id"], "metrics": evil}, token=ta)
+    s, ov = call("GET", f"{A}/api/overview")
+    m = next(x["metrics"] for x in ov["sessions"] if x["id"] == p["session_id"])
+    check("F01: osäkra mätvärden kastas", set(m) <= {"portal"} and "<" not in json.dumps(m), m)
+    call("POST", f"{D}/device/heartbeat", {"session_id": p["session_id"],
+                                           "metrics": {"bandwidth_bps": 8e6, "stalls": 2, "resolution": "1920x1080", "cast": True}}, token=ta)
+    s, ov = call("GET", f"{A}/api/overview")
+    m = next(x["metrics"] for x in ov["sessions"] if x["id"] == p["session_id"])
+    check("F01: normala mätvärden fungerar", m == {"bandwidth_bps": 8000000, "stalls": 2, "resolution": "1920x1080", "cast": True}, m)
+    stop_all()
+
+    # F03: adminspärren nekar när behörigheten inte kan avgöras
+    check("F03: saknat användar-id via Ingress nekas", rm.admin_allowed({}, "172.30.32.2") is False)
+    check("F03: anrop inifrån tillägget släpps igenom", rm.admin_allowed({}, "127.0.0.1") is True)
+    orig, orig_user = rm.user_info, rm.app_user
+
+    def boom(*a, **k):
+        raise rm.WsError("Home Assistant svarar inte")
+    rm.user_info, rm.app_user = boom, (lambda: "tvhub")  # testprocessen har ingen databas
+    try:
+        check("F03: uppslagsfel nekas (inte släpps igenom)", rm.admin_allowed({"X-Remote-User-Id": "u-admin"}, "172.30.32.2") is False)
+    finally:
+        rm.user_info, rm.app_user = orig, orig_user
+
+    # F05: vuxeninnehåll på sidovägar
+    s, ap = call("POST", f"{D}/device/play", {"type": "live", "id": "190"}, token=ta, mode="adult", profile=owner)
+    check("vuxenkanal startar i vuxenläge", ap["status"] == "ok", ap)
+    s, summ = call("GET", f"{D}/device/summary", token=tb)
+    check("F05: summary visar aldrig vuxentitel", summ["playing"] and "18+" in json.dumps(summ["playing"])
+          and ap["name"] not in json.dumps(summ["playing"]), summ["playing"])
+    s, conf = call("POST", f"{D}/device/play", {"type": "live", "id": "102"}, token=tb)
+    check("F05: konfliktmeddelandet nämner inte vuxentiteln", conf["status"] == "conflict"
+          and ap["name"] not in json.dumps(conf) and conf["conflict"]["item_name"] == "18+", conf)
+    s, ov = call("GET", f"{A}/api/overview")
+    check("F05: adminöversikten visar inte vuxentiteln", ap["name"] not in json.dumps(ov["sessions"]), ov["sessions"])
+    stop_all()
+    now = int(time.time())
+    s, rad = call("POST", f"{D}/device/recordings", {"stream_id": "190", "title": "HemligVuxenTitel", "start": now + 60,
+                                                     "end": now + 600}, token=ta, mode="adult", profile=owner)
+    s, allrec = call("GET", f"{D}/device/recordings?all=1", token=ta)
+    mine = next(r for r in allrec if r["id"] == rad["id"])
+    check("F05: schemat i vanligt läge maskerar vuxentitel och kanal", mine["title"] == "Inspelning" and mine["channel"] is None
+          and "HemligVuxenTitel" not in json.dumps(allrec), mine)
+    s, allrec = call("GET", f"{D}/device/recordings?all=1", token=ta, mode="adult", profile=owner)
+    check("F05: … men inte i vuxenläge", next(r for r in allrec if r["id"] == rad["id"])["title"] == "HemligVuxenTitel")
+    s, ok = call("POST", f"{D}/device/play", {"type": "live", "id": "190", "recording_id": rad["id"]}, token=ta)
+    check("F05: planerad inspelning kan fortfarande starta (tjänsten)", ok["status"] == "ok", ok)
+    stop_all()
+    s, late = call("POST", f"{D}/device/recordings", {"stream_id": "101", "title": "Sen", "start": now + 7200,
+                                                      "end": now + 9000}, token=ta)
+    s, res = call("POST", f"{D}/device/play", {"type": "live", "id": "101", "recording_id": late["id"]}, token=ta)
+    check("F05: inspelning långt före sin tid får ingen ström", res["status"] == "error", res)
+    s, soon = call("POST", f"{D}/device/recordings", {"stream_id": "102", "title": "Snart", "start": now + 120,
+                                                      "end": now + 900}, token=ta)
+    call("POST", f"{D}/device/recordings/{soon['id']}/status", {"status": "done", "size_bytes": 5}, token=ta)
+    s, res = call("POST", f"{D}/device/play", {"type": "live", "id": "102", "recording_id": soon["id"]}, token=ta)
+    check("F05: klar inspelning får ingen ström", res["status"] == "error", res)
+    for r in (rad, late, soon):
+        call("DELETE", f"{D}/device/recordings/{r['id']}", token=ta)
+    s, epg_n = call("GET", f"{D}/device/epg/190", token=ta)
+    check("F05: programguide för vuxenkanal i vanligt läge är tom", s == 200 and epg_n == [], epg_n)
+    s, en = call("GET", f"{D}/device/epg-now?ids=190,101", token=ta)
+    check("F05: epg-now utelämnar vuxenkanalen", "190" not in en and "101" in en, list(en))
+    for kind, iid in (("vod", "999999"), ("live", "888888")):
+        s, res = call("POST", f"{D}/device/play", {"type": kind, "id": iid}, token=ta)
+        check(f"F05: okänd {kind} spelas inte", res["status"] == "error", res)
+    s, res = call("POST", f"{D}/device/play", {"type": "episode", "id": "9001", "series_id": "777777"}, token=ta)
+    check("F05: avsnitt med okänd serie spelas inte", res["status"] == "error", res)
+
+    # F06: två boxar som startar samtidigt får inte båda ström
+    stop_all()
+    out = _threads(2, lambda i: call("POST", f"{D}/device/play", {"type": "live", "id": "101" if i == 0 else "102"},
+                                     token=ta if i == 0 else tb)[1]["status"])
+    check("F06: samtidiga starter ger bara en ström", sorted(out) == ["conflict", "ok"], out)
+    stop_all()
+
+    # F07: parningskod och PIN vid parallella anrop
+    s, code = call("POST", f"{A}/api/devices/pair-code")
+    res = _threads(12, lambda i: call("POST", f"{D}/device/pair", {"code": code["code"], "name": f"Par{i}"})[0])
+    check("F07: samma kod ger exakt en enhet vid parallella försök", res.count(200) == 1, res)
+    s, devs = call("GET", f"{A}/api/devices")
+    for d in devs:
+        if d["name"].startswith("Par"):
+            call("DELETE", f"{A}/api/devices/{d['id']}")
+    lim = limits.AttemptLimiter(3, 60)
+    r = [lim.reserve("k") for _ in range(5)]
+    check("F07: försöksräknaren stoppar efter tillåtet antal", r[:3] == [None] * 3 and r[3] and r[4], r)
+    lim.success("k")
+    check("F07: rätt svar nollställer räknaren", lim.reserve("k") is None)
+    call("PUT", f"{A}/api/adult-pin", {"pin": "4321"})
+    res = _threads(8, lambda i: call("POST", f"{D}/device/adult-unlock", {"pin": "0000"}, token=ta, profile=owner)[1].get("error"))
+    locked = sum(1 for e in res if e and "För många" in e)
+    check("F07: parallella felaktiga PIN-försök spärras efter fem", locked >= 3, res)
+    call("PUT", f"{A}/api/adult-pin", {"pin": ""})
+    s, pt = call("POST", f"{A}/api/profiles", {"name": "PinTest"})
+    call("PUT", f"{A}/api/profiles/{pt['id']}", {"pin": "2468"})
+    codes = [call("POST", f"{D}/device/profile-check", {"profile_id": pt["id"], "pin": "1111"}, token=tb)[0] for _ in range(5)]
+    s6, _ = call("POST", f"{D}/device/profile-check", {"profile_id": pt["id"], "pin": "1111"}, token=tb)
+    s7, _ = call("POST", f"{D}/device/profile-check", {"profile_id": pt["id"], "pin": "2468"}, token=tb)
+    check("F04: profil-PIN spärras efter fem fel (också rätt kod under spärren)", codes == [403] * 5 and s6 == 429 and s7 == 429, (codes, s6, s7))
+    call("DELETE", f"{A}/api/profiles/{pt['id']}")
+
+    # F09: bildproxyn hämtar inte interna adresser
+    for u in (f"http://127.0.0.1:{ADMIN}/api/overview", "http://169.254.169.254/latest/meta-data", "http://[::1]:8123/x.png",
+              "http://localhost:8080/x.png", "http://10.0.0.5/x.jpg", "http://192.168.1.1/x.jpg", "http://172.30.32.1:8123/x.png"):
+        s, res = call("GET", f"{A}/api/img?u=" + urllib.parse.quote(u, safe=""))
+        check(f"F09: bildproxyn nekar {u}", s == 400, (s, res))
+    check("F09: källans egen adress är undantagen", limits.check_public(f"http://127.0.0.1:{FAKE_PORT}/x.png",
+          allow_hosts={f"127.0.0.1:{FAKE_PORT}"}) is None)
+
+    class Redir(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", "http://169.254.169.254/latest/meta-data")
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+    rs = http.server.HTTPServer(("127.0.0.1", 0), Redir)
+    threading.Thread(target=rs.serve_forever, daemon=True).start()
+    try:
+        limits.open_public(f"http://127.0.0.1:{rs.server_address[1]}/x", {}, 5, allow_hosts={f"127.0.0.1:{rs.server_address[1]}"})
+        check("F09: omdirigering till intern adress stoppas", False, "följdes")
+    except limits.BlockedAddress:
+        check("F09: omdirigering till intern adress stoppas", True)
+    finally:
+        rs.shutdown()
+
+    # F10: ogiltiga längder, JSON-krav, trådgräns
+    sock = socket.create_connection(("127.0.0.1", ADMIN), timeout=5)
+    sock.sendall(b"POST /api/profiles HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: -5\r\n\r\n")
+    first = sock.recv(200).split(b"\r\n")[0]
+    sock.close()
+    check("F10: negativ Content-Length nekas", b" 400 " in first, first)
+    req = urllib.request.Request(f"{A}/api/profiles", data=b'{"name": "Form"}', method="POST", headers={"Content-Type": "text/plain"})
+    try:
+        urllib.request.urlopen(req, timeout=5)
+        code415 = 200
+    except urllib.error.HTTPError as exc:
+        code415 = exc.code
+    check("F16: admin-API kräver JSON (inte formulär)", code415 == 415, code415)
+
+    from hub.server import BoundedServer
+
+    class Quiet(http.server.BaseHTTPRequestHandler):
+        timeout = 8
+
+    class One(BoundedServer):
+        max_threads = 1
+    bs = One(("127.0.0.1", 0), Quiet)
+    threading.Thread(target=bs.serve_forever, daemon=True).start()
+    held = socket.create_connection(bs.server_address, timeout=5)
+    time.sleep(0.3)
+    extra = socket.create_connection(bs.server_address, timeout=5)
+    answer = extra.recv(100)
+    check("F10: fler anslutningar än trådgränsen får 503", answer.startswith(b"HTTP/1.0 503"), answer)
+    held.close()
+    extra.close()
+    bs.shutdown()
+
+    # F11: samtidiga APK-nedladdningar
+    tmp_dir = tempfile.mkdtemp(prefix="tvhub-apk-")
+    old_dir, old_env = CFG["data_dir"], os.environ.get("APP_RELEASE_BASE")
+    CFG["data_dir"] = tmp_dir
+    os.environ["APP_RELEASE_BASE"] = f"http://127.0.0.1:{FAKE_PORT}/release"
+    try:
+        paths = _threads(6, lambda i: updates.ensure_apk(9999))
+        left = sorted(os.listdir(tmp_dir))
+        check("F11: samtidiga nedladdningar ger en komplett fil", len(set(paths)) == 1 and left == ["tvhub-9999.apk"]
+              and os.path.getsize(paths[0]) > 100_000, (paths, left))
+    finally:
+        CFG["data_dir"] = old_dir
+        if old_env is None:
+            os.environ.pop("APP_RELEASE_BASE", None)
+        else:
+            os.environ["APP_RELEASE_BASE"] = old_env
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    # F14: inga profilnamn till AI-tjänsten
+    s, ex = call("GET", f"{A}/api/ai/export?viewer={child}&type=vod")
+    check("F14: AI-underlaget innehåller inte profilens namn", s == 200 and "Testbarn" not in ex["text"], ex["text"][:200])
+
+    # F17: profilradering tar bort sessionshistoriken
+    s, rp = call("POST", f"{A}/api/profiles", {"name": "Raderas"})
+    s, pl = call("POST", f"{D}/device/play", {"type": "live", "id": "101"}, token=ta, profile=rp["id"])
+    call("POST", f"{D}/device/stop", {"session_id": pl["session_id"]}, token=ta)
+    db = sqlite3.connect(os.path.join(DATA_DIR, "tvhub.db"))
+    before = db.execute("SELECT COUNT(*) FROM sessions WHERE viewer_id = ?", (rp["id"],)).fetchone()[0]
+    call("DELETE", f"{A}/api/profiles/{rp['id']}")
+    after = db.execute("SELECT COUNT(*) FROM sessions WHERE viewer_id = ?", (rp["id"],)).fetchone()[0]
+    db.close()
+    check("F17: borttagen profil lämnar ingen sessionshistorik", before >= 1 and after == 0, (before, after))
+
+
+def version_28(ta, tb, pa, pb):
+    """2.8: källans svar vid fel i efterhandsuppspelning (Diagnostik)."""
+    print("Version 2.8: diagnostik av efterhandsfel")
+    s, data = call("GET", f"{A}/api/profiles")
+    owner = {p["name"]: p for p in data["profiles"]}["Själv"]["id"]
+
+    def stop_all():
+        s, ov = call("GET", f"{A}/api/overview")
+        for x in ov.get("sessions", []):
+            tok = ta if x["device_id"] == pa["device_id"] else tb
+            call("POST", f"{D}/device/stop", {"session_id": x["id"]}, token=tok)
+
+    def probes():
+        s, d = call("GET", f"{A}/api/diagnostics?limit=500")
+        return [e for e in d["events"] if e["kind"] == "probe"]
+
+    def wait_probe(count, wait=8):
+        end = time.time() + wait
+        while time.time() < end:
+            found = probes()
+            if len(found) >= count:
+                return found
+            time.sleep(0.3)
+        return probes()
+
+    stop_all()
+    start = int(time.time()) - 7200
+    urllib.request.urlopen(f"http://127.0.0.1:{FAKE_PORT}/__timeshift_html?on=1").read()
+    try:
+        before = len(probes())
+        s, cu = call("POST", f"{D}/device/play", {"type": "catchup", "id": "101", "start": start, "duration": 60}, token=ta, profile=owner)
+        check("2.8: efterhandsström startar", cu.get("status") == "ok", cu)
+        call("POST", f"{D}/device/report", {"kind": "error", "session_id": cu["session_id"],
+             "detail": {"code": "ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED", "message": "Source error"}}, token=ta)
+        found = wait_probe(before + 1)
+        check("2.8: källans svar loggas efter containerfel", len(found) == before + 1, found[:1])
+        detail = found[0]["detail"] if found else {}
+        check("2.8: svaret visar status, typ och början", detail.get("status") == 200 and detail.get("content_type") == "text/html"
+              and "arkivet" in detail.get("start", ""), detail)
+        raw = json.dumps(found)
+        check("2.8: inga kontouppgifter i loggen", "testpass" not in raw and "testuser" not in raw and "/timeshift/" not in raw, raw[:300])
+
+        # Samma box igen direkt efter: begränsas (testet använder 3 s i stället för 60 s)
+        call("POST", f"{D}/device/report", {"kind": "error", "session_id": cu["session_id"],
+             "detail": {"code": "ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED", "message": "x"}}, token=ta)
+        time.sleep(1.0)
+        check("2.8: högst en undersökning per tidsfönster och box", len(probes()) == before + 1, len(probes()))
+
+        # Andra fel än containerfel undersöks inte (även när fönstret har gått)
+        time.sleep(3.0)
+        call("POST", f"{D}/device/report", {"kind": "error", "session_id": cu["session_id"],
+             "detail": {"code": "ERROR_CODE_IO_NETWORK_CONNECTION_FAILED", "message": "x"}}, token=ta)
+        time.sleep(1.5)
+        check("2.8: nätverksfel undersöks inte", len(probes()) == before + 1, len(probes()))
+
+        # Vuxenkanal: ingen text ur svaret i loggen
+        stop_all()
+        s, ap = call("POST", f"{D}/device/play", {"type": "catchup", "id": "190", "start": start, "duration": 60},
+                     token=ta, mode="adult", profile=owner)
+        if ap.get("status") == "ok":
+            call("POST", f"{D}/device/report", {"kind": "error", "session_id": ap["session_id"],
+                 "detail": {"code": "ERROR_CODE_PARSING_CONTAINER_MALFORMED", "message": "x"}}, token=ta)
+            found = wait_probe(before + 2)
+            check("2.8: vuxenkanal: ingen text ur svaret i loggen", len(found) == before + 2 and "start" not in found[0]["detail"], found[:1])
+        else:
+            check("2.8: vuxenkanal startar i vuxenläge", False, ap)
+    finally:
+        urllib.request.urlopen(f"http://127.0.0.1:{FAKE_PORT}/__timeshift_html?on=0").read()
+        stop_all()
+
+    # Diagnostik: webbadminen har sök och filter
+    s, html = call("GET", f"{A}/", raw=True)
+    page = html.decode()
+    check("2.8: Diagnostik har sökruta och filter", all(x in page for x in ("ev-search", "ev-box", "ev-kind", "ev-time", "ev-hide-start")))
+    check("2.8: gesterna beskrivs inte i dokumentationen", all(
+        "tre gånger" not in open(os.path.join(ROOT, f), encoding="utf-8").read() for f in ("README.md", os.path.join("tv_hub", "DOCS.md"))))
 
 
 if __name__ == "__main__":
