@@ -176,6 +176,8 @@ Uppspelningen går inte via Toucan och räknas inte som en anslutning där.
 - **Bilder:** OK visar bilden, vänster/höger bläddrar, OK startar bildspelet. Håll in OK på en mapp för *Bildspel av mappen*.
 - **Alla videor, nyast först:** *Sortera → Alla videor i undermapparna*, eller håll in OK på en mapp. Visar videorna i mappen
   och alla undermappar i datumordning. Datumet tas ur filnamnet (t.ex. `VID_20190612_…`) och annars från NAS:en.
+- **Ljud och undertexter:** på en film, visa tidslinjen (upp/ner) och tryck ner en gång till för *Ljud* och *Undertext*, eller tryck ☰ Meny.
+  Undertextens storlek är 70 % som standard och ändras under *Val → Undertextens storlek*. Spår som boxens spelare inte kan avkoda visas inte.
 - **Filer boxen inte kan avkoda** (vanligt för gamla DivX/Xvid-filmer) öppnas automatiskt i **VLC** om den finns på boxen
   (gratis i Play Butik). I VLC sparar TV Hub ingen position, det gör VLC själv.
 - **Sortera** på namn (A–Ö/Ö–A), datum, storlek eller längd, åt båda håll. Valet sparas. I läget *Alla videor* sparas sorteringen separat.

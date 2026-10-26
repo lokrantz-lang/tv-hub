@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -110,6 +111,37 @@ class FilmNightActivity : Activity(), CardListener {
         super.onResume()
         load(keepFocus = loaded)
         Taste.promptPending(this)
+    }
+
+    /** TV: ner och upp går alltid raden vidare (tittare → filter → förslag), i stället för att Android gissar. */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (!mobile && event.action == KeyEvent.ACTION_DOWN) {
+            val focused = currentFocus
+            if (focused != null) {
+                val down = event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                val up = event.keyCode == KeyEvent.KEYCODE_DPAD_UP
+                when {
+                    down && Focus.contains(viewersList, focused) && (filtersList.adapter?.itemCount ?: 0) > 0 -> {
+                        Focus.position(filtersList, 0)
+                        return true
+                    }
+                    down && Focus.contains(filtersList, focused) && cardAdapter.itemCount > 0 -> {
+                        Focus.position(list, focusIndex.coerceIn(0, cardAdapter.itemCount - 1))
+                        return true
+                    }
+                    down && Focus.contains(list, focused) -> return true
+                    up && Focus.contains(list, focused) && (filtersList.adapter?.itemCount ?: 0) > 0 -> {
+                        Focus.position(filtersList, 0)
+                        return true
+                    }
+                    up && Focus.contains(filtersList, focused) && (viewersList.adapter?.itemCount ?: 0) > 0 -> {
+                        Focus.position(viewersList, 0)
+                        return true
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {

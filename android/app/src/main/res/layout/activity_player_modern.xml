@@ -202,5 +202,43 @@
                 android:textColor="@color/m_text"
                 android:textSize="14sp" />
         </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/track_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/btn_audio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/m_chip"
+                android:focusable="true"
+                android:paddingStart="18dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="18dp"
+                android:paddingBottom="8dp"
+                android:text="Ljud"
+                android:textColor="@color/m_text"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/btn_subs"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/m_chip"
+                android:focusable="true"
+                android:paddingStart="18dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="18dp"
+                android:paddingBottom="8dp"
+                android:text="Undertext"
+                android:textColor="@color/m_text"
+                android:textSize="16sp" />
+        </LinearLayout>
     </LinearLayout>
 </FrameLayout>

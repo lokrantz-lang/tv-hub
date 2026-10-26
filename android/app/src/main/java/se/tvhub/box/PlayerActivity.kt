@@ -41,6 +41,7 @@ import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -215,6 +216,9 @@ class PlayerActivity : Activity() {
     private var modern = false
     private var seekProgress: ProgressBar? = null
     private var times: View? = null
+    private var trackRow: View? = null
+    private var btnAudio: View? = null
+    private var btnSubs: View? = null
     private var timePos: TextView? = null
     private var timeEnd: TextView? = null
     private var endsAt: TextView? = null
@@ -334,6 +338,11 @@ class PlayerActivity : Activity() {
         setContentView(if (modern) R.layout.activity_player_modern else R.layout.activity_player)
         seekProgress = findViewById(R.id.seek_progress)
         times = findViewById(R.id.times)
+        trackRow = findViewById(R.id.track_row)
+        btnAudio = findViewById(R.id.btn_audio)
+        btnSubs = findViewById(R.id.btn_subs)
+        btnAudio?.setOnClickListener { showTrackDialog(C.TRACK_TYPE_AUDIO) }
+        btnSubs?.setOnClickListener { showTrackDialog(C.TRACK_TYPE_TEXT) }
         timePos = findViewById(R.id.time_pos)
         timeEnd = findViewById(R.id.time_end)
         endsAt = findViewById(R.id.ends_at)
@@ -770,6 +779,7 @@ class PlayerActivity : Activity() {
         }
         newPlayer.addListener(listener)
         playerView.player = newPlayer
+        applySubtitleSize()
         val live = type == "live"
         playerView.useController = !live && !modern
         playerView.isFocusable = !live && !modern
@@ -1404,6 +1414,26 @@ class PlayerActivity : Activity() {
             val code = event.keyCode
             val ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER ||
                 code == KeyEvent.KEYCODE_NUMPAD_ENTER
+            // Knapparna Ljud/Undertext i filmens tidslinje: vänster/höger byter, OK öppnar, upp/ner lämnar.
+            val focusedButton = currentFocus.takeIf { it != null && (it === btnAudio || it === btnSubs) }
+            if (focusedButton != null && modern && type != "live") {
+                when (code) {
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                        focusedButton.performClick()
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        (if (focusedButton === btnAudio) btnSubs else btnAudio)?.requestFocus()
+                        showOverlay(8_000)
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        focusedButton.clearFocus()
+                        showOverlay(5_000)
+                        return true
+                    }
+                }
+            }
             if (fatalShown && ok) {
                 retryAll()
                 return true
@@ -1428,7 +1458,16 @@ class PlayerActivity : Activity() {
                     KeyEvent.KEYCODE_MEDIA_PAUSE -> { toggleVod(false); return true }
                     KeyEvent.KEYCODE_MEDIA_REWIND -> { seekVod(-1, event.repeatCount); return true }
                     KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { seekVod(1, event.repeatCount); return true }
-                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_INFO -> { showOverlay(5_000); return true }
+                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_INFO -> {
+                        // Ner när tidslinjen redan syns: till knapparna Ljud och Undertext.
+                        if (code == KeyEvent.KEYCODE_DPAD_DOWN && overlay.visibility == View.VISIBLE && trackRow?.visibility == View.VISIBLE) {
+                            btnAudio?.requestFocus()
+                            showOverlay(8_000)
+                        } else {
+                            showOverlay(5_000)
+                        }
+                        return true
+                    }
                 }
             }
             if (type == "live") {
@@ -1636,6 +1675,7 @@ class PlayerActivity : Activity() {
         endsAt?.text = "Slutar " + clockFormat.format(Date(System.currentTimeMillis() + (duration - position)))
         bar.visibility = if (touchSeek != null) View.GONE else View.VISIBLE
         times?.visibility = View.VISIBLE
+        trackRow?.visibility = View.VISIBLE
         // "Nästa avsnitt" de sista 20 sekunderna (som Netflix).
         val hasNext = (type == "episode" || (type == "file" && !sleepAtEnd)) && queueIndex >= 0 && queueIndex + 1 < queueIds.size
         val card = nextCard ?: return
@@ -1884,10 +1924,28 @@ class PlayerActivity : Activity() {
 
     // ---------------------------------------------------------------- val: ljud, undertexter, guide
 
+    /** Undertextens storlek: procent av standardstorleken. Egna storlekar i filen (t.ex. ASS) används inte. */
+    private fun applySubtitleSize() {
+        playerView.subtitleView?.let { view ->
+            view.setApplyEmbeddedFontSizes(false)
+            view.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * prefs.subtitleScale / 100f)
+        }
+    }
+
+    private fun chooseSubtitleSize() {
+        val sizes = listOf(50, 70, 100, 130)
+        val labels = sizes.map { "$it %" + (if (it == prefs.subtitleScale) "   ✓" else "") + (if (it == 100) "  (spelarens standard)" else "") }
+        Look.choose(this, "Undertextens storlek", labels) { which ->
+            prefs.subtitleScale = sizes[which]
+            applySubtitleSize()
+        }
+    }
+
     private fun showOptions() {
         val options = ArrayList<Pair<String, () -> Unit>>()
         options.add("Ljudspår" to { showTrackDialog(C.TRACK_TYPE_AUDIO) })
         options.add("Undertexter" to { showTrackDialog(C.TRACK_TYPE_TEXT) })
+        options.add("Undertextens storlek: ${prefs.subtitleScale} %" to { chooseSubtitleSize() })
         if (type == "live") {
             val shifted = pausedAt > 0 || shiftStart > 0 || behindMs > 0
             options.add((if (pausedAt > 0) "Fortsätt" else "Pausa") to { togglePause() })

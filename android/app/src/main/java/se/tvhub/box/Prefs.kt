@@ -184,6 +184,13 @@ class Prefs(context: Context) {
             sp.edit().putBoolean("show_next_card", value).apply()
         }
 
+    /** Undertextens storlek i procent av spelarens standard (70 som standard: standardstorleken täcker för mycket). */
+    var subtitleScale: Int
+        get() = sp.getInt("subtitle_scale", 70)
+        set(value) {
+            sp.edit().putInt("subtitle_scale", value).apply()
+        }
+
     /** Filmer/Serier öppnar på fliken du senast använde (i stället för startkategorin från webbadminen). */
     var rememberTab: Boolean
         get() = sp.getBoolean("remember_tab", false)

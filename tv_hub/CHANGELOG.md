@@ -1,5 +1,15 @@
 # Ändringar
 
+## 2.9.3
+
+- **Ljud och undertext i spelaren på TV:n:** när tidslinjen syns på en film, tryck **ner** en gång till, så markeras knapparna
+  *Ljud* och *Undertext* (vänster/höger byter, OK öppnar listan, upp/ner lämnar). Fortfarande även via ☰ Meny.
+- **Undertexten är mindre som standard:** 70 % av spelarens standardstorlek. Ändra under *Val → Undertextens storlek* (50, 70, 100 eller 130 %).
+  Egna storlekar i filen (t.ex. ASS) används inte längre.
+- **Filmkväll på TV:n:** ner och upp går nu alltid raden vidare (vem tittar → filter → förslag), och förslagsraden ligger högre så att
+  posterna inte klipps vid skärmkanten.
+- Innehåller allt från 2.9.2.
+
 ## 2.9.2
 
 - **Favoriter per profil i webbadmin** (*Favoriter och grupper*): välj profil överst, och använd *Visa för…* på en favorit för att den ska
