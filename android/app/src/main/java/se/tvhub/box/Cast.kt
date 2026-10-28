@@ -114,29 +114,59 @@ object Cast {
         else -> "video/mp4"
     }
 
-    /** Skickar filmen till Chromecasten. done(true) när den har börjat, done(false) om den vägrar. */
+    /**
+     * Skickar filmen till Chromecasten. done(true, ...) när den har börjat. Svarar den inte inom
+     * tiden, eller vägrar den, görs ett andra försök med filtypen video/mp4 (Googles mottagare
+     * känner ofta igen innehållet ändå). done(false, ...) när båda misslyckats; texten är
+     * en kort förklaring till Diagnostik.
+     */
     fun load(session: CastSession, url: String, ext: String?, title: String, image: String?, positionMs: Long,
-             done: (Boolean) -> Unit) {
-        val client = session.remoteMediaClient ?: return done(false)
-        val meta = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE)
-        meta.putString(MediaMetadata.KEY_TITLE, title)
-        if (!image.isNullOrBlank()) meta.addImage(WebImage(Uri.parse(image)))
-        val info = MediaInfo.Builder(url)
-            .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
-            .setContentType(contentType(ext, url))
-            .setMetadata(meta)
-            .build()
-        val request = MediaLoadRequestData.Builder()
-            .setMediaInfo(info)
-            .setAutoplay(true)
-            .setCurrentTime(positionMs)
-            .build()
-        try {
-            client.load(request).setResultCallback { result -> done(result.status.isSuccess) }
-        } catch (_: Throwable) {
-            done(false)
+             done: (Boolean, String) -> Unit) {
+        val first = contentType(ext, url)
+        val tries = if (first == "video/mp4") listOf(first) else listOf(first, "video/mp4")
+        val log = StringBuilder()
+        fun attempt(i: Int) {
+            val type = tries[i]
+            val last = i == tries.size - 1
+            var finished = false
+            fun finish(ok: Boolean, what: String) {
+                if (finished) return
+                finished = true
+                log.append(if (log.isEmpty()) "" else "; ").append("$type: $what")
+                when {
+                    ok -> done(true, log.toString())
+                    last -> done(false, log.toString())
+                    else -> attempt(i + 1)
+                }
+            }
+            val client = session.remoteMediaClient ?: return finish(false, "ingen mediaklient")
+            val meta = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE)
+            meta.putString(MediaMetadata.KEY_TITLE, title)
+            if (!image.isNullOrBlank()) meta.addImage(WebImage(Uri.parse(image)))
+            val info = MediaInfo.Builder(url)
+                .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+                .setContentType(type)
+                .setMetadata(meta)
+                .build()
+            val request = MediaLoadRequestData.Builder()
+                .setMediaInfo(info)
+                .setAutoplay(true)
+                .setCurrentTime(positionMs)
+                .build()
+            main.postDelayed({ finish(false, "inget svar på ${LOAD_TIMEOUT_MS / 1000} s") }, LOAD_TIMEOUT_MS)
+            try {
+                client.load(request).setResultCallback { result ->
+                    val st = result.status
+                    finish(st.isSuccess, if (st.isSuccess) "ok" else "felkod ${st.statusCode} ${st.statusMessage ?: ""}".trim())
+                }
+            } catch (e: Throwable) {
+                finish(false, "undantag ${e.javaClass.simpleName}")
+            }
         }
+        attempt(0)
     }
+
+    private const val LOAD_TIMEOUT_MS = 15_000L
 
     fun deviceName(session: CastSession?): String = session?.castDevice?.friendlyName ?: "Chromecast"
 

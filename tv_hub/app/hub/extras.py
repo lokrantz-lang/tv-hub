@@ -7,7 +7,7 @@ import urllib.request
 from . import catalog, db
 from .catalog import Scope
 
-FINISHED_RATIO = 0.92
+FINISHED_RATIO = 0.85
 FINISHED_LEFT_MS = 3 * 60 * 1000
 MIN_RESUME_MS = 60 * 1000
 
@@ -364,3 +364,25 @@ def episode_favorite_ids(adult, series_id, profile_id=None):
     return [r["episode_id"] for r in db.q(
         "SELECT episode_id FROM fav_episodes WHERE profile_id = ? AND adult = ? AND series_id = ?",
         (_pid(profile_id), 1 if adult else 0, str(series_id)))]
+
+
+def set_watched(scope, series_id, episode_ids, on):
+    """Markera avsnitt som sedda eller osedda (håll in OK i serien). Gäster sparar inget."""
+    if scope.guest or scope.private:
+        raise ValueError("Gästprofilen sparar inget.")
+    if not catalog.in_scope("series", series_id, scope):
+        raise LookupError("Serien finns inte.")
+    ids = [str(i) for i in (episode_ids or [])][:500]
+    adult = scope.adult or 0
+    with db.tx() as conn:
+        for ep in ids:
+            conn.execute("DELETE FROM progress WHERE profile_id = ? AND adult = ? AND type = 'episode' AND item_id = ?",
+                         (scope.pid, adult, ep))
+            if on:
+                conn.execute(
+                    "INSERT OR REPLACE INTO watched (profile_id, adult, type, item_id, series_id, at) VALUES (?,?,?,?,?,?)",
+                    (scope.pid, adult, "episode", ep, str(series_id), db.iso()))
+            else:
+                conn.execute("DELETE FROM watched WHERE profile_id = ? AND adult = ? AND type = 'episode' AND item_id = ?",
+                             (scope.pid, adult, ep))
+    return len(ids)

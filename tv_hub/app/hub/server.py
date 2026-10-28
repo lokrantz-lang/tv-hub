@@ -1123,6 +1123,19 @@ def dev_favorite(h):
     return 200, {"favorite": on}
 
 
+@route(DEVICE, "POST", r"/device/watched")
+def dev_watched(h):
+    dev, scope = h.context()
+    data = h.read_json()
+    try:
+        n = extras.set_watched(scope, data.get("series_id"), data.get("ids"), bool(data.get("on", True)))
+    except LookupError as e:
+        raise HttpError(404, str(e))
+    except ValueError as e:
+        raise HttpError(400, str(e))
+    return 200, {"count": n}
+
+
 @route(DEVICE, "POST", r"/device/filters")
 def dev_filter_create(h):
     dev, scope = h.context()

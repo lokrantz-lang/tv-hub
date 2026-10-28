@@ -67,7 +67,9 @@ class SeriesActivity : Activity() {
         findViewById<TextView>(R.id.title).text = seriesName
         status = findViewById(R.id.status)
         list = findViewById(R.id.episodes)
-        adapter = RowAdapter(onClick = { row, _ -> onClick(row) }, onLongClick = { row, _ -> onLongClick(row) })
+        // Med säsongsflikar ovanför ska upp-pilen kunna lämna avsnittslistan.
+        adapter = RowAdapter(onClick = { row, _ -> onClick(row) }, onLongClick = { row, _ -> onLongClick(row) },
+            stopAtTop = { findViewById<View?>(R.id.seasons) == null })
         adapter.modern = modern
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
@@ -157,7 +159,7 @@ class SeriesActivity : Activity() {
                     )
                     episodes.add(episode)
                     val state = when {
-                        episode.positionMs > 0 -> "Sett ${Format.clock(episode.positionMs)} · ${Format.remaining(episode.positionMs, episode.durationMs)}"
+                        episode.positionMs > 0 -> "${progressBar(episode.positionMs, episode.durationMs)} Sett ${Format.clock(episode.positionMs)} · ${Format.remaining(episode.positionMs, episode.durationMs)}"
                         episode.watched -> "✓ Sedd"
                         else -> null
                     }
@@ -234,27 +236,50 @@ class SeriesActivity : Activity() {
         }
     }
 
+    /** Enkel förloppsstapel i texten, t.ex. ▰▰▰▱▱ 60 %. */
+    private fun progressBar(pos: Long, dur: Long): String {
+        if (dur <= 0) return "▰▱▱▱▱"
+        val pct = (pos * 100 / dur).toInt().coerceIn(0, 100)
+        val full = (pct + 10) / 20
+        return "▰".repeat(full) + "▱".repeat(5 - full) + " $pct %"
+    }
+
+    private fun markWatched(ids: List<String>, on: Boolean, message: String) {
+        val body = JSONObject().put("series_id", seriesId).put("on", on).put("ids", org.json.JSONArray(ids))
+        Api.obj("POST", "/device/watched", body) { result ->
+            result.onSuccess {
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                reload()
+            }.onFailure { Toast.makeText(this, Api.friendly(it), Toast.LENGTH_LONG).show() }
+        }
+    }
+
     private fun onLongClick(row: Row) {
         val episode = row.payload as? Episode ?: return
         val isFavorite = episode.id in favoriteEpisodes
-        val labels = listOf(
-            "▶  Spela",
-            if (isFavorite) "★  Ta bort från favoriter" else "☆  Lägg till i favoriter",
-            "⬇  Spela in avsnittet till USB-minnet",
-            "⬇  Spela in hela säsong ${episode.season}",
-        ).let { if (mobile) it.take(2) + "📺  Spela på TV…" else it }
-        Look.choose(this, episode.title, labels) { which ->
-            when (which) {
-                0 -> play(episode, 0L)
-                1 -> toggleEpisodeFavorite(episode, !isFavorite)
-                2 -> if (mobile) {
-                    BoxSend.choose(this, JSONObject().put("type", "episode").put("id", episode.id).put("series_id", seriesId))
-                } else {
-                    RecordMedia.episode(this, episode.id, episode.title, episode.ext, seriesId)
-                }
-                3 -> RecordMedia.series(this, seriesId, episode.season)
-            }
+        val seasonIds = episodes.filter { it.season == episode.season }.map { it.id }
+        val seen = episode.watched
+        val actions = ArrayList<Pair<String, () -> Unit>>()
+        actions.add("▶  Spela" to { play(episode, 0L) })
+        actions.add((if (isFavorite) "★  Ta bort från favoriter" else "☆  Lägg till i favoriter") to { toggleEpisodeFavorite(episode, !isFavorite) })
+        actions.add((if (seen) "○  Markera avsnittet som osett" else "✓  Markera avsnittet som sett") to {
+            markWatched(listOf(episode.id), !seen, if (seen) "Markerat som osett" else "Markerat som sett")
+        })
+        actions.add("✓  Markera hela säsong ${episode.season} som sedd" to {
+            markWatched(seasonIds, true, "Säsong ${episode.season} markerad som sedd")
+        })
+        actions.add("○  Markera hela säsong ${episode.season} som osedd" to {
+            markWatched(seasonIds, false, "Säsong ${episode.season} markerad som osedd")
+        })
+        if (mobile) {
+            actions.add("📺  Spela på TV…" to {
+                BoxSend.choose(this, JSONObject().put("type", "episode").put("id", episode.id).put("series_id", seriesId))
+            })
+        } else {
+            actions.add("⬇  Spela in avsnittet till USB-minnet" to { RecordMedia.episode(this, episode.id, episode.title, episode.ext, seriesId) })
+            actions.add("⬇  Spela in hela säsong ${episode.season}" to { RecordMedia.series(this, seriesId, episode.season) })
         }
+        Look.choose(this, episode.title, actions.map { it.first }) { which -> actions.getOrNull(which)?.second?.invoke() }
     }
 
     private fun toggleEpisodeFavorite(episode: Episode, on: Boolean) {

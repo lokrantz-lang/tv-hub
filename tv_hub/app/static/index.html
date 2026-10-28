@@ -2280,7 +2280,7 @@ loaders.diagnostics = async () => {
     }).join("") || '<li class="empty">Ingen uppdatering ännu.</li>';
   }
 };
-const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden stannade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar", probe: "Källans svar", timeshift: "Efterhandsadress", record: "Inspelning" };
+const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden stannade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar", probe: "Källans svar", timeshift: "Efterhandsadress", record: "Inspelning", cast: "Chromecast" };
 function describeEvent(ev) {
   const d = ev.detail || {};
   switch (ev.kind) {
@@ -2295,6 +2295,7 @@ function describeEvent(ev) {
     case "error": return [d.code, d.message].filter(Boolean).join(": ");
     case "timeshift": return d.found ? `Adressform som fungerar: ${d.found}` : "Ingen adressform gav video: " + (d.results || []).map((r) => `${r.variant} → ${r.status ?? "ingen kontakt"}, ${r.bytes} byte`).join("; ");
     case "probe": return d.error ? `Ingen kontakt (${d.error})` : [d.video === false && "ingen video", `HTTP ${d.status}`, d.content_type, d.length != null && `${d.length} byte`, d.start && `börjar med: ${d.start}`].filter(Boolean).join(" · ");
+    case "cast": return `${d.device || "Chromecast"}: ${d.ok ? "startade" : "startade inte"} (${d.ext || "okänt format"}) ${d.detail || ""}`;
     case "paired": return d.model || "";
     default: return Object.entries(d).slice(0, 4).map(([k, v]) => `${k}: ${v}`).join(", ");
   }

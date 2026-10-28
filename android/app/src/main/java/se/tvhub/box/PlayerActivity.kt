@@ -1874,7 +1874,9 @@ class PlayerActivity : Activity() {
         val device = Cast.deviceName(session)
         statusView.text = "Startar på $device…"
         statusView.visibility = View.VISIBLE
-        Cast.load(session, url, ext, itemName, icon, position) { ok ->
+        Cast.load(session, url, ext, itemName, icon, position) { ok, detail ->
+            Api.report("cast", sessionId, JSONObject().put("device", device).put("ok", ok)
+                .put("ext", ext ?: "").put("detail", detail))
             if (closing) return@load
             if (!ok) {
                 Cast.end(this)

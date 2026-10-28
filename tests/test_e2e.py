@@ -285,6 +285,7 @@ def main():
         version_29(ta, tb, pa, pb)
         version_291(ta, tb, pa, pb)
         version_292()
+        version_294(ta, tb, pa, pb)
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -2100,6 +2101,30 @@ def version_292():
     call("DELETE", f"{A}/api/profiles/{kids}")
     s, html = call("GET", f"{A}/", raw=True)
     check("2.9.2: webbadminen har profilval för favoriter", all(w in html.decode() for w in ("fav-profile", "fav-copy", "fav-share")))
+
+
+def version_294(ta, tb, pa, pb):
+    """2.9.4: markera sett/osett, 85 % räknas som sett, Chromecast i diagnostiken."""
+    print("Version 2.9.4: sedda avsnitt och Chromecast")
+    from hub import extras
+    check("2.9.4: avsnitt räknas som sedda vid 85 %", extras.FINISHED_RATIO == 0.85)
+    s, ser = call("GET", f"{D}/device/series/900", token=ta)
+    ids = [e["id"] for sea in ser["seasons"] for e in sea["episodes"]][:2]
+    s, r = call("POST", f"{D}/device/watched", {"series_id": "900", "ids": ids, "on": True}, token=ta)
+    check("2.9.4: markera avsnitt som sedda", s == 200 and r["count"] == len(ids), (s, r))
+    s, ser = call("GET", f"{D}/device/series/900", token=ta)
+    check("2.9.4: sedda avsnitt syns i serien", all(i in ser["watched"] for i in ids), ser.get("watched"))
+    s, r = call("POST", f"{D}/device/watched", {"series_id": "900", "ids": ids[:1], "on": False}, token=ta)
+    s, ser = call("GET", f"{D}/device/series/900", token=ta)
+    check("2.9.4: markera som osett", ids[0] not in ser["watched"] and ids[1] in ser["watched"], ser.get("watched"))
+    call("POST", f"{D}/device/watched", {"series_id": "900", "ids": ids, "on": False}, token=ta)
+    s, bad = call("POST", f"{D}/device/watched", {"series_id": "999999", "ids": ids, "on": True}, token=ta)
+    check("2.9.4: okänd serie nekas", s == 404, (s, bad))
+    s, r = call("POST", f"{D}/device/report", {"kind": "cast", "detail": {"device": "Vardagsrum", "ok": False, "ext": "mkv",
+                "detail": "video/x-matroska: inget svar på 15 s"}}, token=ta)
+    check("2.9.4: Chromecast-händelse tas emot", s == 200, (s, r))
+    s, page = call("GET", f"{A}/", raw=True)
+    check("2.9.4: diagnostiken visar Chromecast", "Chromecast" in page.decode() and 'case "cast"' in page.decode())
 
 
 if __name__ == "__main__":

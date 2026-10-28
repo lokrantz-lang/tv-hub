@@ -1,5 +1,15 @@
 # Ändringar
 
+## 2.9.4
+
+- **Chromecast:** startar inte filmen inom 15 sekunder görs ett andra försök med filtypen MP4 (Googles mottagare känner ofta igen
+  innehållet ändå). Lyckas inte det heller får du ett tydligt meddelande och uppspelningen fortsätter på telefonen. Resultatet
+  syns i webbadminen under *Diagnostik* som *Chromecast* (enhet, filformat, svar), så att orsaken går att läsa av.
+- **Serier på TV:n:** upp-pilen tar dig nu från avsnittslistan upp till säsongsflikarna.
+- **Sedda avsnitt:** håll in OK på ett avsnitt för *Markera som sett/osett* och för hela säsonger. Ett avsnitt räknas som sett vid
+  85 % (förut 92 %). Delvis sedda avsnitt visar en stapel, t.ex. ▰▰▰▱▱ 60 %. Gästprofilen sparar fortfarande inget.
+- Innehåll från 2.9.3 ingår.
+
 ## 2.9.3
 
 - **Ljud och undertext i spelaren på TV:n:** när tidslinjen syns på en film, tryck **ner** en gång till, så markeras knapparna

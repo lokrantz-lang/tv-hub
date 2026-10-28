@@ -641,7 +641,7 @@ def end_session(device, session_id, reason="stopped", metrics=None):
     return bool(row)
 
 
-EVENT_KINDS = {"stall", "error", "failover", "speedtest", "start", "quality"}
+EVENT_KINDS = {"stall", "error", "failover", "speedtest", "start", "quality", "cast"}
 
 
 def report(device, kind, session_id, detail):
