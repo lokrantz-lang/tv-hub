@@ -243,12 +243,15 @@ def scan_channels():
         wanted = {c["category_id"] for c in cats if c["category_id"] in chosen}
     else:
         wanted = {c["category_id"] for c in cats if not c["hidden"] and AUTO_CATEGORY.search(c["name"] or "")}
+    from . import sportsets
+    extra = sportsets.scan_extra_channels() if not chosen else set()
     rows = db.q("""SELECT i.item_id AS id, i.name, i.epg_id, i.category_id, i.archive_days FROM items i
                    WHERE i.type = 'live' AND i.adult = 0""")
     groups = {}
     for r in rows:
         item = dict(r)
-        if item["category_id"] not in wanted and not (not chosen and SWEDISH_NAME.search(item["name"] or "")):
+        if item["category_id"] not in wanted and item["id"] not in extra \
+                and not (not chosen and SWEDISH_NAME.search(item["name"] or "")):
             continue
         groups.setdefault(_epg_key(item), []).append(item)
     out = []

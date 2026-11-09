@@ -356,3 +356,16 @@ direkt från Toucan och telefonen blir fjärrkontroll (paus, spola, sluta casta)
 Se `homeassistant/tv_hub_package.yaml` i förrådet. Det ger statussensor, svarstid, vem som tittar, utgångsdatum och notiser,
 och för Mina sporter: `sensor.tv_hub_nasta_match` (titel, med kanal, tid och om den pågår som attribut),
 `sensor.tv_hub_nasta_match_borjar` (tidpunkt) och `binary_sensor.tv_hub_match_pagar`.
+
+## Hemfix: uppdatera med en zipfil
+
+Under *Boxar* i webbadminen finns *Hemfix*. Dra in zipfilen (samma som levereras för en version) eller välj den. Tillägget kontrollerar att
+den bara innehåller tillåtna filer under `tv_hub/app/`, provar koden och startar sedan om sig självt (någon minut utan webbadmin).
+*Ta bort hemfix* går tillbaka till tilläggets egen version. Gäller **inte appen** på boxarna och telefonen: den uppdateras via en ny APK.
+Hemfixen ligger i `/data/hotfix`. Efter en vanlig uppdatering av tillägget till en annan version tas den bort automatiskt.
+
+## Golf och Ridsport
+
+Under *Sport* hittar du *Golf och ridsport: hitta kanalerna*. Listan bygger på vilka kanaler och tjänster som har rättigheterna i Sverige.
+Det som matchar din kanallista visas, du väljer, och *Skapa grupp* skapar gruppen, utökar sökorden och sätter bevakningar på nya filmer och serier.
+Träffarna på filmer och serier bygger på titlar och är därför inte fullständiga.

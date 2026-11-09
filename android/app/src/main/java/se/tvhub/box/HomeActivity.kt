@@ -1700,6 +1700,7 @@ class HomeActivity : Activity(), CardListener {
         private val queryView: TextView = view.findViewById(R.id.query)
         private val keys: RecyclerView = view.findViewById(R.id.keys)
         private val hint: TextView = view.findViewById(R.id.hint)
+        private val keyPane: View = view.findViewById(R.id.key_pane)
         private val shelves: RecyclerView = view.findViewById(R.id.shelves)
         private val shelfAdapter = ShelfAdapter(this@HomeActivity).also { it.style = ViewStyle.TITLE }
         private val keyAdapter = RowAdapter(onClick = { row, _ -> press(row.key) }, onKey = { _, p, code -> keyEdge(p, code) })
@@ -1734,8 +1735,48 @@ class HomeActivity : Activity(), CardListener {
         }
 
         override fun focusEntry(): Boolean {
+            expandKeys()
             Focus.position(keys, 0)
             return true
+        }
+
+        /** Tangentbordet tar plats; träffarna får mindre. */
+        private fun expandKeys() {
+            keys.visibility = View.VISIBLE
+            hint.visibility = View.VISIBLE
+            keyPane.layoutParams = keyPane.layoutParams.also { it.width = (330 * resources.displayMetrics.density).toInt() }
+        }
+
+        /** Går man till träffarna fälls tangentbordet in så att träffarna syns. Vänster från första kortet tar tillbaka det. */
+        private fun collapseKeys() {
+            keys.visibility = View.GONE
+            hint.visibility = View.GONE
+            keyPane.layoutParams = keyPane.layoutParams.also { it.width = (220 * resources.displayMetrics.density).toInt() }
+        }
+
+        private fun inShelves(v: View?): Boolean {
+            var x = v
+            while (x != null) {
+                if (x === shelves) return true
+                x = x.parent as? View
+            }
+            return false
+        }
+
+        override fun onEdge(focused: View, keyCode: Int): Boolean {
+            if (keyCode != KeyEvent.KEYCODE_DPAD_LEFT || !inShelves(focused)) return false
+            val next = try { focused.focusSearch(View.FOCUS_LEFT) } catch (_: Exception) { null }
+            if (next != null && inShelves(next)) return false  // vanlig förflyttning bland träffarna
+            expandKeys()
+            Focus.position(keys, 0)
+            return true
+        }
+
+        private fun submitShelves(list: List<Shelf>) {
+            val hadFocus = shelves.hasFocus()
+            shelfAdapter.submit(list)
+            // Sena träffar (programguiden) byter ut raderna: behåll markören bland träffarna i stället för att tappa den.
+            if (hadFocus) shelves.post { focusResults() }
         }
 
         fun onFocus(shelfIndex: Int) {
@@ -1768,7 +1809,7 @@ class HomeActivity : Activity(), CardListener {
 
         private fun focusResults() {
             val holder = shelves.findViewHolderForAdapterPosition(0) as? ShelfAdapter.Holder ?: return
-            (holder.cards.getChildAt(0) ?: holder.cards).requestFocus()
+            if ((holder.cards.getChildAt(0) ?: holder.cards).requestFocus()) collapseKeys()
         }
 
         fun type(key: String) = press(key)
@@ -1811,9 +1852,11 @@ class HomeActivity : Activity(), CardListener {
             val q = query.trim()
             if (q.length < 2) {
                 shelfAdapter.submit(emptyList())
+                render()
                 return
             }
             val t = ++token
+            hint.text = "Söker…"
             Api.arr("/device/search?q=${Api.enc(q)}&limit=120") { result ->
                 if (t != token) return@arr
                 result.onSuccess { array ->
@@ -1822,7 +1865,7 @@ class HomeActivity : Activity(), CardListener {
                     items.filter { it.type == "live" }.takeIf { it.isNotEmpty() }?.let { list.add(Shelf("s_live", "Kanaler", it.map { i -> Card.channel(i) })) }
                     items.filter { it.type == "vod" }.takeIf { it.isNotEmpty() }?.let { list.add(Shelf("s_vod", "Filmer", it.map { i -> Card.poster(i) })) }
                     items.filter { it.type == "series" }.takeIf { it.isNotEmpty() }?.let { list.add(Shelf("s_series", "Serier", it.map { i -> Card.poster(i) })) }
-                    shelfAdapter.submit(list)
+                    submitShelves(list)
                     hint.text = if (list.isEmpty()) "Letar i programguiden …" else "Höger för att gå till träffarna. Vänster: till menyn. Tillbaka: till Hem."
                     if (list.isNotEmpty()) prefs.recentSearches = listOf(q) + prefs.recentSearches.filter { it != q }
                     searchTv(q, t)
@@ -1842,7 +1885,7 @@ class HomeActivity : Activity(), CardListener {
                     Sports.parseEvents(data.optJSONArray("upcoming")).takeIf { it.isNotEmpty() }?.let { tv.add(Shelf("w_up", "När går det? Kommande sändningar", it.map { e -> Sports.card(e) })) }
                     Sports.parseEvents(data.optJSONArray("past")).takeIf { it.isNotEmpty() }?.let { tv.add(Shelf("w_past", "Se i efterhand", it.map { e -> Sports.card(e) })) }
                 }
-                if (tv.isNotEmpty()) shelfAdapter.submit(tv + shelfAdapter.shelves.filter { !it.key.startsWith("w_") })
+                if (tv.isNotEmpty()) submitShelves(tv + shelfAdapter.shelves.filter { !it.key.startsWith("w_") })
                 if (shelfAdapter.itemCount == 0) hint.text = "Inga träffar på \"$q\" i biblioteket eller programguiden."
                 else if (tv.isNotEmpty()) hint.text = "Höger för att gå till träffarna. Vänster: till menyn. Tillbaka: till Hem."
             }

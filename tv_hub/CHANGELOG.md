@@ -1,5 +1,24 @@
 # Ändringar
 
+## 2.9.5
+
+- **Hemfix (webbadmin → Boxar):** dra in zipfilen för en ny version så uppdateras tillägget utan GitHub. Filerna kontrolleras
+  (bara tillåtna filtyper och sökvägar), syntaxkontrolleras och provas innan de används, och tillägget startar sedan om sig självt.
+  En hemfix som inte håller sig igång tas bort vid nästa start, och installerar du en nyare version av tillägget på vanligt sätt tas
+  den bort av sig själv. Gäller bara tillägget och webbadminen, **inte appen på boxarna**. Första gången krävs den vanliga
+  uppdateringen via GitHub, eftersom startskriptet måste ändras.
+- **Mina program (Rapport, Aktuellt, TV4 Nyheterna, Robinson):** läggs in automatiskt en gång för varje profil som inte har några,
+  om kanalerna finns (har du tagit bort dem kommer de inte tillbaka). Aktuellt är nytt. I den enkla menyn finns nu
+  *Nyheter och Mina program* under Sök; på Hem och telefonen ligger de överst som förut.
+- **Sök på TV:n:** tangentbordet fälls in när du går till träffarna, så att de syns. *Vänster* från första träffen tar tillbaka det.
+  Sena träffar från programguiden tappar inte längre markören, och sökningen visar *Söker…*. I den enkla menyn följer
+  tangentbordet markören på samma sätt.
+- **Golf och Ridsport:** under *Sport* i webbadminen visas vilka av dina kanaler som sänder sporten (Viaplay/V Sport Golf, Golf Channel,
+  Eurosport, Horse & Country, FEI TV med flera, utifrån vilka som har rättigheterna i Sverige). Du kryssar i och trycker *Skapa grupp*:
+  gruppen skapas, sökorden för sändningar utökas och nya filmer och serier om sporten bevakas. Programguiden läser nu även de kanaler som
+  bara ibland sänder sporten (Eurosport, TV4 Sportkanalen, SVT m.fl.), vilket är varför Ridsport förut bara hittade beIN.
+- Innehåll från 2.9.4 ingår.
+
 ## 2.9.4
 
 - **Chromecast:** startar inte filmen inom 15 sekunder görs ett andra försök med filtypen MP4 (Googles mottagare känner ofta igen

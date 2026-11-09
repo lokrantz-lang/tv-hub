@@ -137,10 +137,13 @@ def suggest(profile_id):
     created = []
     existing = {(_norm(p["query"]), p["channel_id"]) for p in for_profile(profile_id)}
     svt1 = _channel(["SVT1"])
+    svt2 = _channel(["SVT2"])
     tv4 = _channel(["TV4"])
     wanted = []
     if svt1:
         wanted.append({"name": "Rapport", "mode": "latest", "channel_id": svt1["id"], "query": "Rapport"})
+    if svt2:
+        wanted.append({"name": "Aktuellt", "mode": "latest", "channel_id": svt2["id"], "query": "Aktuellt"})
     if tv4:
         wanted.append({"name": "TV4 Nyheterna", "mode": "main", "channel_id": tv4["id"], "query": "TV4 Nyheterna",
                        "times": ["19:00", "22:00"]})
@@ -150,6 +153,20 @@ def suggest(profile_id):
             continue
         created.append(create(dict(w, profile_id=profile_id)))
     return created
+
+
+def ensure_defaults():
+    """Lägger in förslagen (Rapport, Aktuellt, TV4 Nyheterna, Robinson) en gång för varje profil som inte har några
+    snabbval, så att de finns utan att man behöver hitta i webbadminen. Har man tagit bort dem läggs de inte tillbaka."""
+    from . import profiles
+    for p in profiles.all_profiles():
+        if p["guest"] or db.get_setting(f"myprog_seeded_{p['id']}"):
+            continue
+        if for_profile(p["id"]):
+            db.set_setting(f"myprog_seeded_{p['id']}", "1")
+            continue
+        if suggest(p["id"]):
+            db.set_setting(f"myprog_seeded_{p['id']}", "1")
 
 
 # ---------------------------------------------------------------- vad ska spelas

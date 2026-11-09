@@ -76,7 +76,7 @@ def main():
                CHECK_INTERVAL="2", NET_CHECK_INTERVAL="2", TIMEOUT="3", SYNC_TIMEOUT="2",
                REFERENCE_HOSTS=f"127.0.0.1:{FAKE_PORT}", OPTIONS_PATH="/nonexistent",
                ADMIN_ALLOWED_IPS="127.0.0.1", NO_PROXY="*", no_proxy="*",
-               INFO_START_DELAY="1", INFO_PAUSE="0.05", TASTE_CACHE_MIN_AGE="0", GUIDE_CACHE_S="0", SPORT_SCAN_DELAY="3600", SPORT_SCAN_PAUSE="0", APP_RELEASE_BASE=f"http://127.0.0.1:{FAKE_PORT}/release")
+               INFO_START_DELAY="1", INFO_PAUSE="0.05", TASTE_CACHE_MIN_AGE="0", GUIDE_CACHE_S="0", SPORT_SCAN_DELAY="3600", HOTFIX_NO_EXEC="1", SPORT_SCAN_PAUSE="0", APP_RELEASE_BASE=f"http://127.0.0.1:{FAKE_PORT}/release")
     env.pop("HTTPS_PROXY", None); env.pop("https_proxy", None)
     cert, key = os.path.join(CERT_DIR, "cert.pem"), os.path.join(CERT_DIR, "key.pem")
     subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert,
@@ -286,6 +286,7 @@ def main():
         version_291(ta, tb, pa, pb)
         version_292()
         version_294(ta, tb, pa, pb)
+        version_295(ta, tb, pa, pb)
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -1383,7 +1384,7 @@ def version_25(ta, tb, pa, pb):
     fake_mode("ok", news=1)
     s, sug = call("POST", f"{A}/api/my-programs/suggest", {"profile_id": owner})
     names = [p["name"] for p in sug["created"]]
-    check("förslagen Rapport, TV4 Nyheterna och Robinson", names == ["Rapport", "TV4 Nyheterna", "Robinson"], sug)
+    check("förslagen Rapport, Aktuellt, TV4 Nyheterna och Robinson", names == ["Rapport", "Aktuellt", "TV4 Nyheterna", "Robinson"], sug)
     s, again = call("POST", f"{A}/api/my-programs/suggest", {"profile_id": owner})
     check("förslagen läggs inte till två gånger", again["created"] == [], again)
     s, res = call("POST", f"{A}/api/my-programs", {"profile_id": owner, "mode": "main", "channel_id": "101", "query": "Rapport"})
@@ -2125,6 +2126,79 @@ def version_294(ta, tb, pa, pb):
     check("2.9.4: Chromecast-händelse tas emot", s == 200, (s, r))
     s, page = call("GET", f"{A}/", raw=True)
     check("2.9.4: diagnostiken visar Chromecast", "Chromecast" in page.decode() and 'case "cast"' in page.decode())
+
+
+def _zip_app(mutate=None, extra=None):
+    import base64
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    app = os.path.join(ROOT, "tv_hub", "app")
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for dirpath, dirs, files in os.walk(app):
+            dirs[:] = [d for d in dirs if d != "__pycache__"]
+            for f in files:
+                full = os.path.join(dirpath, f)
+                rel = os.path.relpath(full, ROOT)
+                data = open(full, "rb").read()
+                if mutate:
+                    data = mutate(rel, data)
+                z.writestr("tv-hub-x/" + rel, data)
+        for name, data in (extra or {}).items():
+            z.writestr(name, data)
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def version_295(ta, tb, pa, pb):
+    """2.9.5: hemfix, snabbval, golf och ridsport."""
+    print("Version 2.9.5: hemfix, Mina program, sportuppsättningar")
+    s, st = call("GET", f"{A}/api/hotfix")
+    check("2.9.5: hemfixstatus", s == 200 and st["active"] is False and st["running_from_hotfix"] is False, st)
+    s, bad = call("POST", f"{A}/api/hotfix", {"data": "inte-en-zip"})
+    check("2.9.5: ogiltig fil nekas", s == 400, (s, bad))
+    s, bad = call("POST", f"{A}/api/hotfix", {"data": _zip_app(extra={"tv-hub-x/tv_hub/app/hub/../../evil.py": b"x=1"})})
+    check("2.9.5: sökväg utanför app nekas", s == 400, (s, bad))
+    s, bad = call("POST", f"{A}/api/hotfix", {"data": _zip_app(extra={"tv-hub-x/tv_hub/app/run.sh": b"rm -rf /"})})
+    check("2.9.5: otillåten filtyp nekas", s == 400, (s, bad))
+    s, bad = call("POST", f"{A}/api/hotfix", {"data": _zip_app(
+        mutate=lambda rel, d: d + b"\n def broken(:\n" if rel.endswith("hub/hotfix.py") else d)})
+    check("2.9.5: syntaxfel nekas före installation", s == 400 and "Syntaxfel" in str(bad), (s, bad))
+    s, st = call("GET", f"{A}/api/hotfix")
+    check("2.9.5: nekad hemfix lämnar inget kvar", st["active"] is False, st)
+    s, ok = call("POST", f"{A}/api/hotfix", {"data": _zip_app(
+        mutate=lambda rel, d: d.replace(b'VERSION = "2.9.5"', b'VERSION = "2.9.5-hemfix"') if rel.endswith("hub/__init__.py") else d)})
+    check("2.9.5: giltig hemfix installeras", s == 200 and ok["version"] == "2.9.5-hemfix" and ok["files"] > 10, (s, ok))
+    s, st = call("GET", f"{A}/api/hotfix")
+    check("2.9.5: hemfixen är aktiv", st["active"] is True and st["hotfix_version"] == "2.9.5-hemfix", st)
+    check("2.9.5: kontrollmarkeringar för start finns", all(os.path.exists(os.path.join(DATA_DIR, "hotfix", m)) for m in ("BASE", "TRIED", "STARTED")))
+    s, _ = call("DELETE", f"{A}/api/hotfix")
+    s, st = call("GET", f"{A}/api/hotfix")
+    check("2.9.5: hemfix tas bort", s == 200 and st["active"] is False, st)
+    s, r = call("GET", f"{D}/api/hotfix")
+    check("2.9.5: hemfix nås inte via box-porten", s == 404, s)
+
+    s, mp = call("GET", f"{D}/device/my-programs", token=ta)
+    check("2.9.5: Mina program kan hämtas", s == 200 and "programs" in mp, (s, mp))
+
+    s, ov = call("GET", f"{A}/api/sport-sets")
+    names = [x["name"] for x in ov["sets"]]
+    check("2.9.5: sportuppsättningar för Golf och Ridsport", names == ["Golf", "Ridsport"], names)
+    s, r = call("POST", f"{A}/api/sport-sets/apply", {"set": "Golf", "ids": [], "watches": True})
+    check("2.9.5: golf: bevakningar och sökord läggs till", s == 200 and r["watches"] == 2, (s, r))
+    s, r2 = call("POST", f"{A}/api/sport-sets/apply", {"set": "Golf", "ids": [], "watches": True})
+    check("2.9.5: samma uppsättning igen ger inga dubbletter", r2["watches"] == 0 and r2["keywords"] == 0, r2)
+    s, sp = call("GET", f"{A}/api/sports")
+    golf = [i for i in sp["interests"] if i["name"] == "Golf"][0]
+    check("2.9.5: golf har fler sökord", "dp world tour" in golf["keywords"] and "ryder cup" in golf["keywords"] and len(golf["keywords"]) > 8, golf["keywords"])
+    s, bad = call("POST", f"{A}/api/sport-sets/apply", {"set": "Curling", "ids": []})
+    check("2.9.5: okänd uppsättning nekas", s == 404, (s, bad))
+    s, w = call("GET", f"{A}/api/watches")
+    for item in (w if isinstance(w, list) else []):
+        if item.get("query") in ("golf", "ridsport", "dressyr", "hoppning"):
+            call("DELETE", f"{A}/api/watches/{item['id']}")
+    s, page = call("GET", f"{A}/", raw=True)
+    t = page.decode()
+    check("2.9.5: webbadminen har hemfix och golf/ridsport", all(x in t for x in ("hf-drop", "hf-file", "ss-body", "sport-sets/apply")))
 
 
 if __name__ == "__main__":

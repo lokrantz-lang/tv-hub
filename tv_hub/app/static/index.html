@@ -312,6 +312,13 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
         </div>
       </div>
       <div class="panel">
+        <div class="hd"><h2>Golf och ridsport: hitta kanalerna</h2><button class="btn" id="ss-reload">Läs om</button></div>
+        <div class="bd">
+          <p class="small muted" style="margin-top:0">Visar vilka kanaler i <em>din</em> lista som sänder sporten, utifrån vilka kanaler och tjänster som har rättigheterna i Sverige. Kryssa i det du vill ha och tryck <strong>Skapa grupp</strong>: då läggs kanalerna i en grupp med sportens namn, sökorden för sändningar utökas och nya filmer och serier om sporten bevakas (de visas under <em>Nytt från dina bevakningar</em>). Inget tas bort. Träffar på filmer och serier beror på titlarna, så de är inte fullständiga.</p>
+          <div id="ss-body"></div>
+        </div>
+      </div>
+      <div class="panel">
         <div class="hd"><h2>Programguiden</h2><button class="btn" id="sp-scan">Sök igenom nu</button></div>
         <div class="bd">
           <p class="small muted" style="margin-top:0" id="sp-status"></p>
@@ -684,6 +691,14 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
         <p class="small muted" style="margin-top:0">Sparar profiler, snabbval, kategorival, sport och boxinställningar i en fil. Koder, nycklar och inloggningar ingår inte. Vid import slås innehållet ihop med det som redan finns; profiler får ingen kod och måste få en ny.</p>
         <div class="row"><button class="btn" type="button" id="bk-export">Ladda ner kopia</button>
           <label class="btn" style="cursor:pointer">Importera kopia…<input type="file" id="bk-file" accept="application/json,.json" class="hidden"></label></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Hemfix: uppdatera tillägget med en zipfil</h2><span id="hf-pill" class="small"></span></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Dra in zipfilen som du fått för en ny version, eller välj den. Koden kontrolleras och provas, och tillägget startar sedan om sig självt (någon minut utan webbadmin). Gäller bara tillägget och webbadminen, <strong>inte appen på boxarna och telefonen</strong>, som fortfarande uppdateras via en ny APK. Installerar du en nyare version av tillägget på vanligt sätt tas hemfixen bort av sig själv.</p>
+        <label id="hf-drop" class="btn" style="cursor:pointer;display:block;text-align:center;padding:22px;border:2px dashed #888">Släpp zipfilen här eller klicka för att välja<input type="file" id="hf-file" accept=".zip,application/zip" class="hidden"></label>
+        <div class="row" style="margin-top:10px"><button class="btn" type="button" id="hf-remove">Ta bort hemfix (tillbaka till tilläggets egen version)</button></div>
       </div>
     </div>
     <div class="panel" style="margin-top:16px">
@@ -1282,7 +1297,30 @@ $("prof-list").addEventListener("click", (e) => {
 const sp = { data: null, open: new Set() };
 const STATE_LABEL = { now: "Just nu", upcoming: "Kommande", past: "I efterhand" };
 const fmtTs = (ts) => new Date(ts * 1000).toLocaleString("sv-SE", { weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
+async function loadSportSets() {
+  let r; try { r = await api("sport-sets"); } catch (e) { return toast(e.message); }
+  $("ss-body").innerHTML = r.sets.map((set, n) => {
+    const row = (c, checked) => `<label class="chk" style="min-height:30px"><input type="checkbox" data-ss="${n}" value="${esc(c.id)}" ${checked ? "checked" : ""}> ${esc(c.name)} <span class="muted small">· ${esc(c.category || "")}${c.archive ? " · arkiv" : ""}${c.in_group ? " · redan i gruppen" : ""}</span></label>`;
+    return `<div style="margin-bottom:18px"><h3 style="margin:0 0 6px">${esc(set.name)}</h3>
+      <div class="small muted">${set.group_id ? "Gruppen finns." : "Ingen grupp än."} Bevakningar: ${set.watching.length ? esc(set.watching.join(", ")) : "inga"}.</div>
+      <div style="font-weight:600;margin-top:8px">Egna kanaler (${set.dedicated.length})</div>
+      <div style="display:grid;gap:2px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">${set.dedicated.map((c) => row(c, !c.in_group)).join("") || '<span class="small muted">Inga kanaler med sportens namn hittades i din lista.</span>'}</div>
+      <details class="ev" style="margin-top:8px"><summary>Kanaler som sänder ${esc(set.name.toLowerCase())} bland annat (${set.carriers.length})</summary>
+        <p class="small muted">Dessa läses av programguiden så att sändningarna hittas, men läggs bara i gruppen om du kryssar i dem.</p>
+        <div style="display:grid;gap:2px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));max-height:240px;overflow:auto">${set.carriers.map((c) => row(c, false)).join("")}</div></details>
+      <div class="row" style="margin-top:8px"><button class="btn primary" data-ssapply="${n}">Skapa grupp ${esc(set.name)}</button></div></div>`;
+  }).join("");
+  $("ss-body").querySelectorAll("[data-ssapply]").forEach((b) => b.addEventListener("click", () => guarded(async () => {
+    const n = b.dataset.ssapply, set = r.sets[n];
+    const ids = [...$("ss-body").querySelectorAll(`[data-ss="${n}"]:checked`)].map((i) => i.value);
+    const res = await api("sport-sets/apply", { method: "POST", body: { set: set.name, ids, watches: true } });
+    toast(`${set.name}: ${res.added} kanaler i gruppen, ${res.keywords} nya sökord, ${res.watches} nya bevakningar. Programguiden läses om.`);
+    loadSportSets();
+  }, b)));
+}
+$("ss-reload").addEventListener("click", (e) => guarded(loadSportSets, e.target));
 loaders.sports = async () => {
+  loadSportSets();
   try { sp.data = await api("sports"); } catch (e) { return toast(e.message); }
   renderSports();
 };
@@ -2026,7 +2064,36 @@ $("bk-file").addEventListener("change", (e) => { const file = e.target.files[0];
     loaders.devices();
   }); });
 
+async function loadHotfix() {
+  const h = await api("hotfix").catch(() => null);
+  if (!h) return;
+  $("hf-pill").textContent = h.active ? `Hemfix ${h.hotfix_version} aktiv (tilläggets egen: ${h.image_version})` : `Kör tilläggets egen version ${h.version}`;
+}
+function uploadHotfix(file) {
+  if (!file) return;
+  guarded(async () => {
+    if (!/\.zip$/i.test(file.name)) throw new Error("Välj en zipfil.");
+    if (!confirm(`Installera ${file.name}? Tillägget startar om sig självt.`)) return;
+    const data = await new Promise((resolve, reject) => {
+      const r = new FileReader(); r.onerror = () => reject(new Error("Filen kunde inte läsas."));
+      r.onload = () => resolve(String(r.result).split(",")[1] || ""); r.readAsDataURL(file); });
+    const r = await api("hotfix", { method: "POST", body: { data } });
+    toast(`Version ${r.version} installerad (${r.files} filer). ${r.restarting ? "Startar om, ladda om sidan om en minut." : "Starta om tillägget i Home Assistant."}`);
+    $("hf-pill").textContent = "Startar om…";
+  });
+}
+$("hf-file").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; uploadHotfix(f); });
+const hfDrop = $("hf-drop");
+["dragenter", "dragover"].forEach((ev) => hfDrop.addEventListener(ev, (e) => { e.preventDefault(); hfDrop.style.borderColor = "#e03"; }));
+["dragleave", "drop"].forEach((ev) => hfDrop.addEventListener(ev, (e) => { e.preventDefault(); hfDrop.style.borderColor = "#888"; }));
+hfDrop.addEventListener("drop", (e) => uploadHotfix(e.dataTransfer.files[0]));
+$("hf-remove").addEventListener("click", (e) => guarded(async () => {
+  if (!confirm("Ta bort hemfixen? Tillägget startar om med sin egen version.")) return;
+  const r = await api("hotfix", { method: "DELETE" });
+  toast(r.restarting ? "Startar om…" : "Borttagen. Starta om tillägget i Home Assistant."); }, e.target));
+
 loaders.devices = async () => {
+  loadHotfix();
   loadRemote();
   loadReminderSettings();
   loadAlertSettings();
@@ -2280,7 +2347,7 @@ loaders.diagnostics = async () => {
     }).join("") || '<li class="empty">Ingen uppdatering ännu.</li>';
   }
 };
-const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden stannade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar", probe: "Källans svar", timeshift: "Efterhandsadress", record: "Inspelning", cast: "Chromecast" };
+const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden stannade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar", probe: "Källans svar", timeshift: "Efterhandsadress", record: "Inspelning", cast: "Chromecast", hotfix: "Hemfix" };
 function describeEvent(ev) {
   const d = ev.detail || {};
   switch (ev.kind) {

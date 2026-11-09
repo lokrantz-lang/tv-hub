@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (VERSION, ai, alerts, backup, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
+from . import (VERSION, ai, alerts, backup, hotfix, sportsets, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
                sports,
                recordings, reminders, remote, taste, updates)
 from .config import CFG
@@ -139,14 +139,14 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def read_json(self):
+    def read_json(self, limit=None):
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             raise HttpError(400, "Ogiltig längd")
         if length < 0:
             raise HttpError(400, "Ogiltig längd")
-        if length > MAX_BODY:
+        if length > (limit or MAX_BODY):
             raise HttpError(413, "För stor förfrågan")
         if not length:
             return {}
@@ -1411,6 +1411,22 @@ def admin_sports(h):
                  "boxes": [{"id": b["id"], "name": b["name"]} for b in control.boxes()]}
 
 
+@route(ADMIN, "GET", r"/api/sport-sets")
+def admin_sport_sets(h):
+    return 200, {"sets": sportsets.overview()}
+
+
+@route(ADMIN, "POST", r"/api/sport-sets/apply")
+def admin_sport_sets_apply(h):
+    data = h.read_json()
+    try:
+        return 200, sportsets.apply(str(data.get("set") or ""), data.get("ids") or [], bool(data.get("watches", True)))
+    except LookupError as exc:
+        raise HttpError(404, str(exc))
+    except ValueError as exc:
+        raise HttpError(400, str(exc))
+
+
 @route(ADMIN, "POST", r"/api/sports")
 def admin_sport_create(h):
     return 201, sports.create_interest(h.read_json())
@@ -1790,6 +1806,30 @@ def admin_backup(h):
 @route(ADMIN, "POST", r"/api/backup")
 def admin_backup_import(h):
     return 200, backup.import_all(h.read_json())
+
+
+@route(ADMIN, "GET", r"/api/hotfix")
+def admin_hotfix_status(h):
+    return 200, dict(hotfix.status(), version=VERSION)
+
+
+@route(ADMIN, "POST", r"/api/hotfix")
+def admin_hotfix_install(h):
+    data = h.read_json(limit=hotfix.MAX_ZIP * 4 // 3 + 4096)
+    try:
+        res = hotfix.install(data.get("data") or "")
+    except hotfix.HotfixError as exc:
+        raise HttpError(400, str(exc))
+    db.log_event("hotfix", {"version": res["version"], "files": res["files"]})
+    res["restarting"] = hotfix.restart_soon()
+    return 200, res
+
+
+@route(ADMIN, "DELETE", r"/api/hotfix")
+def admin_hotfix_remove(h):
+    hotfix.remove()
+    db.log_event("hotfix", {"removed": True})
+    return 200, {"restarting": hotfix.restart_soon()}
 
 
 @route(ADMIN, "POST", r"/api/reminders/test")

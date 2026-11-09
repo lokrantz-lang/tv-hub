@@ -3,7 +3,7 @@
 import signal
 import threading
 
-from hub import VERSION, ai, alerts, catalog, control, db, devices, diagnostics, extras, info, portals, recordings, reminders, sports, taste
+from hub import VERSION, hotfix, ai, alerts, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, recordings, reminders, sports, sportsets, taste
 from hub.config import CFG
 from hub.server import start_servers
 
@@ -14,6 +14,8 @@ def housekeeping(stop_event):
             devices.cleanup()
             diagnostics.cleanup()
             recordings.expire()
+            myprograms.ensure_defaults()
+            sportsets.ensure_keywords()
         except Exception as exc:
             print(f"[fel] städning: {exc}", flush=True)
         stop_event.wait(600)
@@ -29,6 +31,7 @@ def main():
                    reminders.loop, sports.loop, alerts.loop):
         threading.Thread(target=target, args=(stop_event,), daemon=True, name=target.__name__).start()
     admin, device = start_servers()
+    hotfix.mark_healthy()
     print(
         f"TV Hub {VERSION} startad. Admin på port {CFG['admin_port']}, boxar på port {CFG['device_port']}.",
         flush=True,

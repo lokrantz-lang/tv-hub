@@ -186,6 +186,8 @@ class MainActivity : Activity() {
                 false
             }
         }
+        // Tangentbordet följer markören: bort när man går till träffarna, tillbaka när man kommer till sökrutan igen.
+        searchBox.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) showKeyboard() else hideKeyboard() }
         searchBox.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -193,7 +195,7 @@ class MainActivity : Activity() {
                 searchTask?.let { handler.removeCallbacks(it) }
                 val task = Runnable { runSearch() }
                 searchTask = task
-                handler.postDelayed(task, 600)
+                handler.postDelayed(task, 800)
             }
         })
     }
@@ -320,6 +322,7 @@ class MainActivity : Activity() {
                 val first = home == null
                 home = data
                 retryTask?.let { handler.removeCallbacks(it) }
+                if (!shownAdult) MyPrograms.load { buildMenu() } else MyPrograms.clear()
                 buildMenu()
                 val current = section
                 if (first || current == null || menuAdapter.indexOf(current) < 0) {
@@ -366,6 +369,9 @@ class MainActivity : Activity() {
         val cont = data.optJSONArray("continue")?.length() ?: 0
         if (cont > 0) rows.add(Row("Fortsätt titta", subtitle = countLabel(cont), key = "continue"))
         rows.add(Row("Sök", key = "search"))
+        MyPrograms.cached?.takeIf { it.isNotEmpty() && !shownAdult }?.let {
+            rows.add(Row("Nyheter och Mina program", subtitle = countLabel(it.size), key = "myprog_menu"))
+        }
         if (!privateMode()) rows.add(Row("Favoriter", subtitle = countLabel(data.optJSONArray("favorites")?.length()), key = "favorites"))
         val recordings = data.optInt("recordings")
         rows.add(Row("Inspelningar", subtitle = if (recordings > 0) countLabel(recordings) else null, key = "recordings"))
@@ -410,6 +416,13 @@ class MainActivity : Activity() {
         menuTask?.let { handler.removeCallbacks(it) }
         if (row.key == "settings") {
             showSettings()
+            return
+        }
+        if (row.key == "myprog_menu") {
+            val programs = MyPrograms.cached ?: return
+            Look.choose(this, "Mina program", programs.map { if (it.subtitle.isEmpty()) it.title else "${it.title}  ·  ${it.subtitle}" }) { which ->
+                programs.getOrNull(which)?.let { MyPrograms.play(this, it) }
+            }
             return
         }
         if (row.key != section) showSection(row.key)
@@ -753,11 +766,19 @@ class MainActivity : Activity() {
     /** Höger från listan öppnar helskärm. Vänster från första kolumnen i helskärm går ur. */
     private fun onItemKey(position: Int, keyCode: Int): Boolean {
         if (!fullscreen && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && entries.isNotEmpty()) {
+            if (section == "search") hideKeyboard()
             enterFullscreen(focusNow = false)
             Focus.position(itemsList, position)
             return true
         }
         if (fullscreen && keyCode == KeyEvent.KEYCODE_DPAD_LEFT && position % itemsAdapter.columns.coerceAtLeast(1) == 0) {
+            if (section == "search") {
+                // Tillbaka till sökrutan med tangentbordet.
+                exitFullscreen(restoreFocus = false)
+                searchBox.requestFocus()
+                showKeyboard()
+                return true
+            }
             exitFullscreen(restoreFocus = true)
             return true
         }
@@ -1139,6 +1160,22 @@ class MainActivity : Activity() {
 
     // ================================================================ sök
 
+    private fun showKeyboard() {
+        try {
+            (getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+                .showSoftInput(searchBox, 0)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun hideKeyboard() {
+        try {
+            (getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+                .hideSoftInputFromWindow(searchBox.windowToken, 0)
+        } catch (_: Exception) {
+        }
+    }
+
     private fun runSearch() {
         searchTask?.let { handler.removeCallbacks(it) }
         if (section != "search") return
@@ -1149,12 +1186,18 @@ class MainActivity : Activity() {
             return
         }
         val token = ++loadToken
+        // Visa att något pågår (och behåll gamla träffar tills de nya kommit), så att det inte ser ut som att allt stannat.
+        if (entries.isEmpty()) showStatus("Söker…") else info.text = "Söker…"
         Api.arr("/device/search?q=${Api.enc(query)}&limit=150") { result ->
             if (token != loadToken || section != "search") return@arr
+            info.text = ""
             result.onSuccess { array ->
                 lastSearch = Item.list(array)
                 showEntries(lastSearch, false, "Inga träffar på \"$query\".")
-            }.onFailure { handleError(it) }
+            }.onFailure {
+                // Ett misslyckat sökanrop ska inte kasta ut en från sökläget.
+                if (it is ApiException || it is java.io.IOException) showStatus(Api.friendly(it)) else handleError(it)
+            }
         }
     }
 
