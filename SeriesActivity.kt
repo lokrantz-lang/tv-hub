@@ -1,0 +1,328 @@
+package se.tvhub.box
+
+import android.app.Activity
+import android.app.AlertDialog
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.view.View
+import android.widget.ImageView
+import android.widget.TextView
+import android.widget.Toast
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import org.json.JSONObject
+
+/** Säsonger och avsnitt för en serie. Visar var du är, sedda avsnitt och spelar i följd. */
+class SeriesActivity : Activity() {
+    companion object {
+        fun start(context: Context, seriesId: String, name: String, resumeEpisodeId: String? = null) {
+            context.startActivity(
+                Intent(context, SeriesActivity::class.java)
+                    .putExtra("id", seriesId)
+                    .putExtra("name", name)
+                    .putExtra("resume_episode", resumeEpisodeId)
+            )
+        }
+    }
+
+    private data class Episode(
+        val season: String,
+        val id: String,
+        val title: String,
+        val ext: String,
+        val positionMs: Long,
+        val durationMs: Long,
+        val watched: Boolean,
+    )
+
+    private lateinit var adapter: RowAdapter
+    private lateinit var list: RecyclerView
+    private lateinit var status: TextView
+    private val episodes = ArrayList<Episode>()
+    private var seriesId = ""
+    private var seriesName = ""
+    private var cover: String? = null
+    private var favorite = false
+    private var firstLoad = true
+    private var modern = false
+    private var mobile = false  // telefonen: inga inspelningar (de görs på TV-boxarna)
+    private val favoriteEpisodes = HashSet<String>()
+    private var myRating = 0
+    private var wish = false
+    private val seasonAdapter = RowAdapter(onClick = { row, _ -> jumpToSeason(row.key) })
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val prefs = Prefs(this)
+        Look.init(this)
+        FormFactor.portraitIfMobile(this)
+        mobile = FormFactor.isMobile(this)
+        modern = prefs.modern
+        if (modern) Fonts.install(this)
+        setContentView(if (modern) R.layout.activity_series_modern else R.layout.activity_series)
+        Api.init(prefs)
+        seriesId = intent.getStringExtra("id") ?: return finish()
+        seriesName = intent.getStringExtra("name") ?: ""
+        findViewById<TextView>(R.id.title).text = seriesName
+        status = findViewById(R.id.status)
+        list = findViewById(R.id.episodes)
+        // Med säsongsflikar ovanför ska upp-pilen kunna lämna avsnittslistan.
+        adapter = RowAdapter(onClick = { row, _ -> onClick(row) }, onLongClick = { row, _ -> onLongClick(row) },
+            stopAtTop = { findViewById<View?>(R.id.seasons) == null })
+        adapter.modern = modern
+        list.layoutManager = LinearLayoutManager(this)
+        list.adapter = adapter
+        list.itemAnimator = null
+        findViewById<RecyclerView?>(R.id.seasons)?.let { seasons ->
+            seasonAdapter.edgeLock = false
+            seasons.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+            seasons.adapter = SeasonChips(seasonAdapter)
+            seasons.itemAnimator = null
+        }
+    }
+
+    /** Säsonger som flikar överst (modernt utseende). OK hoppar till säsongens första avsnitt. */
+    private class SeasonChips(private val rows: RowAdapter) : RecyclerView.Adapter<RowAdapter.Holder>() {
+        init {
+            rows.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+                override fun onChanged() = notifyDataSetChanged()
+            })
+        }
+
+        override fun getItemCount() = rows.itemCount
+
+        override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): RowAdapter.Holder =
+            RowAdapter.Holder(android.view.LayoutInflater.from(parent.context).inflate(R.layout.chip_m, parent, false))
+
+        override fun onBindViewHolder(holder: RowAdapter.Holder, position: Int) = rows.onBindViewHolder(holder, position)
+    }
+
+    private fun jumpToSeason(key: String) {
+        val index = adapter.indexOf(key)
+        if (index >= 0) Focus.position(list, index + 1)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        reload()
+        Taste.promptPending(this)
+    }
+
+    private fun reload() {
+        // Ladda om efter uppspelning så att "Fortsätt" och sedda avsnitt stämmer.
+        Api.obj("GET", "/device/series/${Api.enc(seriesId)}") { result ->
+            result.onSuccess { show(it) }.onFailure { status.text = Api.friendly(it) }
+        }
+    }
+
+    private fun show(data: JSONObject) {
+        val focused = Focus.focusedPosition(list)
+        data.optStringOrNull("plot")?.let { Expandable.attach(findViewById(R.id.plot), it) }
+        cover = data.optStringOrNull("cover")
+        ImageLoader.load(findViewById<ImageView>(R.id.cover), cover)
+        findViewById<ImageView?>(R.id.backdrop)?.let {
+            if (it.drawable == null) ImageLoader.load(it, data.optStringOrNull("backdrop") ?: cover, ImageLoader.BACKDROP, fade = true)
+        }
+        favorite = data.optBoolean("favorite")
+        favoriteEpisodes.clear()
+        data.optJSONArray("favorite_episodes")?.let { arr -> for (i in 0 until arr.length()) favoriteEpisodes.add(arr.optString(i)) }
+        val progress = data.optJSONObject("progress") ?: JSONObject()
+        val watchedArray = data.optJSONArray("watched")
+        val watched = HashSet<String>()
+        if (watchedArray != null) for (i in 0 until watchedArray.length()) watched.add(watchedArray.optString(i))
+
+        val rows = ArrayList<Row>()
+        episodes.clear()
+        val seasons = data.optJSONArray("seasons")
+        val episodeRows = ArrayList<Row>()
+        if (seasons != null) {
+            for (s in 0 until seasons.length()) {
+                val season = seasons.optJSONObject(s) ?: continue
+                val seasonNo = season.optString("season")
+                episodeRows.add(Row("Säsong $seasonNo", key = "season:$seasonNo", header = true))
+                val eps = season.optJSONArray("episodes") ?: continue
+                for (e in 0 until eps.length()) {
+                    val ep = eps.optJSONObject(e) ?: continue
+                    val num = ep.optStringOrNull("num") ?: "${e + 1}"
+                    val title = ep.optStringOrNull("title") ?: "Avsnitt $num"
+                    val id = ep.optString("id")
+                    val p = progress.optJSONObject(id)
+                    val episode = Episode(
+                        season = seasonNo,
+                        id = id,
+                        title = "$seriesName S${seasonNo}E$num",
+                        ext = ep.optStringOrNull("ext") ?: "mp4",
+                        positionMs = p?.optLong("position_ms") ?: 0L,
+                        durationMs = p?.optLong("duration_ms") ?: 0L,
+                        watched = id in watched,
+                    )
+                    episodes.add(episode)
+                    val state = when {
+                        episode.positionMs > 0 -> "${progressBar(episode.positionMs, episode.durationMs)} Sett ${Format.clock(episode.positionMs)} · ${Format.remaining(episode.positionMs, episode.durationMs)}"
+                        episode.watched -> "✓ Sedd"
+                        else -> null
+                    }
+                    val sub = listOfNotNull(state, ep.optStringOrNull("duration"), ep.optStringOrNull("plot")).joinToString(" · ")
+                    episodeRows.add(Row("$num. $title", subtitle = sub, key = "ep:$id", payload = episode, star = id in favoriteEpisodes,
+                        icon = if (modern) ep.optStringOrNull("image") ?: cover else null, iconSpace = modern))
+                }
+            }
+        }
+        if (episodes.isEmpty()) {
+            status.text = "Inga avsnitt hittades."
+            return
+        }
+        status.visibility = View.GONE
+
+        // Åtgärder överst: fortsätt där du var, eller nästa osedda avsnitt.
+        val inProgress = episodes.firstOrNull { it.positionMs > 0 }
+        val nextUnseen = run {
+            val lastWatched = episodes.indexOfLast { it.watched }
+            episodes.getOrNull(lastWatched + 1) ?: episodes.first()
+        }
+        when {
+            inProgress != null -> rows.add(
+                Row("▶  Fortsätt ${inProgress.title.removePrefix("$seriesName ")} från ${Format.clock(inProgress.positionMs)}",
+                    key = "action:resume", payload = "resume" to inProgress)
+            )
+            else -> rows.add(
+                Row("▶  Spela ${nextUnseen.title.removePrefix("$seriesName ")}", key = "action:next", payload = "start" to nextUnseen)
+            )
+        }
+        rows.add(Row(if (favorite) "★  Favorit" else "☆  Lägg till i favoriter", key = "action:favorite", payload = "favorite"))
+        if (data.has("my_rating")) {
+            // Filmkväll: tummar och Vill se för serien (inte i vuxenläget).
+            myRating = data.optInt("my_rating")
+            wish = data.optBoolean("wish")
+            rows.add(Row(if (myRating == 0) "Betygsätt serien" else "Betyg: ${Taste.label(myRating)}", key = "action:rate", payload = "rate"))
+            rows.add(Row(if (wish) "★  På Vill se" else "☆  Vill se", key = "action:wish", payload = "wish"))
+        }
+        if (!mobile) {
+            rows.add(Row("⬇  Spela in hela serien till USB-minnet", subtitle = "Håll in OK på ett avsnitt: favorit, spela in avsnittet eller säsongen",
+                key = "action:record", payload = "record"))
+        }
+        rows.addAll(episodeRows)
+        adapter.submit(rows)
+        seasonAdapter.submit(episodeRows.filter { it.header }.map { Row(it.title, key = it.key) })
+        if (firstLoad) {
+            firstLoad = false
+            Focus.position(list, 0)
+        } else if (focused != RecyclerView.NO_POSITION) {
+            Focus.position(list, focused)
+        }
+    }
+
+    private fun onClick(row: Row) {
+        when (val payload = row.payload) {
+            is Pair<*, *> -> {
+                val episode = payload.second as? Episode ?: return
+                play(episode, if (payload.first == "resume") episode.positionMs else 0L)
+            }
+            "favorite" -> toggleFavorite()
+            "rate" -> Taste.rate(this, "series", seriesId, seriesName, askWho = true) { reload() }
+            "wish" -> Taste.send(this, "series", seriesId, if (wish) "unwish" else "wish",
+                toast = if (wish) "Borttagen från Vill se" else "Tillagd på Vill se") { reload() }
+            "record" -> RecordMedia.series(this, seriesId)
+            is Episode -> {
+                if (payload.positionMs > 0) {
+                    Look.choose(this, payload.title, listOf("Fortsätt från ${Format.clock(payload.positionMs)}", "Börja om")) { which ->
+                        play(payload, if (which == 0) payload.positionMs else 0L)
+                    }
+                } else {
+                    play(payload, 0L)
+                }
+            }
+        }
+    }
+
+    /** Enkel förloppsstapel i texten, t.ex. ▰▰▰▱▱ 60 %. */
+    private fun progressBar(pos: Long, dur: Long): String {
+        if (dur <= 0) return "▰▱▱▱▱"
+        val pct = (pos * 100 / dur).toInt().coerceIn(0, 100)
+        val full = (pct + 10) / 20
+        return "▰".repeat(full) + "▱".repeat(5 - full) + " $pct %"
+    }
+
+    private fun markWatched(ids: List<String>, on: Boolean, message: String) {
+        val body = JSONObject().put("series_id", seriesId).put("on", on).put("ids", org.json.JSONArray(ids))
+        Api.obj("POST", "/device/watched", body) { result ->
+            result.onSuccess {
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                reload()
+            }.onFailure { Toast.makeText(this, Api.friendly(it), Toast.LENGTH_LONG).show() }
+        }
+    }
+
+    private fun onLongClick(row: Row) {
+        val episode = row.payload as? Episode ?: return
+        val isFavorite = episode.id in favoriteEpisodes
+        val seasonIds = episodes.filter { it.season == episode.season }.map { it.id }
+        val seen = episode.watched
+        val actions = ArrayList<Pair<String, () -> Unit>>()
+        actions.add("▶  Spela" to { play(episode, 0L) })
+        actions.add((if (isFavorite) "★  Ta bort från favoriter" else "☆  Lägg till i favoriter") to { toggleEpisodeFavorite(episode, !isFavorite) })
+        actions.add((if (seen) "○  Markera avsnittet som osett" else "✓  Markera avsnittet som sett") to {
+            markWatched(listOf(episode.id), !seen, if (seen) "Markerat som osett" else "Markerat som sett")
+        })
+        actions.add("✓  Markera hela säsong ${episode.season} som sedd" to {
+            markWatched(seasonIds, true, "Säsong ${episode.season} markerad som sedd")
+        })
+        actions.add("○  Markera hela säsong ${episode.season} som osedd" to {
+            markWatched(seasonIds, false, "Säsong ${episode.season} markerad som osedd")
+        })
+        if (mobile) {
+            actions.add("📺  Spela på TV…" to {
+                BoxSend.choose(this, JSONObject().put("type", "episode").put("id", episode.id).put("series_id", seriesId))
+            })
+        } else {
+            actions.add("⬇  Spela in avsnittet till USB-minnet" to { RecordMedia.episode(this, episode.id, episode.title, episode.ext, seriesId) })
+            actions.add("⬇  Spela in hela säsong ${episode.season}" to { RecordMedia.series(this, seriesId, episode.season) })
+        }
+        Look.choose(this, episode.title, actions.map { it.first }) { which -> actions.getOrNull(which)?.second?.invoke() }
+    }
+
+    private fun toggleEpisodeFavorite(episode: Episode, on: Boolean) {
+        val body = JSONObject().put("type", "episode").put("id", episode.id).put("series_id", seriesId)
+            .put("name", episode.title).put("ext", episode.ext).put("on", on)
+        cover?.let { body.put("icon", it) }
+        Api.obj("POST", "/device/favorites", body) { result ->
+            result.onSuccess {
+                Toast.makeText(this, if (on) "★ ${episode.title} är nu en favorit" else "${episode.title} borttagen ur favoriter", Toast.LENGTH_SHORT).show()
+                reload()
+            }.onFailure { Toast.makeText(this, Api.friendly(it), Toast.LENGTH_LONG).show() }
+        }
+    }
+
+    private fun play(episode: Episode, startMs: Long) {
+        val index = episodes.indexOf(episode)
+        PlayerActivity.start(
+            this,
+            type = "episode",
+            id = episode.id,
+            name = episode.title,
+            ext = episode.ext,
+            queueIds = ArrayList(episodes.map { it.id }),
+            queueNames = ArrayList(episodes.map { it.title }),
+            queueExts = ArrayList(episodes.map { it.ext }),
+            queueIndex = index,
+            startMs = startMs,
+            seriesId = seriesId,
+            icon = cover,
+        )
+    }
+
+    private fun toggleFavorite() {
+        val on = !favorite
+        Api.obj("POST", "/device/favorites", JSONObject().put("type", "series").put("id", seriesId).put("on", on)) { result ->
+            result.onSuccess {
+                favorite = on
+                val index = adapter.indexOf("action:favorite")
+                if (index >= 0) {
+                    adapter.replace(index, Row(if (on) "★  Favorit" else "☆  Lägg till i favoriter",
+                        key = "action:favorite", payload = "favorite"))
+                }
+            }.onFailure { Toast.makeText(this, Api.friendly(it), Toast.LENGTH_LONG).show() }
+        }
+    }
+}

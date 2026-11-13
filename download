@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+.gradle/
+build/
+local.properties
+*.jks
+*.keystore
+signing/
+.idea/
+*.iml
+.DS_Store
