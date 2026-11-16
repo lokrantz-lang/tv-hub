@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (VERSION, ai, alerts, backup, hotfix, sportsets, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
+from . import (VERSION, usage, ai, alerts, backup, hotfix, sportsets, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
                sports,
                recordings, reminders, remote, taste, updates)
 from .config import CFG
@@ -281,7 +281,7 @@ def admin_overview(h):
 # ----- portaler -----
 @route(ADMIN, "GET", r"/api/portals")
 def admin_portals(h):
-    items, _ = portals.summaries()
+    items, _ = portals.summaries(include_archived=(h.query.get("archived") or ["0"])[0] == "1")
     return 200, items
 
 
@@ -341,6 +341,11 @@ def admin_portal_check(h, pid):
         raise HttpError(404, "Portalen finns inte")
     result["error_text"] = diagnostics.explain(result["error_kind"]) if result["error_kind"] else None
     return 200, {"check": result, "portal": portals.summary(portals.get(int(pid)))}
+
+
+@route(ADMIN, "GET", r"/api/portals/(\d+)/series")
+def admin_portal_series(h, pid):
+    return 200, diagnostics.portal_series(int(pid), _int_arg(h.query, "hours", 720, 1, 24 * 90), _int_arg(h.query, "step", 600, 60, 86400))
 
 
 @route(ADMIN, "GET", r"/api/portals/(\d+)/history")
@@ -893,13 +898,10 @@ def dev_pair(h):
     return 200, result
 
 
-@route(DEVICE, "GET", r"/device/home")
-def dev_home(h):
-    dev, scope = h.context()
-    if h.query.get("app_version"):
-        db.x("UPDATE devices SET app_version = ? WHERE id = ?", (h.query["app_version"][0][:20], dev["id"]))
+def home_payload(dev, scope, profile):
+    """Hem-data för en box och profil. Används av appen (/device/home) och av "Visa som" i webbadminen."""
     group_only = scope.group_id is not None
-    return 200, {
+    return {
         "device": {"id": dev["id"], "name": dev["name"]},
         "mode": "adult" if scope.adult else "normal",
         "history": not scope.private,
@@ -921,10 +923,49 @@ def dev_home(h):
         "recordings": len(recordings.for_device(dev["id"], adult=scope.adult or 0)),
         "adult_pin": devices.adult_pin_set() and bool(dev["pin_required"]),
         # Profiler: vem som tittar, och vad boxen går tillbaka till efter en stund utan användning.
-        "active_profile": h.profile(),
+        "active_profile": profile,
         "profiles": profiles.all_profiles(),
         "box": {"default_profile_id": dev["default_profile_id"] or profiles.owner_id(), "revert_hours": dev["revert_hours"],
                 "adult_idle_minutes": dev["adult_idle_minutes"]},
+    }
+
+
+@route(DEVICE, "GET", r"/device/home")
+def dev_home(h):
+    dev, scope = h.context()
+    if h.query.get("app_version"):
+        db.x("UPDATE devices SET app_version = ? WHERE id = ?", (h.query["app_version"][0][:20], dev["id"]))
+    return 200, home_payload(dev, scope, h.profile())
+
+
+def _preview_name(item):
+    return {"id": item.get("id"), "name": item.get("name"), "icon": item.get("icon")}
+
+
+@route(ADMIN, "GET", r"/api/preview")
+def admin_preview(h):
+    """Visa som: hur Hem ser ut för en profil på en box (samma logik och begränsningar som i appen).
+    Skrivskyddat och en förenklad bild, inte en skärmdump. Vuxenläget visas aldrig, bara att det finns."""
+    dev = db.q1("SELECT * FROM devices WHERE id = ?", (_int_arg(h.query, "device_id", 0),))
+    if dev is None:
+        raise HttpError(404, "Boxen finns inte.")
+    prof = profiles.get(_int_arg(h.query, "profile_id", 0)) or profiles.resolve("", dev)
+    scope = devices.scope_for(dev, False, True, prof)  # alltid vanligt läge
+    data = home_payload(dev, scope, prof)
+    programs = [] if prof.get("guest") else [myprograms.resolve(r, prof["id"]) for r in myprograms.for_profile(prof["id"])]
+    cats = {k: [{"name": c.get("name"), "count": c.get("count")} for c in v if not c.get("hidden")][:40]
+            for k, v in data["categories"].items()}
+    groups = [{"name": g.get("name"), "items": [_preview_name(i) for i in (g.get("items") or [])[:12]],
+               "count": len(g.get("items") or [])} for g in data["groups"]]
+    return 200, {
+        "profile": prof, "box": {"id": dev["id"], "name": dev["name"], "only_group_id": dev["only_group_id"]},
+        "adult_possible": bool(dev["allow_adult"] and prof.get("allow_adult")),
+        "my_programs": [{"title": p["title"], "subtitle": p.get("subtitle"), "error": p.get("error"),
+                         "choices": [c["label"] for c in p.get("choices", [])]} for p in programs],
+        "continue": [_preview_name(i) for i in data["continue"][:12]],
+        "favorites": [_preview_name(i) for i in data["favorites"][:12]],
+        "groups": groups, "categories": cats, "counts": data["counts"],
+        "recent_live": [_preview_name(i) for i in data["recent_live"][:8]],
     }
 
 
@@ -1638,6 +1679,22 @@ def dev_my_programs(h):
         return 200, {"programs": []}
     rows = myprograms.for_profile(scope.pid)
     return 200, {"programs": [myprograms.resolve(r, scope.pid) for r in rows]}
+
+
+@route(ADMIN, "GET", r"/api/usage")
+def admin_usage(h):
+    return 200, usage.overview(_int_arg(h.query, "days", 14, 1, 90))
+
+
+@route(ADMIN, "GET", r"/api/usage/history")
+def admin_usage_history(h):
+    day = (h.query.get("day") or [""])[0] or None
+    return 200, usage.history(_int_arg(h.query, "profile_id", 0), day)
+
+
+@route(ADMIN, "PUT", r"/api/usage/bitrates")
+def admin_usage_bitrates(h):
+    return 200, usage.set_bitrates(h.read_json())
 
 
 @route(ADMIN, "GET", r"/api/profiles")

@@ -63,5 +63,27 @@ try:
 except ValueError:
     check("orimlig tid nekas", True)
 
+# abonnemangsvarning
+pid = db.q1("SELECT id FROM portals")["id"]
+alerts.save_settings({"expiry_days": 7, "box_hours": 0, "recording": True})
+t0 = time.time()
+db.x("INSERT INTO checks (portal_id, ts, tcp_ok, api_ok, exp_date) VALUES (?, ?, 1, 1, ?)", (pid, db.iso(), int(t0 + 3 * 86400)))
+out = alerts.check_once(send=lambda t, m: None, now=t0)
+check("abonnemang som snart går ut ger en notis", len(out) == 1 and "abonnemanget" in out[0][0] and "dagar" in out[0][1], out)
+check("varningen repeteras inte inom ett dygn", alerts.check_once(send=lambda t, m: None, now=t0 + 3600) == [])
+out = alerts.check_once(send=lambda t, m: None, now=t0 + 90000)
+check("varningen kommer igen nästa dygn", len(out) == 1, out)
+db.x("INSERT INTO checks (portal_id, ts, tcp_ok, api_ok, exp_date) VALUES (?, ?, 1, 1, ?)", (pid, db.iso(), int(t0 + 60 * 86400)))
+alerts._state["expiry"] = 0.0
+check("långt kvar ger ingen varning", alerts.check_once(send=lambda t, m: None, now=t0) == [])
+alerts.save_settings({"expiry_days": 0})
+db.x("INSERT INTO checks (portal_id, ts, tcp_ok, api_ok, exp_date) VALUES (?, ?, 1, 1, ?)", (pid, db.iso(), int(t0 + 86400)))
+check("av = ingen abonnemangsvarning", alerts.check_once(send=lambda t, m: None, now=t0) == [])
+try:
+    alerts.save_settings({"expiry_days": 500})
+    check("orimligt antal dagar nekas", False)
+except ValueError:
+    check("orimligt antal dagar nekas", True)
+
 print("\nALLT OK" if not bad else f"\n{len(bad)} FEL: {', '.join(bad)}")
 sys.exit(1 if bad else 0)

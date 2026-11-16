@@ -44,6 +44,10 @@ def validate(data, partial=False):
             return None, "Prioritet måste vara ett heltal 1–999."
     if "enabled" in data:
         clean["enabled"] = 1 if data["enabled"] else 0
+    if "archived" in data:
+        clean["archived"] = 1 if data["archived"] else 0
+        if clean["archived"]:
+            clean["enabled"] = 0  # en arkiverad portal används och kontrolleras aldrig
     return clean, None
 
 
@@ -51,10 +55,13 @@ def get(portal_id):
     return db.q1("SELECT * FROM portals WHERE id = ?", (portal_id,))
 
 
-def all_rows(enabled_only=False):
-    sql = "SELECT * FROM portals"
+def all_rows(enabled_only=False, include_archived=False):
+    conds = []
     if enabled_only:
-        sql += " WHERE enabled = 1"
+        conds.append("enabled = 1")
+    if not include_archived:
+        conds.append("archived = 0")
+    sql = "SELECT * FROM portals" + (" WHERE " + " AND ".join(conds) if conds else "")
     return db.q(sql + " ORDER BY priority, name")
 
 
@@ -172,6 +179,7 @@ def summary(portal):
         "has_password": bool(portal["password"]),
         "priority": portal["priority"],
         "enabled": bool(portal["enabled"]),
+        "archived": bool(portal["archived"]),
         "ok": bool(last["api_ok"]) if last else None,
         "last_check": dict(last, error_text=explain(last["error_kind"]) if last["error_kind"] else None) if last else None,
         "failed_last_hour": hour["failed"] or 0,
@@ -182,8 +190,8 @@ def summary(portal):
     }
 
 
-def summaries():
-    items = [summary(p) for p in all_rows()]
+def summaries(include_archived=False):
+    items = [summary(p) for p in all_rows(include_archived=include_archived)]
     best = pick_best(items)
     for item in items:
         item["active"] = item["id"] == best

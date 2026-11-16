@@ -521,6 +521,10 @@ SCHEMA = [
         PRIMARY KEY (profile_id, type, category_id)
     );
     """,
+    # version 16: arkiverade portaler (finns kvar i databasen men används och kontrolleras aldrig)
+    """
+    ALTER TABLE portals ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 

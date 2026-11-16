@@ -516,9 +516,14 @@ class PlayerActivity : Activity() {
 
     private fun hideSystemBars() {
         @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
-            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
+        window.decorView.systemUiVisibility = if (mobile) {
+            // Telefonen: bara statusfältet göms, så att Androids vanliga tillbaka-knapp syns längst ner.
+            View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        } else {
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        }
     }
 
     /** Telefonen: hemknappen under uppspelning ger bild-i-bild (Android 8 och senare). */
@@ -1398,7 +1403,8 @@ class PlayerActivity : Activity() {
             }
         }
         val arrow = event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
-        if (type != "live" && arrow && !fatalShown) {
+        val onTrackButton = modern && type != "live" && (currentFocus === btnAudio || currentFocus === btnSubs)
+        if (type != "live" && arrow && !fatalShown && !onTrackButton) {
             if (event.action == KeyEvent.ACTION_DOWN) {
                 prefs.touch()
                 seekVod(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1, event.repeatCount)
@@ -1459,10 +1465,10 @@ class PlayerActivity : Activity() {
                     KeyEvent.KEYCODE_MEDIA_REWIND -> { seekVod(-1, event.repeatCount); return true }
                     KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { seekVod(1, event.repeatCount); return true }
                     KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_INFO -> {
-                        // Ner när tidslinjen redan syns: till knapparna Ljud och Undertext.
-                        if (code == KeyEvent.KEYCODE_DPAD_DOWN && overlay.visibility == View.VISIBLE && trackRow?.visibility == View.VISIBLE) {
-                            btnAudio?.requestFocus()
+                        // Ett tryck ner: tidslinjen visas och fokus hamnar direkt på Ljud (höger/vänster byter till Undertext).
+                        if (code == KeyEvent.KEYCODE_DPAD_DOWN && trackRow?.visibility == View.VISIBLE) {
                             showOverlay(8_000)
+                            btnAudio?.requestFocus()
                         } else {
                             showOverlay(5_000)
                         }
@@ -1473,6 +1479,12 @@ class PlayerActivity : Activity() {
             if (type == "live") {
                 val shifted = pausedAt > 0 || shiftStart > 0 || behindMs > 0
                 when (code) {
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        // Ett tryck ner: menyn med Ljudspår och Undertexter (kanalbyte ner finns kvar på Kanal-/Sidknapparna).
+                        showOptions()
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER,
                     KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> {
                         togglePause()
                         return true
@@ -1520,7 +1532,7 @@ class PlayerActivity : Activity() {
                         zap(1)
                         return true
                     }
-                    KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> {
+                    KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> {
                         zap(-1)
                         return true
                     }
@@ -1528,13 +1540,9 @@ class PlayerActivity : Activity() {
                         previousChannel()
                         return true
                     }
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_INFO -> {
-                        if (overlay.visibility == View.VISIBLE && code != KeyEvent.KEYCODE_INFO) {
-                            showOptions()
-                        } else {
-                            showOverlay(6_000)
-                            loadEpg()
-                        }
+                    KeyEvent.KEYCODE_INFO -> {
+                        showOverlay(6_000)
+                        loadEpg()
                         return true
                     }
                 }

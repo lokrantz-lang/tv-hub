@@ -1,5 +1,42 @@
 # Ändringar
 
+## 2.9.8
+
+- **Spelaren (kräver ny app):** **OK pausar och fortsätter alltid**, även i direktsändning (förut öppnade OK en meny där).
+  **Ett tryck ner** går direkt till Ljud i filmens tidslinje, och höger/vänster byter då mellan Ljud och Undertext i stället för att spola
+  (det var ett fel: pilarna spolade även när knapparna var markerade). I direktsändning öppnar ner menyn med Ljudspår och Undertexter.
+  Kanalbyte ner finns kvar på Kanal ner och Sida ner; pil upp byter fortfarande kanal uppåt. Info visar programinformation som förut.
+- **Telefonen:** Androids vanliga tillbaka-knapp längst ner syns nu under uppspelning (bara statusfältet göms). Gäller telefoner med
+  knappnavigering; med svepgester finns ingen knapp att visa.
+- Innehåll från 2.9.7 ingår.
+
+## 2.9.7
+
+- **Portaler:** en riktig graf över svarstiden med dag/datum och klockslag på tidsaxeln och ms-skala. Tryck (eller håll musen) på grafen för
+  detaljer om den tiden, dra åt sidorna för att gå bakåt i tiden, och välj 24 tim, 7 dagar eller 30 dagar. Röda fält är misslyckade kontroller.
+- **Pausa, aktivera och arkivera portaler:** varje rad har en tydlig knapp. En pausad portal används och kontrolleras inte. En arkiverad portal
+  göms ur listan men finns kvar (*Visa arkiverade* → *Ta tillbaka*) och används eller kontrolleras aldrig.
+- **Tittande (ny flik):** tittad tid per dag med stapeldiagram, uppdelat per box och per profil, och **uppskattad datamängd** (tid × bitrate,
+  som du kan ändra: live 4, film 6, serie 4 Mbit/s). Det är en uppskattning, källan rapporterar ingen verklig trafik. Underlaget sparas i 30 dagar.
+  Under finns **historik per profil** (titel, tid, längd; välj profil och dag). Vuxenläget räknas bara som tid under *Övrigt*, aldrig med titlar
+  och aldrig i historiken. Gäst är en egen rad utan historik. Inspelningar räknas inte.
+- **Varning när abonnemanget går ut:** under Boxar → Avbrottsnotiser (3, 7, 14 eller 30 dagar innan, standard 7; högst en notis per dygn).
+- **Rapport och TV4 Nyheterna: du väljer sändning.** Trycker du visas de två senaste huvudsändningarna (längsta sändningen med namnet varje dag
+  ur programguiden, alltså inga fasta tider) med dag och klockslag. Har kanalen inget arkiv visas "Kanalen har inget arkiv" (eller så spelas
+  den direkt om den sänds nu). De förinlagda Rapport och TV4 Nyheterna byts automatiskt en gång. Kräver ny app på boxarna för valdialogen; äldre
+  appar spelar den senaste direkt.
+- **Visa som (ny flik):** välj profil och box och se Hem som den profilen ser det (Mina program, Fortsätt titta, favoriter, grupper och synliga
+  kategorier med antal), med samma regler som i appen. Skrivskyddat, en förenklad bild och inte en exakt skärmdump. Vuxenläget visas aldrig.
+- Innehåll från 2.9.6 ingår.
+
+## 2.9.6
+
+- **Mina program väljer rätt kanal:** förslagen tog i 2.9.5 ibland fel kanal, så att TV4 Nyheterna och Robinson hamnade på CCTV4. Nu måste
+  hela kanalnamnet stämma (landsprefix som SE: och ord som HD räknas bort), så CCTV4, TV4 Film och liknande väljs aldrig.
+  Förslag som redan hamnat på CCTV flyttas automatiskt till TV4 en gång.
+- **Aktuellt** föreslås bara om SVT2 har arkiv, eftersom den annars bara kan spelas direkt. Redan inlagd Aktuellt tas inte bort.
+- Innehåll från 2.9.5 ingår.
+
 ## 2.9.5
 
 - **Hemfix (webbadmin → Boxar):** dra in zipfilen för en ny version så uppdateras tillägget utan GitHub. Filerna kontrolleras

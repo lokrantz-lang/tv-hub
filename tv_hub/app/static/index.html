@@ -217,6 +217,25 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
   .detail-body { grid-template-columns: 1fr; }
   .detail-body .poster { max-width: 180px; }
 }
+
+.chart-wrap { position: relative; }
+.chart { width: 100%; height: auto; display: block; touch-action: pan-y; user-select: none; cursor: grab; }
+.chart:active { cursor: grabbing; }
+.chart text { fill: var(--muted); font-size: 11px; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .axis { stroke: var(--muted); stroke-width: 1; }
+.chart-tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 9px; font-size: 12px; box-shadow: var(--shadow); white-space: nowrap; z-index: 3; display: none; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: var(--panel); padding: 6px 12px; cursor: pointer; min-height: 34px; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.bars rect { cursor: pointer; }
+.pv-shelf { margin: 0 0 14px; }
+.pv-shelf h3 { font-size: 13px; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
+.pv-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pv-chip { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 6px 10px; font-size: 13px; max-width: 260px; }
+.pv-chip small { display: block; color: var(--muted); }
+.pv-chip.err small { color: var(--bad); }
 </style>
 </head>
 <body>
@@ -229,6 +248,8 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="overview" aria-selected="true">Översikt</button>
       <button role="tab" data-tab="profiles">Profiler</button>
+      <button role="tab" data-tab="usage">Tittande</button>
+      <button role="tab" data-tab="preview">Visa som</button>
       <button role="tab" data-tab="sports">Sport</button>
       <button role="tab" data-tab="night">Filmkväll</button>
       <button role="tab" data-tab="library">Bibliotek</button>
@@ -282,6 +303,55 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
       <div class="bd">
         <p class="small muted" style="margin-top:0">Varje profil har egna favoriter, eget Fortsätt titta, egna sedda avsnitt och egna snabbval (Mina program). Byt profil i appen med profilknappen överst i menyn. Med en kod frågar appen efter den när man byter till profilen. Gästprofilen sparar ingenting. Profilerna är samma som tittarlägena i Filmkväll.</p>
         <div id="prof-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TITTANDE -->
+  <section class="tabpanel" id="tab-usage" hidden>
+    <div class="panel">
+      <div class="hd"><h2>Tittat per dag</h2>
+        <div class="seg" id="us-range"><button data-d="7">7 dagar</button><button data-d="14" aria-pressed="true">14 dagar</button><button data-d="30">30 dagar</button></div></div>
+      <div class="bd" id="usage-body"><div class="empty">Hämtar…</div></div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Uppskattad datamängd</h2></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Källan rapporterar ingen verklig trafik, så datamängden är en <strong>uppskattning</strong>: tittad tid × bitrate nedan. Ändra värdena om du vet vad dina strömmar brukar ligga på. Underlaget sparas i 30 dagar. Inspelningar räknas inte.</p>
+        <form id="us-rates" class="filters" style="align-items:flex-end">
+          <label class="f">Live, Mbit/s<input id="us-live" type="number" step="0.5" min="0.5" max="80"></label>
+          <label class="f">Film, Mbit/s<input id="us-film" type="number" step="0.5" min="0.5" max="80"></label>
+          <label class="f">Serie, Mbit/s<input id="us-series" type="number" step="0.5" min="0.5" max="80"></label>
+          <div class="row"><button class="btn primary" type="submit">Spara</button></div>
+        </form>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Vad har setts</h2></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Historik per profil. Vuxenläget visas aldrig här (bara som tid under Övrigt ovan), gäst sparar ingen historik och inspelningar räknas inte.</p>
+        <div class="filters" style="align-items:flex-end">
+          <label class="f">Profil<select id="uh-profile"></select></label>
+          <label class="f">Dag<input type="date" id="uh-day"></label>
+          <div class="row"><button class="btn" id="uh-all">Alla dagar</button></div>
+        </div>
+        <div class="scroll" style="margin-top:10px"><table><thead><tr><th>Dag</th><th>Tid</th><th>Titel</th><th class="hide-sm">Box</th><th>Längd</th></tr></thead><tbody id="uh-rows"></tbody></table></div>
+        <p class="small muted" id="uh-note"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- VISA SOM -->
+  <section class="tabpanel" id="tab-preview" hidden>
+    <div class="panel">
+      <div class="hd"><h2>Visa som</h2></div>
+      <div class="bd">
+        <p class="small muted" style="margin-top:0">Så här ser Hem ut för en profil på en box, med samma regler som i appen. Skrivskyddat och en förenklad bild, inte en exakt skärmdump. Vuxenläget visas aldrig här.</p>
+        <div class="filters" style="align-items:flex-end">
+          <label class="f">Profil<select id="pv-profile"></select></label>
+          <label class="f">Box<select id="pv-box"></select></label>
+        </div>
+        <div id="preview-body" style="margin-top:14px"><div class="empty">Välj profil och box.</div></div>
       </div>
     </div>
   </section>
@@ -586,7 +656,8 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
   <!-- PORTALER -->
   <section class="tabpanel" id="tab-portals" hidden>
     <div class="panel">
-      <div class="hd"><h2>Portaler</h2><span class="small muted">Boxarna använder automatiskt den bästa som fungerar</span></div>
+      <div class="hd"><h2>Portaler</h2><span class="small muted">Boxarna använder automatiskt den bästa som fungerar</span>
+        <label class="chk"><input type="checkbox" id="p-show-archived"> Visa arkiverade</label></div>
       <div class="bd scroll">
         <table>
           <thead><tr><th></th><th>Namn</th><th class="hide-sm">Adress</th><th class="hide-sm">Prio</th><th>Svar</th><th class="hide-sm">Fel 1 h</th><th></th></tr></thead>
@@ -597,7 +668,11 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
     <div class="panel hidden" id="portal-history-panel" style="margin-top:16px">
       <div class="hd"><h2 id="portal-history-title"></h2><button class="btn ghost" id="portal-history-close">Stäng</button></div>
       <div class="bd">
-        <svg class="spark" id="portal-spark" viewBox="0 0 600 48" preserveAspectRatio="none" role="img" aria-label="Svarstider senaste dygnet"></svg>
+        <div class="row" style="margin-bottom:8px; justify-content:space-between">
+          <div class="seg" id="pg-range"><button data-h="24" aria-pressed="true">24 tim</button><button data-h="168">7 dagar</button><button data-h="720">30 dagar</button></div>
+          <span class="small muted">Dra i grafen åt sidorna, tryck för detaljer</span>
+        </div>
+        <div class="chart-wrap"><svg class="chart" id="pg-svg" viewBox="0 0 800 260" role="img" aria-label="Svarstid för portalen"></svg><div class="chart-tip" id="pg-tip"></div></div>
         <p class="small muted" id="portal-spark-cap"></p>
         <div class="scroll"><table><thead><tr><th>Tid</th><th>Inloggning</th><th>Svar</th><th>Fel</th></tr></thead><tbody id="portal-history"></tbody></table></div>
       </div>
@@ -681,6 +756,7 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
           <label class="chk"><input type="checkbox" id="al-provider"> Leverantören svarar inte</label>
           <label class="chk"><input type="checkbox" id="al-recording"> Inspelning misslyckades</label>
           <label class="f" style="min-width:200px">Box som tystnat<select id="al-box"><option value="0">Av</option><option value="24">efter 1 dygn</option><option value="72">efter 3 dygn</option><option value="168">efter 1 vecka</option></select></label>
+          <label class="f" style="min-width:200px">Abonnemanget går ut<select id="al-expiry"><option value="0">Av</option><option value="3">3 dagar innan</option><option value="7">7 dagar innan</option><option value="14">14 dagar innan</option><option value="30">30 dagar innan</option></select></label>
           <div class="row"><button class="btn primary" type="submit">Spara</button><button class="btn" type="button" id="al-test">Skicka testnotis</button></div>
         </form>
       </div>
@@ -1857,7 +1933,7 @@ $("watch-check").addEventListener("click", (e) => guarded(async () => {
 /* ---------- inspelningar ---------- */
 const REC_STATUS = { scheduled: ["Planerad", ""], recording: ["Spelar in / laddar ner", "bad"], done: ["Klar", "ok"], failed: ["Misslyckades", "warn"] };
 const fmtUnix = (t) => new Date(t * 1000).toLocaleString("sv-SE", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const fmtClock = (t) => new Date(t * 1000).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
+const chClock = (t) => new Date(t * 1000).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
 const fmtSize = (b) => b >= 1e9 ? `${(b / 1e9).toFixed(1).replace(".", ",")} GB` : b ? `${Math.round(b / 1e6)} MB` : "";
 let recChannel = null;
 loaders.recordings = async () => {
@@ -1874,7 +1950,7 @@ loaders.recordings = async () => {
     const [label, cls] = REC_STATUS[r.status] || [r.status, ""];
     const src = r.source === "archive" ? " · från arkivet" : (r.source === "vod" || r.source === "episode") ? " · nedladdning" : "";
     return `<li data-id="${r.id}" style="align-items:flex-start"><div class="grow"><div class="ellipsis"><strong>${esc(r.title)}</strong> ${r.adult ? '<span class="pill">18+</span>' : ""}</div>
-      <div class="small muted">${esc(r.channel || "")} · ${(r.source === "vod" || r.source === "episode") ? "tillagd " + fmtUnix(r.start) : `${fmtUnix(r.start)}–${fmtClock(r.end)}`}${src} · ${esc(r.device_name || "borttagen box")}</div>
+      <div class="small muted">${esc(r.channel || "")} · ${(r.source === "vod" || r.source === "episode") ? "tillagd " + fmtUnix(r.start) : `${fmtUnix(r.start)}–${chClock(r.end)}`}${src} · ${esc(r.device_name || "borttagen box")}</div>
       <div class="small"><span class="pill ${cls}">${label}</span> ${fmtSize(r.size_bytes)} ${r.error ? `<span style="color:var(--bad)">${esc(r.error)}</span>` : ""}</div></div>
       <div class="row" style="flex-wrap:nowrap">${r.status === "recording" ? '<button class="btn ghost small" data-act="stop">Stoppa</button>' : ""}
       <button class="btn ghost small danger" data-act="del">Ta bort</button></div></li>`;
@@ -1909,7 +1985,7 @@ $("rec-channels").addEventListener("click", (e) => {
     $("rec-guide-title").hidden = false; $("rec-guide-title").textContent = `${recChannel.name}: programguide`;
     const now = Date.now() / 1000;
     const progs = g.programs.filter((p) => p.recordable);
-    $("rec-guide").innerHTML = progs.map((p) => `<li data-start="${p.start}" data-end="${p.end}" data-title="${esc(p.title)}"><div class="grow"><div class="ellipsis">${esc(p.title)}</div><div class="small muted">${fmtUnix(p.start)}–${fmtClock(p.end)}${p.now ? " · pågår" : p.end <= now ? " · har sänts, hämtas från arkivet" : ""}</div></div><button class="btn small" data-act="rec">Spela in</button></li>`).join("") || '<li class="empty">Ingen programguide för kanalen.</li>';
+    $("rec-guide").innerHTML = progs.map((p) => `<li data-start="${p.start}" data-end="${p.end}" data-title="${esc(p.title)}"><div class="grow"><div class="ellipsis">${esc(p.title)}</div><div class="small muted">${fmtUnix(p.start)}–${chClock(p.end)}${p.now ? " · pågår" : p.end <= now ? " · har sänts, hämtas från arkivet" : ""}</div></div><button class="btn small" data-act="rec">Spela in</button></li>`).join("") || '<li class="empty">Ingen programguide för kanalen.</li>';
     const first = $("rec-guide").querySelector("li"); if (first) first.scrollIntoView({ block: "nearest" });
   });
 });
@@ -1940,18 +2016,20 @@ $("rec-guide").addEventListener("click", (e) => {
 /* ---------- portaler ---------- */
 let portalCache = [];
 loaders.portals = async () => {
-  portalCache = await api("portals").catch((e) => (toast(e.message), []));
+  portalCache = await api("portals" + ($("p-show-archived").checked ? "?archived=1" : "")).catch((e) => (toast(e.message), []));
   $("portal-rows").innerHTML = portalCache.map((p) => {
     const lc = p.last_check;
     const state = p.ok === null ? '<span class="pill">väntar</span>' : p.ok ? '<span class="pill ok">OK</span>' : '<span class="pill bad">fel</span>';
     return `<tr data-id="${p.id}"><td>${state}</td>
-      <td><strong>${esc(p.name)}</strong> ${p.active ? '<span class="pill accent">används</span>' : ""} ${p.enabled ? "" : '<span class="pill">av</span>'}
+      <td><strong>${esc(p.name)}</strong> ${p.active ? '<span class="pill accent">används</span>' : ""} ${p.archived ? '<span class="pill">arkiverad</span>' : p.enabled ? "" : '<span class="pill warn">pausad</span>'}
         ${lc && lc.error ? `<div class="small" style="color:var(--bad)" title="${esc(lc.error)}">${esc(lc.error_text || lc.error)}</div>` : ""}</td>
       <td class="hide-sm mono">${esc(p.url)}</td><td class="hide-sm">${p.priority}</td>
       <td>${lc && lc.api_ms != null ? lc.api_ms + " ms" : "–"}</td>
       <td class="hide-sm">${p.failed_last_hour}/${p.checks_last_hour}</td>
       <td><div class="row" style="justify-content:flex-end; flex-wrap:nowrap">
         <button class="btn ghost small" data-act="test">Testa</button><button class="btn ghost small" data-act="history">Historik</button>
+        ${p.archived ? '<button class="btn small" data-act="restore">Ta tillbaka</button>'
+          : `<button class="btn small" data-act="${p.enabled ? "pause" : "resume"}">${p.enabled ? "Pausa" : "Aktivera"}</button><button class="btn ghost small" data-act="archive">Arkivera</button>`}
         <button class="btn ghost small" data-act="edit">Ändra</button><button class="btn ghost small danger" data-act="delete">Ta bort</button></div></td></tr>`;
   }).join("") || '<tr><td colspan="7" class="empty">Ingen portal ännu. Lägg till din Toucan-portal nedan.</td></tr>';
 };
@@ -1991,18 +2069,114 @@ $("portal-rows").addEventListener("click", (e) => {
     guarded(async () => { await api(`portals/${id}`, { method: "DELETE" }); loaders.portals(); });
   }
   if (act === "history") showPortalHistory(p);
+  const set = (body, msg) => guarded(async () => { await api(`portals/${id}`, { method: "PUT", body }); toast(msg); loaders.portals(); }, b);
+  if (act === "pause") return set({ enabled: false }, `${p.name} pausad. Den används och kontrolleras inte.`);
+  if (act === "resume") return set({ enabled: true }, `${p.name} aktiverad`);
+  if (act === "archive") { if (confirm(`Arkivera ${p.name}? Den göms, används och kontrolleras aldrig, men finns kvar och kan tas tillbaka.`)) set({ archived: true }, `${p.name} arkiverad`); return; }
+  if (act === "restore") return set({ archived: false, enabled: true }, `${p.name} är tillbaka`);
 });
-async function showPortalHistory(p) {
-  const rows = await api(`portals/${p.id}/history?hours=24`).catch(() => []);
+$("p-show-archived").addEventListener("change", () => loaders.portals());
+let chartState = null;
+async function showPortalHistory(p, hours) {
+  hours = hours || chartState?.window || 24;
+  const step = hours <= 24 ? 600 : hours <= 168 ? 3600 : 14400;
+  const [ser, rows] = await Promise.all([api(`portals/${p.id}/series?hours=720&step=${step}`).catch(() => null),
+    api(`portals/${p.id}/history?hours=24`).catch(() => [])]);
   $("portal-history-panel").classList.remove("hidden");
-  $("portal-history-title").textContent = `${p.name}, senaste dygnet`;
-  sparkline($("portal-spark"), rows.slice().reverse().map((r) => ({ v: r.api_ms, ok: !!r.api_ok })));
-  const okRows = rows.filter((r) => r.api_ok);
-  const fails = rows.length - okRows.length;
-  $("portal-spark-cap").textContent = rows.length ? `${rows.length} kontroller, ${fails} fel. Röda streck är misslyckade inloggningar.` : "Inga kontroller ännu.";
+  $("portal-history-title").textContent = `${p.name}: svarstid`;
+  document.querySelectorAll("#pg-range button").forEach((x) => x.setAttribute("aria-pressed", String(+x.dataset.h === hours)));
+  chartState = { portal: p, window: hours, ser, end: ser ? ser.end : Math.floor(Date.now() / 1000), sel: null };
+  drawPortalChart();
+  const fails = rows.filter((r) => !r.api_ok).length;
+  $("portal-spark-cap").textContent = rows.length ? `Senaste dygnet: ${rows.length} kontroller, ${fails} misslyckade. Röda fält i grafen är misslyckade inloggningar.` : "Inga kontroller ännu.";
   $("portal-history").innerHTML = rows.slice(0, 60).map((r) => `<tr><td>${fmtTime(r.ts)}</td><td>${r.api_ok ? '<span class="pill ok">OK</span>' : '<span class="pill bad">fel</span>'}</td><td>${r.api_ms != null ? r.api_ms + " ms" : "–"}</td><td class="small">${esc(r.error_text || r.error || "")}</td></tr>`).join("");
   $("portal-history-panel").scrollIntoView({ behavior: "smooth" });
 }
+const CH_WD = ["sön", "mån", "tis", "ons", "tors", "fre", "lör"];
+const chPad = (n) => String(n).padStart(2, "0");
+const chDay = (t) => { const d = new Date(t * 1000); return `${CH_WD[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`; };
+function niceMax(v) { const steps = [100, 200, 300, 500, 1000, 2000, 3000, 5000, 10000, 20000]; return steps.find((x) => x >= v) || Math.ceil(v / 1000) * 1000; }
+function drawPortalChart() {
+  const st = chartState; const svg = $("pg-svg"); if (!st) return;
+  const W = 800, H = 260, L = 48, R = 10, T = 12, B = 38, iw = W - L - R, ih = H - T - B;
+  const win = st.window * 3600;
+  const earliest = st.ser ? st.ser.start : st.end - win;
+  st.end = Math.min(st.end, st.ser ? st.ser.end : st.end);
+  if (st.end - win < earliest) st.end = earliest + win;
+  const t1 = st.end, t0 = t1 - win;
+  const X = (t) => L + ((t - t0) / win) * iw;
+  const pts = (st.ser ? st.ser.points : []).filter((p) => p.t + st.ser.step >= t0 && p.t <= t1);
+  const vals = pts.map((p) => p.max || p.avg || 0);
+  const ymax = niceMax(Math.max(100, ...vals));
+  const Y = (v) => T + ih - (v / ymax) * ih;
+  let out = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = (ymax / 4) * i, y = Y(v);
+    out += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y}" y2="${y}"></line><text x="${L - 6}" y="${y + 4}" text-anchor="end">${Math.round(v)} ms</text>`;
+  }
+  const tickStep = st.window <= 24 ? 4 * 3600 : st.window <= 168 ? 86400 : 5 * 86400;
+  const first = new Date(t0 * 1000); first.setMinutes(0, 0, 0);
+  if (tickStep >= 86400) first.setHours(0);
+  let tick = Math.ceil(first.getTime() / 1000 / tickStep) * tickStep;
+  if (tickStep >= 86400) { const d = new Date(t0 * 1000); d.setHours(0, 0, 0, 0); tick = d.getTime() / 1000; while (tick < t0) tick += 86400; }
+  for (; tick <= t1; tick += tickStep) {
+    const x = X(tick);
+    out += `<line class="grid" x1="${x}" x2="${x}" y1="${T}" y2="${T + ih}"></line>`;
+    out += tickStep >= 86400 ? `<text x="${x}" y="${H - 8}" text-anchor="middle">${chDay(tick)}</text>`
+      : `<text x="${x}" y="${H - 20}" text-anchor="middle">${chClock(tick)}</text><text x="${x}" y="${H - 6}" text-anchor="middle">${chDay(tick)}</text>`;
+  }
+  const bw = Math.max(1.5, (st.ser ? st.ser.step : 600) / win * iw - 1);
+  const ok = pts.filter((p) => p.avg != null);
+  pts.forEach((p) => { if (p.fail) out += `<rect x="${X(p.t)}" y="${T}" width="${bw}" height="${ih}" fill="var(--bad)" opacity=".18"></rect>`; });
+  if (ok.length) {
+    const area = ok.map((p) => `${X(p.t + st.ser.step / 2).toFixed(1)},${Y(p.max).toFixed(1)}`).join(" ");
+    out += `<polyline points="${area}" fill="none" stroke="var(--accent)" stroke-width="1" opacity=".35"></polyline>`;
+    out += `<polyline points="${ok.map((p) => `${X(p.t + st.ser.step / 2).toFixed(1)},${Y(p.avg).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2"></polyline>`;
+  } else out += `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">Inga kontroller i det här tidsfönstret</text>`;
+  out += `<line class="axis" x1="${L}" x2="${W - R}" y1="${T + ih}" y2="${T + ih}"></line>`;
+  if (st.sel != null) {
+    const p = pts.find((q) => q.t === st.sel);
+    if (p) out += `<line x1="${X(p.t + st.ser.step / 2)}" x2="${X(p.t + st.ser.step / 2)}" y1="${T}" y2="${T + ih}" stroke="var(--text)" stroke-dasharray="3 3" opacity=".6"></line>`;
+  }
+  svg.innerHTML = out;
+  st.geom = { W, L, R, iw, t0, win, pts };
+}
+function chartTip(clientX) {
+  const st = chartState; if (!st || !st.geom) return;
+  const svg = $("pg-svg"), r = svg.getBoundingClientRect(), g = st.geom;
+  const x = ((clientX - r.left) / r.width) * g.W;
+  const t = g.t0 + ((x - g.L) / g.iw) * g.win;
+  let best = null;
+  g.pts.forEach((p) => { const d = Math.abs(p.t + st.ser.step / 2 - t); if (best === null || d < best.d) best = { d, p }; });
+  const tip = $("pg-tip");
+  if (!best || best.d > Math.max(st.ser.step, g.win / 60)) { tip.style.display = "none"; st.sel = null; drawPortalChart(); return; }
+  const p = best.p; st.sel = p.t; drawPortalChart();
+  tip.innerHTML = `<strong>${chDay(p.t)} ${chClock(p.t)}</strong>${st.ser.step >= 3600 ? "–" + chClock(p.t + st.ser.step) : ""}<br>` +
+    (p.avg != null ? `snitt ${p.avg} ms · högst ${p.max} ms` : "inget svar") + `<br>${p.n} kontroller${p.fail ? `, <span style="color:var(--bad)">${p.fail} fel</span>` : ""}`;
+  tip.style.display = "block";
+  const px = ((x) / g.W) * r.width;
+  tip.style.left = Math.min(Math.max(4, px - 60), r.width - 170) + "px"; tip.style.top = "4px";
+}
+(function chartInput() {
+  const svg = $("pg-svg"); let drag = null;
+  svg.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, end: chartState?.end, moved: false }; svg.setPointerCapture(e.pointerId); });
+  svg.addEventListener("pointermove", (e) => {
+    const st = chartState; if (!st || !st.geom) return;
+    if (drag) {
+      const dx = e.clientX - drag.x;
+      if (Math.abs(dx) > 4) drag.moved = true;
+      if (drag.moved) {
+        const r = svg.getBoundingClientRect();
+        st.end = drag.end - (dx / r.width) * (st.geom.W / st.geom.iw) * st.geom.win;
+        st.end = Math.min(st.end, st.ser ? st.ser.end : st.end);
+        $("pg-tip").style.display = "none"; drawPortalChart();
+      }
+    } else if (e.pointerType === "mouse") chartTip(e.clientX);
+  });
+  svg.addEventListener("pointerup", (e) => { const was = drag; drag = null; if (was && !was.moved) chartTip(e.clientX); });
+  svg.addEventListener("pointerleave", () => { if (!drag) { $("pg-tip").style.display = "none"; if (chartState) { chartState.sel = null; drawPortalChart(); } } });
+  $("pg-range").addEventListener("click", (e) => { const b = e.target.closest("button[data-h]"); if (b && chartState) showPortalHistory(chartState.portal, +b.dataset.h); });
+})();
 $("portal-history-close").addEventListener("click", () => $("portal-history-panel").classList.add("hidden"));
 function sparkline(svg, points) {
   if (!points.length) { svg.innerHTML = ""; return; }
@@ -2037,12 +2211,111 @@ $("pin-form").addEventListener("submit", (e) => { e.preventDefault(); guarded(as
 $("pin-clear").addEventListener("click", (e) => { if (!confirm("Ta bort koden? Vuxenläget slås då på som förut, utan kod.")) return;
   guarded(async () => { await api("adult-pin", { method: "PUT", body: { pin: "" } }); toast("Koden är borttagen"); loadReminderSettings(); }, e.target); });
 
+
+/* ---------- tittande: tid, uppskattad data, historik ---------- */
+const fmtDur = (sec) => { sec = Math.round(sec); if (sec < 60) return sec + " s"; const m = Math.round(sec / 60); return m < 60 ? m + " min" : `${Math.floor(m / 60)} h ${m % 60 ? (m % 60) + " min" : ""}`.trim(); };
+const fmtData = (mb) => mb >= 1000 ? (mb / 1000).toLocaleString("sv-SE", { maximumFractionDigits: 1 }) + " GB" : Math.round(mb) + " MB";
+let usageDays = 14, usageData = null, usageProfiles = [];
+function usageTable(title, map) {
+  const rows = Object.entries(map).sort((a, b) => b[1].secs - a[1].secs);
+  return `<div><h3 style="font-size:13px;margin:0 0 6px;color:var(--muted)">${title}</h3><table><tbody>${rows.map(([k, v]) =>
+    `<tr><td>${esc(k)}</td><td>${fmtDur(v.secs)}</td><td class="muted">≈ ${fmtData(v.mb)}</td></tr>`).join("") || '<tr><td class="empty">Inget ännu</td></tr>'}</tbody></table></div>`;
+}
+function drawUsage() {
+  const d = usageData; if (!d) return;
+  const W = 800, H = 220, L = 46, R = 8, T = 10, B = 28, iw = W - L - R, ih = H - T - B;
+  const max = Math.max(3600, ...d.days.map((x) => x.secs));
+  const yTop = Math.ceil(max / 3600) * 3600;
+  const bw = iw / d.days.length;
+  let svg = "";
+  for (let i = 0; i <= 4; i++) { const v = (yTop / 4) * i, y = T + ih - (v / yTop) * ih; svg += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y}" y2="${y}"></line><text x="${L - 6}" y="${y + 4}" text-anchor="end">${(v / 3600).toLocaleString("sv-SE", { maximumFractionDigits: 1 })} h</text>`; }
+  d.days.forEach((x, i) => {
+    const h = (x.secs / yTop) * ih, bx = L + i * bw;
+    svg += `<rect data-i="${i}" x="${bx + 2}" y="${T + ih - h}" width="${Math.max(2, bw - 4)}" height="${Math.max(h, x.secs ? 2 : 0)}" fill="var(--accent)" opacity=".8" rx="2"></rect>`;
+    if (d.days.length <= 14 || i % 3 === 0) svg += `<text x="${bx + bw / 2}" y="${H - 8}" text-anchor="middle">${esc(x.day.slice(8))}/${esc(x.day.slice(5, 7))}</text>`;
+  });
+  $("us-chart").innerHTML = svg;
+  window._usageGeom = { W, L, bw };
+}
+loaders.usage = async () => {
+  const [d, pr] = await Promise.all([api(`usage?days=${usageDays}`).catch((e) => (toast(e.message), null)), api("profiles").catch(() => ({ profiles: [] }))]);
+  if (!d) return;
+  usageData = d; usageProfiles = pr.profiles || [];
+  const t = d.totals;
+  $("usage-body").innerHTML = `<div class="stats" style="margin-bottom:12px">
+      <div class="stat"><div class="k">Tittad tid</div><div class="v">${fmtDur(t.secs)}</div></div>
+      <div class="stat"><div class="k">Uppskattad data</div><div class="v">≈ ${fmtData(t.mb)}</div></div>
+      <div class="stat"><div class="k">Snitt per dag</div><div class="v">${fmtDur(t.secs / d.days.length)}</div></div></div>
+    <div class="chart-wrap"><svg class="chart bars" id="us-chart" viewBox="0 0 800 220" style="cursor:default" role="img" aria-label="Tittad tid per dag"></svg><div class="chart-tip" id="us-tip"></div></div>
+    <p class="small muted">Tryck på en stapel för dagens fördelning. Datamängden är en uppskattning. Underlaget sparas i ${d.retention_days || 30} dagar.</p>
+    <div id="us-day" class="small" style="margin-bottom:12px"></div>
+    <div class="grid2">${usageTable("Per box", t.boxes)}${usageTable("Per profil (vuxenläget räknas som Övrigt)", t.profiles)}</div>`;
+  drawUsage();
+  $("us-chart").addEventListener("click", (e) => {
+    const r = e.target.closest("rect[data-i]"); if (!r) return;
+    const x = usageData.days[+r.dataset.i];
+    const line = (m) => Object.entries(m).sort((a, b) => b[1].secs - a[1].secs).map(([k, v]) => `${esc(k)} ${fmtDur(v.secs)} (≈ ${fmtData(v.mb)})`).join(" · ") || "–";
+    $("us-day").innerHTML = `<strong>${esc(x.day)}</strong>: ${fmtDur(x.secs)}, ≈ ${fmtData(x.mb)}<br><span class="muted">Boxar:</span> ${line(x.boxes)}<br><span class="muted">Profiler:</span> ${line(x.profiles)}`;
+  });
+  ["live", "film", "series"].forEach((k) => { $("us-" + k).value = d.bitrates[k]; });
+  const sel = $("uh-profile"), keep = sel.value;
+  sel.innerHTML = usageProfiles.filter((p) => !p.guest).map((p) => `<option value="${p.id}">${esc((p.emoji ? p.emoji + " " : "") + p.name)}</option>`).join("");
+  if (keep) sel.value = keep;
+  loadUsageHistory();
+};
+async function loadUsageHistory() {
+  if (!$("uh-profile").value) { $("uh-rows").innerHTML = ""; return; }
+  const day = $("uh-day").value;
+  const h = await api(`usage/history?profile_id=${$("uh-profile").value}${day ? "&day=" + day : ""}`).catch((e) => (toast(e.message), null));
+  if (!h) return;
+  $("uh-rows").innerHTML = h.items.map((i) => `<tr><td>${esc(i.day)}</td><td>${esc(i.time)}</td><td>${esc(i.title)} <span class="pill">${esc({ live: "Live", film: "Film", series: "Serie" }[i.type] || i.type)}</span></td><td class="hide-sm">${esc(i.box)}</td><td>${fmtDur(i.secs)}</td></tr>`).join("")
+    || '<tr><td colspan="5" class="empty">Inget sett.</td></tr>';
+  $("uh-note").textContent = h.note || "";
+}
+$("us-range").addEventListener("click", (e) => { const b = e.target.closest("button[data-d]"); if (!b) return; usageDays = +b.dataset.d;
+  document.querySelectorAll("#us-range button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); loaders.usage(); });
+$("uh-profile").addEventListener("change", loadUsageHistory); $("uh-day").addEventListener("change", loadUsageHistory);
+$("uh-all").addEventListener("click", () => { $("uh-day").value = ""; loadUsageHistory(); });
+$("us-rates").addEventListener("submit", (e) => { e.preventDefault(); guarded(async () => {
+  await api("usage/bitrates", { method: "PUT", body: { live: +$("us-live").value, film: +$("us-film").value, series: +$("us-series").value } });
+  toast("Sparat"); loaders.usage(); }); });
+
+/* ---------- visa som ---------- */
+loaders.preview = async () => {
+  const [pr, dv] = await Promise.all([api("profiles").catch(() => ({ profiles: [] })), api("devices").catch(() => [])]);
+  const ps = $("pv-profile"), bs = $("pv-box"), kp = ps.value, kb = bs.value;
+  ps.innerHTML = (pr.profiles || []).map((p) => `<option value="${p.id}">${esc((p.emoji ? p.emoji + " " : "") + p.name)}${p.guest ? " (gäst)" : ""}</option>`).join("");
+  bs.innerHTML = (Array.isArray(dv) ? dv : dv.devices || []).map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
+  if (kp) ps.value = kp; if (kb) bs.value = kb;
+  drawPreview();
+};
+const pvChips = (items, withSub) => items.length ? `<div class="pv-chips">${items.map((i) => `<div class="pv-chip">${esc(i.name || i.title)}${withSub && i.sub ? `<small>${esc(i.sub)}</small>` : ""}</div>`).join("")}</div>` : '<span class="small muted">Tomt</span>';
+async function drawPreview() {
+  if (!$("pv-profile").value || !$("pv-box").value) { $("preview-body").innerHTML = '<div class="empty">Det finns ingen profil eller box ännu.</div>'; return; }
+  const pv = await api(`preview?device_id=${$("pv-box").value}&profile_id=${$("pv-profile").value}`).catch((e) => (toast(e.message), null));
+  if (!pv) return;
+  const prog = pv.my_programs.map((p) => `<div class="pv-chip ${p.error ? "err" : ""}">${esc(p.title)}<small>${esc(p.error || p.subtitle || "")}</small></div>`).join("");
+  const cats = (k, label) => `<div class="pv-shelf"><h3>${label} (${(pv.counts[k] || {}).items ?? ""} st)</h3>${pv.categories[k].length ? `<div class="pv-chips">${pv.categories[k].map((c) =>
+    `<div class="pv-chip">${esc(c.name)}<small>${c.count}</small></div>`).join("")}</div>` : '<span class="small muted">Inga synliga kategorier</span>'}</div>`;
+  $("preview-body").innerHTML = `
+    <p class="small muted" style="margin-top:0">${esc(pv.profile.name)} på ${esc(pv.box.name)}${pv.box.only_group_id ? " (boxen visar bara en grupp)" : ""}.
+      ${pv.adult_possible ? "Vuxenläget finns för den här kombinationen men visas aldrig här." : "Vuxenläget är inte tillgängligt här."}</p>
+    <div class="pv-shelf"><h3>Mina program</h3>${prog ? `<div class="pv-chips">${prog}</div>` : '<span class="small muted">Inga snabbval</span>'}</div>
+    <div class="pv-shelf"><h3>Fortsätt titta</h3>${pvChips(pv.continue)}</div>
+    <div class="pv-shelf"><h3>Senast sedda kanaler</h3>${pvChips(pv.recent_live)}</div>
+    <div class="pv-shelf"><h3>Favoriter</h3>${pvChips(pv.favorites)}</div>
+    ${pv.groups.map((g) => `<div class="pv-shelf"><h3>${esc(g.name)} (${g.count})</h3>${pvChips(g.items)}</div>`).join("")}
+    ${cats("live", "Kanaler")}${cats("vod", "Filmer")}${cats("series", "Serier")}`;
+}
+$("pv-profile").addEventListener("change", drawPreview); $("pv-box").addEventListener("change", drawPreview);
+
 async function loadAlertSettings() {
   const a = await api("alerts/settings").catch(() => ({}));
   $("al-provider").checked = a.provider !== false; $("al-recording").checked = a.recording !== false;
   $("al-box").value = String(a.box_hours || 0);
+  $("al-expiry").value = String(a.expiry_days ?? 7);
 }
-const alertBody = () => ({ provider: $("al-provider").checked, recording: $("al-recording").checked, box_hours: +$("al-box").value });
+const alertBody = () => ({ provider: $("al-provider").checked, recording: $("al-recording").checked, box_hours: +$("al-box").value, expiry_days: +$("al-expiry").value });
 $("al-form").addEventListener("submit", (e) => { e.preventDefault(); guarded(async () => {
   await api("alerts/settings", { method: "PUT", body: alertBody() }); toast("Sparat"); }); });
 $("al-test").addEventListener("click", (e) => guarded(async () => {

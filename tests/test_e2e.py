@@ -287,6 +287,7 @@ def main():
         version_292()
         version_294(ta, tb, pa, pb)
         version_295(ta, tb, pa, pb)
+        version_297(ta, tb, pa, pb)
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -1384,7 +1385,7 @@ def version_25(ta, tb, pa, pb):
     fake_mode("ok", news=1)
     s, sug = call("POST", f"{A}/api/my-programs/suggest", {"profile_id": owner})
     names = [p["name"] for p in sug["created"]]
-    check("förslagen Rapport, Aktuellt, TV4 Nyheterna och Robinson", names == ["Rapport", "Aktuellt", "TV4 Nyheterna", "Robinson"], sug)
+    check("förslagen Rapport, TV4 Nyheterna och Robinson (Aktuellt hoppas över utan arkiv)", names == ["Rapport", "TV4 Nyheterna", "Robinson"], sug)
     s, again = call("POST", f"{A}/api/my-programs/suggest", {"profile_id": owner})
     check("förslagen läggs inte till två gånger", again["created"] == [], again)
     s, res = call("POST", f"{A}/api/my-programs", {"profile_id": owner, "mode": "main", "channel_id": "101", "query": "Rapport"})
@@ -1399,7 +1400,8 @@ def version_25(ta, tb, pa, pb):
     s, progs = call("GET", f"{D}/device/my-programs", token=ta, profile=owner)
     by = {p["title"]: p for p in progs["programs"]}
     rap = by.get("Rapport", {}).get("command") or {}
-    check("Rapport: sänds nu -> direkt", rap.get("type") == "live", by.get("Rapport"))
+    check("Rapport: två senaste sändningarna att välja mellan", rap.get("type") == "catchup"
+          and len(by["Rapport"].get("choices") or []) >= 1 and by["Rapport"]["choices"][0]["command"] == rap, by.get("Rapport"))
     nyh = by.get("Nyheterna", {}).get("command") or {}
     check("huvudsändningen ur arkivet", nyh.get("type") == "catchup" and nyh.get("catchup_start") == nyh_start, by.get("Nyheterna"))
     s, progs_child = call("GET", f"{D}/device/my-programs", token=ta, profile=child)
@@ -1979,7 +1981,7 @@ def version_29(ta, tb, pa, pb):
 
     # Avbrottsnotiser: inställningar och testfel utan notify-tjänst
     s, al = call("GET", f"{A}/api/alerts/settings")
-    check("2.9: avbrottsnotiser har standardvärden", al == {"provider": True, "recording": True, "box_hours": 0}, al)
+    check("2.9: avbrottsnotiser har standardvärden", al == {"provider": True, "recording": True, "box_hours": 0, "expiry_days": 7}, al)
     s, bad = call("PUT", f"{A}/api/alerts/settings", {"box_hours": 5000})
     check("2.9: orimlig tid nekas", s == 400, bad)
     s, ok = call("PUT", f"{A}/api/alerts/settings", {"box_hours": 24, "recording": False})
@@ -2166,10 +2168,10 @@ def version_295(ta, tb, pa, pb):
     s, st = call("GET", f"{A}/api/hotfix")
     check("2.9.5: nekad hemfix lämnar inget kvar", st["active"] is False, st)
     s, ok = call("POST", f"{A}/api/hotfix", {"data": _zip_app(
-        mutate=lambda rel, d: d.replace(b'VERSION = "2.9.5"', b'VERSION = "2.9.5-hemfix"') if rel.endswith("hub/__init__.py") else d)})
-    check("2.9.5: giltig hemfix installeras", s == 200 and ok["version"] == "2.9.5-hemfix" and ok["files"] > 10, (s, ok))
+        mutate=lambda rel, d: __import__("re").sub(rb'VERSION = "[^"]+"', b'VERSION = "2.9.6-hemfix"', d) if rel.endswith("hub/__init__.py") else d)})
+    check("2.9.5: giltig hemfix installeras", s == 200 and ok["version"] == "2.9.6-hemfix" and ok["files"] > 10, (s, ok))
     s, st = call("GET", f"{A}/api/hotfix")
-    check("2.9.5: hemfixen är aktiv", st["active"] is True and st["hotfix_version"] == "2.9.5-hemfix", st)
+    check("2.9.5: hemfixen är aktiv", st["active"] is True and st["hotfix_version"] == "2.9.6-hemfix", st)
     check("2.9.5: kontrollmarkeringar för start finns", all(os.path.exists(os.path.join(DATA_DIR, "hotfix", m)) for m in ("BASE", "TRIED", "STARTED")))
     s, _ = call("DELETE", f"{A}/api/hotfix")
     s, st = call("GET", f"{A}/api/hotfix")
@@ -2199,6 +2201,124 @@ def version_295(ta, tb, pa, pb):
     s, page = call("GET", f"{A}/", raw=True)
     t = page.decode()
     check("2.9.5: webbadminen har hemfix och golf/ridsport", all(x in t for x in ("hf-drop", "hf-file", "ss-body", "sport-sets/apply")))
+
+
+def version_297(ta, tb, pa, pb):
+    """2.9.7: portalgraf och arkiv, översikt och historik, abonnemangsvarning, Visa som."""
+    import sqlite3
+    from datetime import datetime, timedelta, timezone
+    print("Version 2.9.7: portaler, översikt, Visa som")
+    s, pl = call("GET", f"{A}/api/portals")
+    first = pl[0]
+    check("2.9.7: portalen har arkivflagga", first.get("archived") is False, first)
+    s, ser = call("GET", f"{A}/api/portals/{first['id']}/series?hours=24&step=600")
+    check("2.9.7: svarstidsserie", s == 200 and ser["step"] == 600 and isinstance(ser["points"], list), (s, ser))
+    s, ser7 = call("GET", f"{A}/api/portals/{first['id']}/series?hours=720&step=3600")
+    check("2.9.7: serie för 30 dagar", s == 200 and ser7["step"] == 3600, ser7)
+
+    # pausa, aktivera, arkivera
+    s, r = call("POST", f"{A}/api/portals", {"name": "Arkivtest", "url": "http://127.0.0.1:9", "username": "x", "password": "y"})
+    check("2.9.7: portal skapas", s == 201, (s, r))
+    pid = r["id"]
+    s, r = call("PUT", f"{A}/api/portals/{pid}", {"enabled": False})
+    s, pl = call("GET", f"{A}/api/portals")
+    check("2.9.7: portal kan pausas", [p for p in pl if p["id"] == pid][0]["enabled"] is False, pl)
+    s, r = call("PUT", f"{A}/api/portals/{pid}", {"enabled": True})
+    s, r = call("PUT", f"{A}/api/portals/{pid}", {"archived": True})
+    s, pl = call("GET", f"{A}/api/portals")
+    check("2.9.7: arkiverad portal göms ur listan", pid not in [p["id"] for p in pl], pl)
+    s, pl = call("GET", f"{A}/api/portals?archived=1")
+    row = [p for p in pl if p["id"] == pid]
+    check("2.9.7: arkiverade kan visas, är avstängda", row and row[0]["archived"] is True and row[0]["enabled"] is False, row)
+    s, r = call("PUT", f"{A}/api/portals/{pid}", {"archived": False, "enabled": True})
+    s, pl = call("GET", f"{A}/api/portals")
+    check("2.9.7: portal kan tas tillbaka från arkivet", pid in [p["id"] for p in pl], pl)
+    call("DELETE", f"{A}/api/portals/{pid}")
+
+    # översikt och historik
+    s, profs = call("GET", f"{A}/api/profiles")
+    owner = [p for p in profs["profiles"] if p["allow_adult"]][0]["id"]
+    child = [p for p in profs["profiles"] if not p["allow_adult"] and not p["guest"]][0]["id"]
+    dev = pa["device_id"]
+    s, base = call("GET", f"{A}/api/usage?days=7")
+    b0 = base["totals"]
+    db = sqlite3.connect(os.path.join(DATA_DIR, "tvhub.db"))
+    now = datetime.now(timezone.utc)
+
+    def sess(kind, title, secs, viewer, adult=0, minutes_ago=90):
+        st = now - timedelta(minutes=minutes_ago)
+        db.execute("INSERT INTO sessions (id, device_id, type, item_id, item_name, started, last_heartbeat, ended, adult, viewer_id) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                   (os.urandom(6).hex(), dev, kind, "1", title, st.isoformat(timespec="seconds"),
+                    (st + timedelta(seconds=secs)).isoformat(timespec="seconds"),
+                    (st + timedelta(seconds=secs)).isoformat(timespec="seconds"), adult, viewer))
+    sess("live", "Nyheterna", 600, owner)
+    sess("vod", "Barnfilm", 1800, child, minutes_ago=60)
+    sess("live", "HEMLIG TITEL", 1200, owner, adult=1, minutes_ago=30)
+    sess("live", "Gästströmmen", 300, None, minutes_ago=20)
+    sess("record", "Inspelning: X", 3600, owner, minutes_ago=10)
+    db.commit()
+    db.close()
+    s, ov = call("GET", f"{A}/api/usage?days=7")
+    check("2.9.7: översikt har dagar och uppskattning", s == 200 and len(ov["days"]) == 7 and ov["estimate"] is True, ov.get("estimate"))
+    t = ov["totals"]
+    check("2.9.7: tid summeras utan inspelningar", t["secs"] - b0["secs"] == 600 + 1800 + 1200 + 300, (t["secs"], b0["secs"]))
+    check("2.9.7: data uppskattas från bitrate",
+          abs((t["mb"] - b0["mb"]) - (600 * 4 + 1800 * 6 + 1200 * 4 + 300 * 4) / 8) < 0.01, (t["mb"], b0["mb"]))
+    names = set(t["profiles"])
+    check("2.9.7: vuxenläget blir Övrigt, gäst egen rad", "Övrigt" in names and "Gäst" in names
+          and t["profiles"]["Övrigt"]["secs"] - b0["profiles"].get("Övrigt", {"secs": 0})["secs"] == 1200, t["profiles"])
+    check("2.9.7: fördelning per box", sum(b["secs"] for b in t["boxes"].values()) == t["secs"], t["boxes"])
+    s, hist = call("GET", f"{A}/api/usage/history?profile_id={owner}")
+    titles = [i["title"] for i in hist["items"]]
+    check("2.9.7: historik utan vuxenläge och inspelningar", "Nyheterna" in titles and not any(
+        x in "".join(titles) for x in ("HEMLIG", "Gäst", "Inspelning")), titles)
+    s, hist = call("GET", f"{A}/api/usage/history?profile_id={child}")
+    check("2.9.7: historik per profil", [i["title"] for i in hist["items"]][0] == "Barnfilm" and hist["items"][0]["secs"] == 1800, hist)
+    check("2.9.7: titel för vuxen läcker inte", "HEMLIG" not in json.dumps(hist) and "HEMLIG" not in json.dumps(ov))
+    s, bad = call("PUT", f"{A}/api/usage/bitrates", {"live": 0})
+    check("2.9.7: orimlig bitrate nekas", s == 400, bad)
+    s, ok = call("PUT", f"{A}/api/usage/bitrates", {"live": 8, "film": 10})
+    s, ov = call("GET", f"{A}/api/usage?days=1")
+    check("2.9.7: egna bitrates används", ov["bitrates"]["live"] == 8 and ov["totals"]["mb"] > 0, ov["bitrates"])
+    call("PUT", f"{A}/api/usage/bitrates", {"live": 4, "film": 6})
+    s, r = call("GET", f"{D}/api/usage")
+    check("2.9.7: översikten nås inte via box-porten", s == 404, s)
+
+    # Visa som
+    s, pv = call("GET", f"{A}/api/preview?device_id={dev}&profile_id={owner}")
+    check("2.9.7: Visa som ger Hem för profil och box", s == 200 and pv["profile"]["id"] == owner and "my_programs" in pv
+          and "categories" in pv and "groups" in pv and "continue" in pv, (s, list(pv)[:8] if isinstance(pv, dict) else pv))
+    check("2.9.7: Visa som visar inget vuxeninnehåll", "HEMLIG" not in json.dumps(pv))
+    s, pg = call("GET", f"{A}/api/preview?device_id={dev}&profile_id=999999")
+    check("2.9.7: okänd profil faller tillbaka på boxens standard", s == 200, (s, pg))
+    s, pg = call("GET", f"{A}/api/preview?device_id=999999&profile_id={owner}")
+    check("2.9.7: okänd box nekas", s == 404, s)
+
+    # Två senaste sändningarna
+    fake_mode("ok", news=1)
+    s, mp = call("POST", f"{A}/api/my-programs", {"profile_id": child, "name": "Rapport2", "mode": "recent",
+                                                  "channel_id": "101", "query": "Rapport"})
+    check("2.9.7: läget 'två senaste' kan sparas", s == 201 and mp["mode"] == "recent", (s, mp))
+    s, one = call("GET", f"{A}/api/my-programs/{mp['id']}/preview") if False else (200, None)
+    s, progs = call("GET", f"{D}/device/my-programs", token=ta, profile=child)
+    got = [p for p in progs["programs"] if p["title"] == "Rapport2"][0]
+    ch = got.get("choices") or []
+    starts = [c["command"]["catchup_start"] for c in ch]
+    check("2.9.7: alternativen är sändningar att välja mellan", len(ch) >= 1 and all(c["command"]["type"] == "catchup" for c in ch)
+          and starts == sorted(starts, reverse=True) and got["command"] == ch[0]["command"], got)
+    call("DELETE", f"{A}/api/my-programs/{mp['id']}")
+
+    # Abonnemangsvarning
+    s, al = call("PUT", f"{A}/api/alerts/settings", {"expiry_days": 400})
+    check("2.9.7: orimligt antal dagar nekas", s == 400, al)
+    s, al = call("PUT", f"{A}/api/alerts/settings", {"expiry_days": 14})
+    check("2.9.7: abonnemangsvarning kan ställas in", s == 200 and al["expiry_days"] == 14, al)
+    call("PUT", f"{A}/api/alerts/settings", {"expiry_days": 7})
+    s, page = call("GET", f"{A}/", raw=True)
+    t = page.decode()
+    check("2.9.7: webbadminen har graf, översikt och Visa som",
+          all(x in t for x in ("pg-svg", "usage-body", "preview-body", "al-expiry", "data-act=\"archive\"")), None)
 
 
 if __name__ == "__main__":

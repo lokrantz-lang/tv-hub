@@ -5,6 +5,7 @@ Sätt:
 - main:    senaste huvudsändningen (bara sändningar som börjar vid de angivna tiderna, t.ex. 19:00 och 22:00)
 - archive: avsnitt ur kanalens arkiv i tur och ordning: påbörjat avsnitt först, annars nästa efter det senast
            sedda, annars det senaste
+- recent:  de två senaste huvudsändningarna (längsta sändningen per dag ur programguiden), du väljer själv
 - series:  en serie i Toucans bibliotek: fortsätt där du var
 """
 import json
@@ -17,6 +18,7 @@ from .catalog import Scope
 MODES = {
     "latest": "Senaste sändningen",
     "main": "Senaste huvudsändningen",
+    "recent": "De två senaste sändningarna (du väljer)",
     "archive": "Avsnitt ur arkivet i tur och ordning",
     "series": "Serie: fortsätt där du var",
 }
@@ -117,16 +119,36 @@ def delete(program_id):
     return db.x("DELETE FROM my_programs WHERE id = ?", (int(program_id),)).rowcount > 0
 
 
-def _channel(name_patterns):
-    """Hitta en svensk kanal efter namn (t.ex. SVT1, TV4). Föredrar HD och svenska kategorier."""
+_NOISE = {"se", "sv", "swe", "hd", "fhd", "uhd", "sd", "4k", "hevc", "raw", "50fps", "fps", "vip", "sweden", "sverige"}
+
+
+def _words(text):
+    return re.sub(r"[^a-z0-9åäö]+", " ", str(text or "").casefold()).split()
+
+
+def channel_score(name, target):
+    """Hur väl kanalnamnet motsvarar målet (t.ex. SVT1, TV4), eller None. Hela namnet måste stämma: CCTV4 är inte TV4 och
+    TV4 Film är inte TV4. Landsprefix och kvalitetsord (SE:, HD, FHD) räknas bort."""
+    t = "".join(_words(target))
+    words = _words(name)
+    core = [w for w in words if w not in _NOISE]
+    if "".join(core) == t:
+        return (3, "se" in words or "sv" in words or "swe" in words, "hd" in words or "fhd" in words, -len(name))
+    # Namnet kan vara skrivet med mellanslag ("SVT 1"): sammanfogat måste det bli exakt målet.
+    return None
+
+
+def _channel(name_patterns, need_archive=False):
+    """Hitta en svensk kanal efter namn (t.ex. SVT1, TV4). Föredrar svenska prefix och HD."""
     best = None
     for pattern in name_patterns:
-        for item in catalog.search(pattern, "live", limit=30, scope=NORMAL):
-            n = _norm(item["name"])
-            target = _norm(pattern)
-            if target not in n:
+        for item in catalog.search(pattern, "live", limit=60, scope=NORMAL):
+            if need_archive and int(item.get("archive_days") or 0) <= 0:
                 continue
-            score = (n.endswith(target) or n.endswith(target + "hd") or ("se" + target) in n, "hd" in n, -len(n))
+            score = channel_score(item["name"], pattern)
+            if score is None:
+                continue
+            score = score + (int(item.get("archive_days") or 0) > 0,)
             if best is None or score > best[0]:
                 best = (score, item)
     return best[1] if best else None
@@ -137,22 +159,43 @@ def suggest(profile_id):
     created = []
     existing = {(_norm(p["query"]), p["channel_id"]) for p in for_profile(profile_id)}
     svt1 = _channel(["SVT1"])
-    svt2 = _channel(["SVT2"])
+    svt2 = _channel(["SVT2"], need_archive=True)  # Aktuellt kräver arkiv för att gå att se i efterhand
     tv4 = _channel(["TV4"])
     wanted = []
     if svt1:
-        wanted.append({"name": "Rapport", "mode": "latest", "channel_id": svt1["id"], "query": "Rapport"})
+        wanted.append({"name": "Rapport", "mode": "recent", "channel_id": svt1["id"], "query": "Rapport"})
     if svt2:
         wanted.append({"name": "Aktuellt", "mode": "latest", "channel_id": svt2["id"], "query": "Aktuellt"})
     if tv4:
-        wanted.append({"name": "TV4 Nyheterna", "mode": "main", "channel_id": tv4["id"], "query": "TV4 Nyheterna",
-                       "times": ["19:00", "22:00"]})
+        wanted.append({"name": "TV4 Nyheterna", "mode": "recent", "channel_id": tv4["id"], "query": "TV4 Nyheterna"})
         wanted.append({"name": "Robinson", "mode": "archive", "channel_id": tv4["id"], "query": "Robinson"})
     for w in wanted:
         if (_norm(w["query"]), w["channel_id"]) in existing:
             continue
         created.append(create(dict(w, profile_id=profile_id)))
     return created
+
+
+def repair_wrong_channel():
+    """En gång: förslag som av misstag hamnade på CCTV4 (kinesiska) i stället för TV4 flyttas till rätt kanal."""
+    if db.get_setting("myprog_repaired_cctv"):
+        return
+    tv4 = _channel(["TV4"])
+    if tv4:
+        for r in db.q("SELECT id, channel_id FROM my_programs WHERE name IN ('TV4 Nyheterna', 'Robinson')"):
+            ch = catalog.get_item("live", r["channel_id"]) if r["channel_id"] else None
+            if ch and "cctv" in "".join(_words(ch["name"])):
+                db.x("UPDATE my_programs SET channel_id = ? WHERE id = ?", (tv4["id"], r["id"]))
+        db.set_setting("myprog_repaired_cctv", "1")
+
+
+def convert_to_recent():
+    """En gång (2.9.7): de förslagna Rapport och TV4 Nyheterna byter till "två senaste, du väljer"."""
+    if db.get_setting("myprog_recent_v297"):
+        return
+    db.x("""UPDATE my_programs SET mode = 'recent', times = '[]'
+            WHERE name IN ('Rapport', 'TV4 Nyheterna') AND mode IN ('latest', 'main')""")
+    db.set_setting("myprog_recent_v297", "1")
 
 
 def ensure_defaults():
@@ -224,6 +267,32 @@ def resolve(row, profile_id):
             matches = [p for p in matches if _at_times(p["start"], row["times"])]
         live = next((p for p in matches if p["now"]), None)
         past = sorted([p for p in matches if p["end"] <= now and p["playable"]], key=lambda p: p["start"])
+        if row["mode"] == "recent":
+            # Huvudsändningen = längsta sändningen med namnet varje dag (Rapport 19:30, inte kortversionerna).
+            by_day = {}
+            for p in past:
+                key = time.strftime("%Y-%m-%d", time.localtime(p["start"]))
+                cur = by_day.get(key)
+                if cur is None or (p["end"] - p["start"], p["start"]) >= (cur["end"] - cur["start"], cur["start"]):
+                    by_day[key] = p
+            picks = sorted(by_day.values(), key=lambda p: p["start"], reverse=True)[:2]
+            if picks:
+                out["choices"] = []
+                for p in picks:
+                    seen, pos = extras.catchup_state(profile_id, row["channel_id"], p["start"])
+                    out["choices"].append({
+                        "label": f"{_day(p['start']).capitalize()} {_clock(p['start'])}",
+                        "subtitle": "✓ sedd" if seen else "",
+                        "command": _catchup_cmd(row, channel, p, 0 if seen else pos)})
+                out["command"] = out["choices"][0]["command"]  # äldre appar spelar den senaste direkt
+                out["subtitle"] = "Välj: " + " eller ".join(c["label"] for c in out["choices"])
+                return out
+            if live:
+                out["command"] = {"action": "play", "type": "live", "id": str(row["channel_id"]), "name": channel["name"],
+                                  "icon": channel.get("icon")}
+                out["subtitle"] = f"Sänds nu · {_clock(live['start'])}"
+                return out
+            raise LookupError("Finns inte i arkivet just nu." if guide["archive_days"] else "Kanalen har inget arkiv.")
         if row["mode"] in ("latest", "main"):
             if live and row["mode"] == "latest":
                 out["command"] = {"action": "play", "type": "live", "id": str(row["channel_id"]), "name": channel["name"],

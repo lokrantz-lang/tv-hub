@@ -39,12 +39,13 @@ Fliken **Profiler** i webbadminen. Tidigare tittarlägen blev profiler: *Själv*
 ### Mina program (snabbval)
 
 Överst på Hem och under Favoriter → *Mina program*. Läggs till per profil i fliken Profiler. *Lägg till förslagen* ger
-Rapport (SVT1), TV4 Nyheterna (19:00 och 22:00) och Robinson (TV4). Sätten:
+Rapport (SVT1), TV4 Nyheterna och Robinson (TV4). Sätten:
 
 | Sätt | Spelar |
 |---|---|
 | Senaste sändningen | Direkt om programmet sänds nu, annars den senaste sändningen ur kanalens arkiv. |
 | Senaste huvudsändningen | Bara sändningar som börjar vid angivna tider (±20 min), t.ex. 19:00 och 22:00. |
+| De två senaste sändningarna (du väljer) | Rapport och TV4 Nyheterna: en dialog med de två senaste huvudsändningarna (längsta sändningen med namnet varje dag, ur programguiden) med dag och klockslag. Kanal utan arkiv: "Kanalen har inget arkiv". |
 | Avsnitt ur arkivet i tur och ordning | Påbörjat avsnitt först, annars nästa efter det du såg senast, annars det senaste. Snabbast för nya avsnitt. |
 | Serie: fortsätt där du var | En serie i Toucans bibliotek. Nya avsnitt kommer ofta dit senare än i arkivet. |
 
@@ -212,11 +213,31 @@ Uppspelningen går inte via Toucan och räknas inte som en anslutning där.
 - **Kanaler med arkiv hos Toucan** kan spolas så långt bakåt som arkivet räcker. Det gäller de flesta svenska huvudkanalerna.
 - **Kanaler utan arkiv** kan bara pausas, och bara så länge boxens minne räcker: ett par minuter på Z Alpha och några minuter på Z10 Pro.
 
+## Portaler: graf, pausa och arkivera
+
+Under *Portaler* visar *Historik* en graf över svarstiden. Välj 24 tim, 7 dagar eller 30 dagar, tryck eller håll musen på grafen för
+detaljer om tidpunkten och dra åt sidorna för att gå bakåt. Röda fält är misslyckade kontroller. *Pausa* stänger av en portal tillfälligt
+(den används och kontrolleras inte, *Aktivera* tar tillbaka den). *Arkivera* gömmer den men behåller den; kryssa *Visa arkiverade* och
+välj *Ta tillbaka*. Portaler som inte längre fungerar (som Toucan2) är bra att arkivera.
+
+## Tittande: tid, uppskattad data och historik
+
+Fliken *Tittande* visar tittad tid per dag (7, 14 eller 30 dagar), per box och per profil. **Datamängden är en uppskattning**: tid ×
+bitrate (live 4, film 6, serie 4 Mbit/s, kan ändras). Underlaget sparas i 30 dagar (inställningen retention_days) och inspelningar räknas
+inte. *Vad har setts* visar historik per profil med titel, tid och längd. Vuxenläget syns bara som tid under *Övrigt*, aldrig med titlar och
+aldrig i historiken. Gäst är en egen rad utan historik.
+
+## Visa som
+
+Fliken *Visa som* visar Hem för en vald profil på en vald box: Mina program (och vad de skulle spela), Fortsätt titta, favoriter, grupper och
+synliga kategorier med antal. Samma regler som i appen, skrivskyddat och förenklat (ingen exakt skärmdump). Vuxenläget visas aldrig.
+
 ## Avbrottsnotiser, säkerhetskopia och boxöversikt
 
 - **Avbrottsnotiser:** webbadmin → *Boxar → Avbrottsnotiser*. Notis till telefonen när leverantören inte svarar (tre misslyckade
   kontroller i rad på alla portaler), en inspelning misslyckas eller en box inte hörts av på vald tid (av som standard, eftersom en box
-  som är avstängd annars ger falsklarm). Kräver notify-tjänsten under *Påminnelser till telefonen*. Vuxentitlar nämns aldrig.
+  som är avstängd annars ger falsklarm), och när Toucan-abonnemanget snart går ut (3–30 dagar innan, standard 7, högst en notis per dygn).
+  Kräver notify-tjänsten under *Påminnelser till telefonen*. Vuxentitlar nämns aldrig.
 - **Säkerhetskopia:** *Ladda ner kopia* sparar profiler (utan koder), snabbval, kategorival, sport och boxinställningar. *Importera kopia…*
   slår ihop filen med det som finns. Portaluppgifter, nycklar och parade boxar ingår inte; boxar måste paras om.
 - **Boxöversikt:** under *Boxar* visas appversion, om boxen är uppkopplad (hört av sig senaste 10 minuterna) och om en nyare version finns.
@@ -247,6 +268,9 @@ Välj vem som tittar och få tio förslag. TV: *Filmkväll* i menyn. Telefon: kn
 | ● Inspelning | Spela in det markerade | Spela in programmet |
 | Siffror | Byt till kanalnumret (som i kanallistan) | Samma. Bara 0 = förra kanalen |
 | Grupper (lär in den först) | Välj kategori i en lista | Kanallistan (eller avsnitten) |
+
+**OK** pausar och fortsätter alltid under uppspelning. **Ner** visar Ljud och Undertext (i film: tidslinjen med fokus på Ljud, höger/vänster
+byter knapp; i direktsändning: menyn).
 
 Knapparna fungerar i det moderna utseendet och i spelaren. Olika fjärrar skickar olika koder för
 ★, Grupper och prickknapparna. Lär in dem under **Inställningar → Fjärrkontrollens knappar → Lär in en knapp**

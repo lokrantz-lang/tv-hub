@@ -291,7 +291,11 @@ object Profiles {
  * TV Hub räknar ut vad som ska spelas (direkt, senaste sändningen eller nästa avsnitt ur arkivet).
  */
 object MyPrograms {
-    data class Program(val id: Int, val title: String, val subtitle: String, val icon: String?, val command: JSONObject?, val error: String?)
+    /** Ett alternativ (t.ex. "Idag 19:30") när ett program har flera sändningar att välja mellan. */
+    data class Choice(val label: String, val hint: String, val command: JSONObject)
+
+    data class Program(val id: Int, val title: String, val subtitle: String, val icon: String?, val command: JSONObject?, val error: String?,
+                       val choices: List<Choice> = emptyList())
 
     /** Senaste svaret (null = inte hämtat för den här profilen än). */
     var cached: List<Program>? = null
@@ -307,7 +311,16 @@ object MyPrograms {
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
             Program(o.optInt("id"), o.optString("title"), o.optString("subtitle").takeIf { it != "null" } ?: "",
                 o.optString("icon").takeIf { it.isNotEmpty() && it != "null" }, o.optJSONObject("command"),
-                o.optString("error").takeIf { it.isNotEmpty() && it != "null" })
+                o.optString("error").takeIf { it.isNotEmpty() && it != "null" }, parseChoices(o.optJSONArray("choices")))
+        }
+    }
+
+    private fun parseChoices(arr: JSONArray?): List<Choice> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val cmd = o.optJSONObject("command") ?: return@mapNotNull null
+            Choice(o.optString("label"), o.optString("subtitle").takeIf { it != "null" } ?: "", cmd)
         }
     }
 
@@ -338,6 +351,13 @@ object MyPrograms {
         val cmd = p.command
         if (cmd == null) {
             Look.message(activity, p.title, p.error ?: "Går inte att spela just nu.")
+            return
+        }
+        if (p.choices.size > 1) {
+            // Rapport och TV4 Nyheterna: de två senaste sändningarna, du väljer.
+            Look.choose(activity, p.title, p.choices.map { if (it.hint.isEmpty()) it.label else "${it.label}  ·  ${it.hint}" }) { which ->
+                p.choices.getOrNull(which)?.let { Control.execute(activity, it.command) }
+            }
             return
         }
         Control.execute(activity, cmd)

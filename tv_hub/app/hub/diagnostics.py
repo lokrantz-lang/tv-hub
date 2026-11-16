@@ -408,6 +408,24 @@ def portal_history(portal_id, hours=24):
     return out
 
 
+def portal_series(portal_id, hours=720, step=600):
+    """Kontrollerna sammanfattade i tidsfack (step sekunder): antal, fel och svarstid (snitt, max). För grafen."""
+    now = int(time.time())
+    start = now - hours * 3600
+    start -= start % step
+    rows = db.q(
+        """SELECT CAST((CAST(strftime('%s', ts) AS INTEGER) - ?) / ? AS INTEGER) AS b, COUNT(*) AS n,
+                  SUM(CASE WHEN api_ok = 0 THEN 1 ELSE 0 END) AS fail,
+                  AVG(CASE WHEN api_ok = 1 THEN api_ms END) AS avg_ms, MAX(CASE WHEN api_ok = 1 THEN api_ms END) AS max_ms
+           FROM checks WHERE portal_id = ? AND ts >= ? GROUP BY b ORDER BY b""",
+        (start, step, portal_id, db.ago(hours=hours + step / 3600)),
+    )
+    points = [{"t": start + r["b"] * step, "n": r["n"], "fail": r["fail"] or 0,
+               "avg": round(r["avg_ms"]) if r["avg_ms"] is not None else None, "max": r["max_ms"]}
+              for r in rows if r["b"] is not None and r["b"] >= 0]
+    return {"start": start, "end": now, "step": step, "points": points}
+
+
 def cleanup():
     cutoff = db.ago(days=CFG["retention_days"])
     db.x("DELETE FROM checks WHERE ts < ?", (cutoff,))

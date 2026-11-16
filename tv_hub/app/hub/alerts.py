@@ -4,10 +4,11 @@ from datetime import datetime, timezone
 
 from . import control, db, portals, reminders
 
-DEFAULTS = {"provider": True, "recording": True, "box_hours": 0}
+DEFAULTS = {"provider": True, "recording": True, "box_hours": 0, "expiry_days": 7}
 DOWN_AFTER_FAILS = 3
 BOX_REPEAT_S = 24 * 3600
-_state = {"provider_down": False, "last_event": None, "boxes": {}}
+EXPIRY_REPEAT_S = 24 * 3600
+_state = {"provider_down": False, "last_event": None, "boxes": {}, "expiry": 0.0}
 
 
 def settings():
@@ -29,6 +30,14 @@ def save_settings(data):
         if not 0 <= hours <= 720:
             raise ValueError("Ange 0–720 timmar (0 = av).")
         cur["box_hours"] = hours
+    if "expiry_days" in data:
+        try:
+            days = int(data["expiry_days"] or 0)
+        except (TypeError, ValueError):
+            raise ValueError("Dagar ska vara ett tal.")
+        if not 0 <= days <= 90:
+            raise ValueError("Ange 0–90 dagar (0 = av).")
+        cur["expiry_days"] = days
     db.set_setting("alert_settings", cur)
     return cur
 
@@ -51,6 +60,17 @@ def test():
     if not _send("TV Hub", "Testnotis för avbrott."):
         raise ValueError("Det gick inte att skicka. Se loggen.")
     return {"ok": True}
+
+
+def subscription_expiry():
+    """Senast kända utgångsdatum (epok) från portalernas kontroller, det senaste av dem. None om okänt."""
+    best = None
+    for p in portals.all_rows(enabled_only=True):
+        row = db.q1("SELECT exp_date FROM checks WHERE portal_id = ? AND api_ok = 1 AND exp_date IS NOT NULL "
+                    "ORDER BY id DESC LIMIT 1", (p["id"],))
+        if row and row["exp_date"]:
+            best = max(best or 0, int(row["exp_date"]))
+    return best
 
 
 def check_once(send=None, now=None):
@@ -82,6 +102,15 @@ def check_once(send=None, now=None):
     if cfg["recording"] and rows:
         push("TV Hub: inspelning misslyckades",
              "En inspelning misslyckades." if len(rows) == 1 else f"{len(rows)} inspelningar misslyckades.")
+    days = cfg.get("expiry_days") or 0
+    if days:
+        exp = subscription_expiry()
+        if exp is not None and exp - now < days * 86400 and now - _state["expiry"] >= EXPIRY_REPEAT_S:
+            _state["expiry"] = now
+            left = (exp - now) / 86400
+            when = time.strftime("%Y-%m-%d", time.localtime(exp))
+            push("TV Hub: abonnemanget", f"Toucan-abonnemanget har gått ut ({when})." if left <= 0 else
+                 f"Toucan-abonnemanget går ut om {int(left) + 1} dagar ({when}).")
     hours = cfg["box_hours"]
     if hours:
         limit = hours * 3600

@@ -14,6 +14,8 @@ def housekeeping(stop_event):
             devices.cleanup()
             diagnostics.cleanup()
             recordings.expire()
+            myprograms.repair_wrong_channel()
+            myprograms.convert_to_recent()
             myprograms.ensure_defaults()
             sportsets.ensure_keywords()
         except Exception as exc:
