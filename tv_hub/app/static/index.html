@@ -937,7 +937,7 @@ function wcEvent(e) {
   const rec = e.recording ? ` <span class="pill ok">${esc({ scheduled: "Inspelning planerad", recording: "Spelas in", done: "Inspelad", failed: "Misslyckades" }[e.recording.status] || e.recording.status)}</span>` : "";
   const st = { now: '<span class="pill live">Sänds nu</span>', upcoming: '<span class="pill accent">Kommande</span>', past: '<span class="pill">I arkivet</span>' }[e.state] || "";
   return `<div class="small" style="padding:4px 0;border-top:1px solid var(--line)">${st} <b>${esc(e.title)}</b>${e.main ? ' <span class="pill accent">världscupklassen</span>' : ""}
-    <div class="muted">${esc(e.when)} · ${esc(e.channel)}${rec}</div></div>`;
+    <div class="muted">${esc(e.when)} · ${esc(e.channel)}${rec}</div>${e.unconfirmed ? '<div class="muted">Enligt offentlig tablå, ej bekräftad i din programguide.</div>' : ""}</div>`;
 }
 function wcLeg(l) {
   const win = l.winner ? `🏆 ${esc(l.winner)}${l.horse ? " på " + esc(l.horse) : ""}` : (l.state === "done" ? "Vinnare ej inlagd" : "");

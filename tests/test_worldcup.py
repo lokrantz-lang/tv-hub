@@ -100,6 +100,22 @@ check("huvudsändningen är världscupklassen", [x for x in mm["events"] if x["m
 check("Nyheterna kommer inte med", not any("Nyheterna" in x["title"] for x in mm["events"]))
 check("nästa etapp är Madrid", v["next"] == "madrid", v["next"])
 
+# utan guidepost: en sändning enligt tablå på Sjuan (kanalen finns i listan)
+v = worldcup.overview(now=ts("2026-11-12", "09:00"))
+st = {leg["id"]: leg for leg in v["legs"]}["stuttgart"]
+check("Stuttgart saknas i guiden men får en rad enligt tablå", len(st["events"]) == 1 and st["events"][0]["unconfirmed"] and st["events"][0]["channel"] == "SE: Sjuan HD", st["events"])
+check("raden har rätt tid och en Spela in-knapp", st["events"][0]["start"] == ts("2026-11-15", "14:45") and st["events"][0]["record"]["action"] in ("record", "later"), st["events"][0])
+check("rubriken säger att den inte är bekräftad", "ej bekräftad" in st["headline"] and st["level"] == "warn", st["headline"])
+v = worldcup.overview(now=ts("2026-11-15", "15:30"))
+st = {leg["id"]: leg for leg in v["legs"]}["stuttgart"]
+check("under tablåtiden: Titta nu som live på Sjuan", st["events"][0]["state"] == "now" and st["events"][0]["command"]["type"] == "live", st["events"])
+v = worldcup.overview(now=ts("2026-11-17", "10:00"))
+st = {leg["id"]: leg for leg in v["legs"]}["stuttgart"]
+check("efteråt utan arkiv på kanalen: ingen påhittad rad", st["events"] == [], st["events"])
+v = worldcup.overview(now=ts("2026-11-28", "09:00"))
+mm = {leg["id"]: leg for leg in v["legs"]}["madrid"]
+check("finns sändningen i guiden dubbleras den inte av tablån", not any(e.get("unconfirmed") for e in mm["events"]), mm["events"])
+
 # efter Madrid med arkiv: ladda ner
 v = worldcup.overview(now=ts("2026-11-29", "21:00"))
 mm = {leg["id"]: leg for leg in v["legs"]}["madrid"]

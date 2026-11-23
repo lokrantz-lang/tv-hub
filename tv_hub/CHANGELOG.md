@@ -1,5 +1,14 @@
 # Ändringar
 
+## 2.10.1
+
+- **Världscupen fungerar även när Toucans programguide saknar TV4, Sjuan och Sportkanalen** (som den gör hos dig just nu). Etapper med tid i
+  den offentliga tablån (Verona, Stuttgart, Madrid, A Coruña) får en rad **Enligt tablå, ej bekräftad i din programguide**, med din egen
+  Sjuan- eller Sportkanal-kanal från listan, rätt tid, och knapparna *Titta* (när det sänds) och *Spela in* (kommande). Redan sänt visas bara
+  om kanalen har arkiv som räcker. Finns sändningen i guiden används den i stället, så ingen dubblas.
+- Tiderna kommer från offentliga tablåer och kan ändras av TV4. Automatisk inspelning (Automatik) utgår från guiden och tar inte med
+  tablåraderna; spela in dem med knappen.
+- Innehåll från 2.10.0 ingår.
 ## 2.10.0
 
 - **Lovisa (kräver ny app för inloggningen):** profilen *Lovisa* skapas automatiskt (ingen vuxenläge, ser allt i vanligt läge). På **Översikt**

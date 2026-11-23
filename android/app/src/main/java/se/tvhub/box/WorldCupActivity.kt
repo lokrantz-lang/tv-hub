@@ -171,6 +171,7 @@ class WorldCupActivity : Activity() {
             val state = when (e.state) { "now" -> "● SÄNDS NU"; "upcoming" -> "Kommande"; else -> "Finns i arkivet" }
             box.addView(text(e.title + if (o.optBoolean("main")) "  ★" else "", 16f, bold = true))
             box.addView(text("$state · ${e.whenText} · ${e.channel}", 14f, getColor(R.color.muted)))
+            if (o.optBoolean("unconfirmed")) box.addView(text("Enligt tablå, ej bekräftad i din programguide", 13f, getColor(R.color.star)))
             val rec = o.optJSONObject("recording")
             if (rec != null) {
                 val s = when (rec.optString("status")) {

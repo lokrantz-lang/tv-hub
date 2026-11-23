@@ -413,6 +413,7 @@ fastställd" när arrangören inte publicerat den), TV-kanal, vinnare om du lagt
 - **Spela in** (boxen) planerar en inspelning av en kommande sändning. **Ladda ner** hämtar en redan sänd ur kanalens arkiv. Båda hamnar under Inspelningar.
 - **Finns det i Toucan?** (webbadminen) listar kanalerna som kan bära sändningarna och om de har arkiv och programguide. Saknas Sjuan eller TV4 står det.
 - **Automatik:** välj en box som spelar in alla världscupssändningar. Notis när en börjar styrs av intresset *Världscupen i hoppning* under Sport.
+- **Enligt tablå:** saknas sändningen i din programguide visas en rad märkt *ej bekräftad* med tid och kanal från den offentliga tablån (ändras tiden stämmer den inte).
 - Programguiden minns en vecka. Det den visat sparas, så äldre etapper visar fortfarande kanal och tid.
 
 ## Golf och Ridsport

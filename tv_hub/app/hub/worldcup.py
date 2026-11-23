@@ -40,13 +40,13 @@ LEGS = [
      "wc": ("2026-11-01", "15:30"), "shift": 0, "kind": "league",
      "winner": "Julien Epaillard (FRA)", "horse": "Le Coultre de Muze", "tv": "TV4"},
     {"id": "verona", "name": "Verona", "country": "ITA", "start": "2026-11-05", "end": "2026-11-08",
-     "wc": ("2026-11-08", "14:30"), "shift": 0, "kind": "league", "tv": "Sjuan (14:15–17:45)"},
+     "wc": ("2026-11-08", "14:30"), "shift": 0, "kind": "league", "tv": "Sjuan (14:15–17:45)", "slot": ("Sjuan", "14:15", "17:45")},
     {"id": "stuttgart", "name": "Stuttgart", "country": "GER", "start": "2026-11-11", "end": "2026-11-15",
-     "wc": ("2026-11-15", "15:10"), "shift": 0, "kind": "league", "tv": "Sjuan (14:45–17:40)"},
+     "wc": ("2026-11-15", "15:10"), "shift": 0, "kind": "league", "tv": "Sjuan (14:45–17:40)", "slot": ("Sjuan", "14:45", "17:40")},
     {"id": "madrid", "name": "Madrid", "country": "ESP", "start": "2026-11-26", "end": "2026-11-29",
-     "wc": ("2026-11-29", "15:00"), "shift": 0, "kind": "league", "tv": "Sjuan (14:55–17:40) och TV4 Play Plus Sport"},
+     "wc": ("2026-11-29", "15:00"), "shift": 0, "kind": "league", "tv": "Sjuan (14:55–17:40) och TV4 Play Plus Sport", "slot": ("Sjuan", "14:55", "17:40")},
     {"id": "acoruna", "name": "A Coruña", "country": "ESP", "start": "2026-12-03", "end": "2026-12-06",
-     "wc": ("2026-12-06", "16:30"), "shift": 0, "kind": "league", "tv": "TV4 Sportkanalen (16:45–19:45) och TV4 Play Plus Sport"},
+     "wc": ("2026-12-06", "16:30"), "shift": 0, "kind": "league", "tv": "TV4 Sportkanalen (16:45–19:45) och TV4 Play Plus Sport", "slot": ("TV4 Sportkanalen", "16:45", "19:45")},
     {"id": "london", "name": "London", "country": "GBR", "start": "2026-12-16", "end": "2026-12-21",
      "wc": ("2026-12-20", "14:35"), "shift": 1, "kind": "league", "tv": "TV4"},
     {"id": "mechelen", "name": "Mechelen", "country": "BEL", "start": "2026-12-26", "end": "2026-12-30",
@@ -176,6 +176,39 @@ def _main_event(events):
     return max(events, key=lambda e: (e["end"] - e["start"], e["start"]))
 
 
+def _slot_event(leg, now):
+    """Sändning enligt offentlig tablå, med kanalen från din egen lista. Används när guiden saknar sändningen."""
+    slot, wc = leg.get("slot"), leg.get("wc")
+    if not slot or not wc:
+        return None
+    label, a, b = slot
+    spec = next((w for w in CHANNEL_WANTS if w[0] == label), None)
+    if spec is None:
+        return None
+    start, end = _ts(wc[0], a), _ts(wc[0], b)
+    chans = _find_channels(spec[2], spec[3])
+    if not chans:
+        return None
+    state = "now" if start <= now < end else ("past" if end <= now else "upcoming")
+    ch = chans[0]
+    if state == "past":
+        playable = [c for c in chans if int(c["archive_days"] or 0) * 86400 >= now - start]
+        if not playable:
+            return None
+        ch = playable[0]
+    title = f"Världscupen i hoppning: {leg['name']}"
+    event = {"id": f"{ch['id']}:{start}", "title": title, "description": "", "start": start, "end": end, "state": state,
+             "channel_id": ch["id"], "channel": ch["name"], "icon": ch.get("icon"), "also": [], "interests": [],
+             "when": sports.when_label(start, end), "unconfirmed": True, "ids": [c["id"] for c in chans]}
+    if state == "now":
+        event["command"] = {"action": "play", "type": "live", "id": str(ch["id"]), "name": ch["name"], "icon": ch.get("icon")}
+    elif state == "past":
+        event["command"] = {"action": "play", "type": "catchup", "id": str(ch["id"]),
+                            "name": f"{ch['name']}: {title} {_clock(start)}", "catchup_start": int(start),
+                            "catchup_minutes": max(1, int((end - start) // 60)), "icon": ch.get("icon")}
+    return event
+
+
 def leg_view(leg, scope, now, recs=None):
     results = db.get_setting(RESULTS_KEY) or {}
     manual = results.get(leg["id"]) or {}
@@ -186,17 +219,22 @@ def leg_view(leg, scope, now, recs=None):
     start_ts, end_ts = _ts(leg["start"], "00:00"), _ts(leg["end"], "23:59")
     events = sports.build_events(_leg_rows(leg, now), scope, None, now)
     _remember(leg, events)
+    if scope.adult == 0:
+        planned = _slot_event(leg, now)
+        if planned and not any(abs(e["start"] - planned["start"]) < 5400 for e in events):
+            events = sorted(events + [planned], key=lambda e: e["start"])
     state = "upcoming"
     done_ts = wc + 4 * 3600 if wc else end_ts + 6 * 3600  # klar några timmar efter världscupklassen
     if now > done_ts:
         state = "done"
     elif now >= start_ts:
         state = "ongoing"
-    main = _main_event(events)
+    main = next((e for e in events if e.get("unconfirmed")), None) or _main_event(events)
     out_events = []
     for e in events:
         item = dict(e)
         item["main"] = bool(main and e["id"] == main["id"])
+        item.pop("ids", None)
         item["record"] = _record_request(e, now)
         item["recording"] = _recording_for(recs, e) if recs else None
         item["play_label"] = {"now": "Titta nu", "past": "Titta i efterhand"}.get(e["state"])
@@ -205,7 +243,9 @@ def leg_view(leg, scope, now, recs=None):
             if not any(abs(s["start"] - e["start"]) < 60 and s["channel"] == e["channel"] for e in events)]
     seen_view = [{"channel": s["channel"], "title": s["title"], "start": s["start"], "end": s["end"],
                   "when": sports.when_label(s["start"])} for s in seen]
-    if events:
+    if events and all(e.get("unconfirmed") for e in events):
+        headline, level = "Enligt tablå (ej bekräftad i din programguide)", "warn"
+    elif events:
         headline = {"now": "Sänds nu", "upcoming": "Sändning finns i guiden", "past": "Finns i arkivet"}[
             "now" if any(e["state"] == "now" for e in events) else
             "upcoming" if any(e["state"] == "upcoming" for e in events) else "past"]
@@ -268,14 +308,15 @@ CHANNEL_WANTS = [
 
 
 def _find_channels(include, exclude):
-    rows = db.q("""SELECT item_id AS id, name, archive_days, epg_id FROM items
+    rows = db.q("""SELECT item_id AS id, name, archive_days, epg_id, icon FROM items
                    WHERE type = 'live' AND adult = 0 ORDER BY name""")
     out = []
     for r in rows:
         name = sportsets._norm(r["name"])
         if any(re.search(p, name) for p in include) and not any(re.search(p, name) for p in exclude):
             out.append(dict(r))
-    out.sort(key=lambda c: (not sports.SWEDISH_NAME.search(c["name"] or ""), -int(c["archive_days"] or 0), len(c["name"])))
+    out.sort(key=lambda c: (not sports.SWEDISH_NAME.search(c["name"] or ""), int(c["archive_days"] or 0) <= 0,
+                            "hd" not in (c["name"] or "").casefold(), -int(c["archive_days"] or 0), len(c["name"])))
     return out
 
 
