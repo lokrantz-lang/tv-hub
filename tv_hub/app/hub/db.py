@@ -525,6 +525,14 @@ SCHEMA = [
     """
     ALTER TABLE portals ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
     """,
+    # version 17: prioritet per profil, enhet låst till en profil, orsak när en uppspelning stoppas
+    """
+    ALTER TABLE viewers ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;
+    UPDATE viewers SET priority = 100
+        WHERE id = COALESCE((SELECT MIN(id) FROM viewers WHERE allow_adult = 1), (SELECT MIN(id) FROM viewers));
+    ALTER TABLE devices ADD COLUMN locked_profile_id INTEGER;
+    ALTER TABLE sessions ADD COLUMN stop_note TEXT;
+    """,
 ]
 
 

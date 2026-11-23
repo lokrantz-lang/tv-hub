@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (VERSION, usage, ai, alerts, backup, hotfix, sportsets, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
+from . import (VERSION, usage, worldcup, family, ai, alerts, backup, hotfix, sportsets, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
                sports,
                recordings, reminders, remote, taste, updates)
 from .config import CFG
@@ -879,6 +879,24 @@ class DeviceHandler(BaseHandler):
         return None if prof.get("guest") else (prof.get("id") or None)
 
 
+@route(DEVICE, "GET", r"/hej")
+def dev_landing(h):
+    """Sida att öppna på telefonen: ladda ner appen och se serveradressen. Innehåller ingen kod och inga uppgifter."""
+    host = (h.headers.get("Host") or "").strip()
+    apk = updates._url("tvhub.apk")
+    from html import escape
+    button = (f'<a href="{escape(apk)}" style="display:inline-block;background:#2f7cf6;color:#fff;padding:14px 22px;'
+              f'border-radius:10px;text-decoration:none;font-weight:700">Ladda ner TV Hub</a>') if apk else "Be om länken."
+    owner = profiles.get(profiles.owner_id()) or {"name": "ägaren"}
+    body = (LANDING % {"button": button, "address": "http://" + escape(host) if host else "", "owner": escape(owner["name"])}).encode("utf-8")
+    h.send_response(200)
+    h.send_header("Content-Type", "text/html; charset=utf-8")
+    h.send_header("Content-Length", str(len(body)))
+    h.send_header("Cache-Control", "no-store")
+    h.end_headers()
+    h.wfile.write(body)
+
+
 @route(DEVICE, "GET", r"/device/ping")
 def dev_ping(h):
     return 200, {"app": "tvhub", "version": VERSION}
@@ -1648,7 +1666,10 @@ def dev_new_summary(h):
 # ----- Profiler och Mina program -----
 @route(DEVICE, "GET", r"/device/profiles")
 def dev_profiles(h):
-    h.device()
+    dev = h.device()
+    if dev["locked_profile_id"]:  # låst enhet: bara sin egen profil, så det finns inget att byta till
+        mine = profiles.get(dev["locked_profile_id"])
+        return 200, {"profiles": [mine] if mine else [], "active": h.profile(), "locked": True}
     return 200, {"profiles": profiles.all_profiles(), "active": h.profile()}
 
 
@@ -1695,6 +1716,74 @@ def admin_usage_history(h):
 @route(ADMIN, "PUT", r"/api/usage/bitrates")
 def admin_usage_bitrates(h):
     return 200, usage.set_bitrates(h.read_json())
+
+
+@route(ADMIN, "GET", r"/api/invite")
+def admin_invite(h):
+    out = family.view()
+    out["apk"] = updates._url("tvhub.apk")
+    return 200, out
+
+
+@route(ADMIN, "POST", r"/api/invite/new")
+def admin_invite_new(h):
+    family.ensure()
+    family.new_invite()
+    return 200, family.view()
+
+
+LANDING = """<!doctype html><html lang="sv"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>TV Hub</title>
+<body style="font-family:system-ui,sans-serif;background:#0b0e13;color:#eceef1;padding:24px;line-height:1.5;max-width:520px;margin:auto">
+<h1>TV Hub</h1>
+<p>Så här kommer du igång på din Android-telefon:</p>
+<ol style="padding-left:20px">
+<li style="margin-bottom:12px"><b>Ladda ner appen:</b><br>%(button)s</li>
+<li style="margin-bottom:12px">Öppna filen och tryck <b>Installera</b>. Om telefonen frågar om <i>okända källor</i>, tillåt det för webbläsaren.</li>
+<li style="margin-bottom:12px">Öppna <b>TV Hub</b>. Skriv den här adressen när appen frågar efter server:<br><b style="font-size:20px">%(address)s</b></li>
+<li style="margin-bottom:12px">Skriv koden du fått av %(owner)s. Klart: du ser bara din egen profil.</li>
+</ol>
+<p style="color:#9aa1ab">Du måste vara på hemmets wifi första gången.</p></body></html>"""
+
+
+@route(ADMIN, "GET", r"/api/worldcup")
+def admin_worldcup(h):
+    out = worldcup.overview()
+    out["check"] = worldcup.check()
+    out["settings"] = worldcup.settings_view()
+    return 200, out
+
+
+@route(ADMIN, "POST", r"/api/worldcup/result")
+def admin_worldcup_result(h):
+    data = h.read_json()
+    return 200, worldcup.set_result(str(data.get("leg") or ""), data.get("winner"), data.get("horse"))
+
+
+@route(ADMIN, "PUT", r"/api/worldcup/auto-record")
+def admin_worldcup_auto_record(h):
+    data = h.read_json()
+    device_id = data.get("device_id")
+    return 200, worldcup.auto_record(int(device_id) if device_id not in (None, "", 0, "0") else None)
+
+
+@route(ADMIN, "POST", r"/api/worldcup/scan")
+def admin_worldcup_scan(h):
+    sports.request_scan()
+    return 200, {"started": True}
+
+
+@route(DEVICE, "GET", r"/device/worldcup")
+def dev_worldcup(h):
+    """Världscupen för appen: planering, historik och knappar (Titta, Spela in, Ladda ner)."""
+    dev, scope = h.context()
+    if scope.adult:
+        return 200, {"legs": [], "season": worldcup.SEASON, "next": None, "now": []}
+    out = worldcup.overview(scope, dev)
+    chk = worldcup.check()
+    out["hints"] = [i["label"] + ": " + i["text"] for i in chk["items"] if i["required"] and i["level"] != "ok"] + \
+        [n["text"] for n in chk["notes"] if n["level"] != "ok"]
+    return 200, out
 
 
 @route(ADMIN, "GET", r"/api/profiles")

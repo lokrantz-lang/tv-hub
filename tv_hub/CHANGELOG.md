@@ -1,5 +1,44 @@
 # Ändringar
 
+## 2.10.0
+
+- **Lovisa (kräver ny app för inloggningen):** profilen *Lovisa* skapas automatiskt (ingen vuxenläge, ser allt i vanligt läge). På **Översikt**
+  finns kortet *Bjud in Lovisa* med en åttasiffrig kod (gäller i 14 dagar, tre användningar, skapas om automatiskt). Hon öppnar
+  `http://<Home Assistants IP>:8099/hej` på telefonen, trycker *Ladda ner TV Hub*, installerar, anger adressen och koden. Klart.
+  Hennes enhet är **låst till hennes profil**: den ser bara Lovisa och servern svarar som Lovisa vad appen än skickar. Enheten får också
+  använda telefonen utanför hemmet (Nabu Casa) om det är inställt under Boxar.
+- **Du går före:** Toucan tillåter bara en ström. Börjar du titta medan Lovisa tittar stoppas hennes ström direkt med texten
+  "Henrik började titta och går före." Hon kan inte ta över när du tittar, inte ens med tvång. Det gäller bara enheter som är låsta till en
+  profil; mellan vanliga boxar är det som förut (frågan "tittar redan, ta över?"). Prioriteten sitter på profilen (ägaren 100, andra 0).
+- **Lås en box till en profil** (Boxar → *Låst till profil*) för vilken enhet som helst.
+- Appens kodruta tar nu sex eller åtta siffror.
+- Världscupen: knappen *Spela in* visar "Går att spela in två veckor innan" för sändningar längre bort än två veckor i stället för att ge fel.
+- Innehåll från 2.9.10 ingår.
+## 2.9.10
+
+- **Världscupen: rätt kanaler per etapp.** Enligt offentliga tablåer sänds Verona, Stuttgart och Madrid på **Sjuan**, och A Coruña på **TV4 Sportkanalen**
+  (Madrid och A Coruña även på TV4 Play Plus Sport). Förut stod TV4 på tre av dem. TV4 Sportkanalen räknas nu som kanal som krävs i kontrollen.
+  Tablåerna är inte verifierade mot ditt Toucan-konto; det visar kontrollen i fliken Världscupen.
+- Innehåll från 2.9.9 ingår.
+## 2.9.9
+
+- **Världscupen i hoppning (ny flik i webbadminen, ny sida i appen, kräver ny app för appdelen):** planering, historik och kontroll mot dina
+  kanaler på ett ställe. Säsongen 2026/27 ligger inlagd: de 13 etapperna i Western European League, finalen i Göteborg (mars 2027) och
+  Sweden International Horse Show. TV4 har rättigheterna från i år (SVT visar finalen och mästerskapen tillsammans med TV4), och Verona sändes på
+  Sjuan, så Sjuan och SVT 24 läses nu av programguiden för ridsport.
+- **Stora knappar:** *Titta* (nu eller i efterhand), *Spela in* (kommande sändning, med två minuters marginal före och femton efter) och
+  *Ladda ner* (redan sänd, hämtas ur kanalens arkiv). Inspelningar visas på sändningen (planerad, spelas in, klar). På boxen i menyn
+  (ikon med hinder och stjärna), på telefonen via ikonen uppe till höger (där bara Titta finns, inspelning görs på boxen).
+- **Historik:** programguiden minns bara en vecka, så sändningar som setts sparas. Tidigare etapper visar kanal, tid och, om du lagt in det,
+  vinnare och häst (Oslo och Lyon är inlagda, resten fyller du i under *Spara resultat*).
+- **Finns det i Toucan?** Webbadminen letar upp TV4, Sjuan, TV4 Sportkanalen, SVT, Eurosport, Horse & Country m.fl. i din kanallista och säger
+  om de har arkiv och om programguiden läser dem, samt hur många världscupssändningar guiden har just nu. Det går inte att kolla
+  utifrån, så kontrollen körs i ditt tillägg mot din riktiga lista.
+- **Automatik:** välj en box som spelar in alla världscupssändningar automatiskt, och få notis när en börjar (intresset *Världscupen i hoppning*
+  skapas första gången).
+- Etapper utan fastställd tid visas som *Tid ej fastställd*; Amsterdam, Bordeaux och Helsingfors har preliminära datum.
+- Innehåll från 2.9.8 ingår.
+
 ## 2.9.8
 
 - **Spelaren (kräver ny app):** **OK pausar och fortsätter alltid**, även i direktsändning (förut öppnade OK en meny där).

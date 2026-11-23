@@ -15,7 +15,7 @@ import time
 
 from datetime import datetime, timezone
 
-from . import catalog, db, extras, limits, portals, recordings, updates, xtream
+from . import catalog, db, extras, family, limits, portals, profiles, recordings, updates, xtream
 from .config import CFG
 
 ACTIVE_WINDOW_S = 35        # session räknas som aktiv om heartbeat inom detta
@@ -54,6 +54,19 @@ def pair(code, name, model, app_version, ip):
     token = secrets.token_urlsafe(32)
     name = (str(name or "").strip() or "TV-box")[:40]
     with db.tx():
+        invite = family.take_invite(code)
+        if invite is not None:
+            # Inbjudan: enheten låses till profilen och får använda telefonen utanför hemmet.
+            who = invite["name"]
+            device_id = db.x(
+                """INSERT INTO devices (name, model, app_version, token_hash, created, last_seen, last_ip,
+                                        locked_profile_id, default_profile_id, remote_allowed)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                (name if name != "TV-box" else f"{who}s enhet", str(model or "")[:60], str(app_version or "")[:20],
+                 _hash(token), db.iso(), db.iso(), ip, invite["profile_id"], invite["profile_id"]),
+            ).lastrowid
+            db.log_event("paired", {"name": name, "model": model, "invite": who}, device_id=device_id)
+            return {"token": token, "device_id": device_id, "name": name}
         used = db.x("DELETE FROM pair_codes WHERE code = ? AND expires >= ?", (code, db.iso())).rowcount
         if used != 1:
             wait = _pair_limit.reserve("pair")
@@ -91,9 +104,12 @@ def authenticate(header, ip):
 def list_devices():
     out = []
     for row in db.q("""SELECT id, name, model, app_version, created, last_seen, last_ip, allow_adult, only_group_id,
-                              pin_required, default_profile_id, revert_hours, adult_idle_minutes, remote_allowed
+                              pin_required, default_profile_id, revert_hours, adult_idle_minutes, remote_allowed,
+                              locked_profile_id
                        FROM devices ORDER BY id"""):
         item = dict(row)
+        locked = profiles.get(row["locked_profile_id"]) if row["locked_profile_id"] else None
+        item["locked_profile"] = locked["name"] if locked else None
         item["allow_adult"] = bool(item["allow_adult"])
         item["pin_required"] = bool(item["pin_required"])
         item["remote_allowed"] = bool(item["remote_allowed"])
@@ -139,7 +155,6 @@ def update_device(device_id, data):
         with _pin_lock:
             _unlocks.pop(device_id, None)
     if "default_profile_id" in data:
-        from . import profiles
         pid = data["default_profile_id"]
         pid = None if pid in (None, "", 0, "0") else int(pid)
         if pid is not None and not profiles.get(pid):
@@ -150,6 +165,14 @@ def update_device(device_id, data):
         if not 0 <= hours <= 48:
             raise ValueError("Ange 0–48 timmar.")
         db.x("UPDATE devices SET revert_hours = ? WHERE id = ?", (hours, device_id))
+    if "locked_profile_id" in data:
+        pid = data["locked_profile_id"]
+        if pid in (None, "", 0):
+            db.x("UPDATE devices SET locked_profile_id = NULL WHERE id = ?", (device_id,))
+        else:
+            if not profiles.get(pid):
+                raise LookupError("Profilen finns inte")
+            db.x("UPDATE devices SET locked_profile_id = ?, default_profile_id = ? WHERE id = ?", (int(pid), int(pid), device_id))
     if "remote_allowed" in data:
         db.x("UPDATE devices SET remote_allowed = ? WHERE id = ?", (1 if data["remote_allowed"] else 0, device_id))
     if "adult_idle_minutes" in data:
@@ -486,6 +509,21 @@ def _request_play(device, kind, item_id, ext=None, force=False, exclude_portals=
     if others:
         now_s = time.time()
         pending = [o for o in others if o["stop_requested"]]
+        # Prioritet: den som har högre prioritet (t.ex. Henrik) går före. Lägre prioritet kan inte ta över,
+        # och högre prioritet tar över direkt (den andra får veta varför).
+        mine = family.priority_for(device["id"], viewer_id or getattr(scope, "profile_id", None))
+        theirs = [family.priority_for(o["device_id"], o["viewer_id"]) for o in others]
+        i_am_locked = family.is_locked(device["id"])
+        if i_am_locked and any(t > mine for t in theirs):
+            o = others[theirs.index(max(theirs))]
+            who = family.person_for(o["device_id"], o["viewer_id"]) or o["device_name"]
+            return {"status": "error", "error": f"{who} tittar och går före. Försök igen när {who} är klar."}
+        if all(t < mine and family.is_locked(o["device_id"]) for t, o in zip(theirs, others)):
+            force = True
+            note = f"{family.person_for(device['id'], viewer_id or getattr(scope, 'profile_id', None)) or device['name']} började titta och går före."
+            for o in others:
+                if not o["stop_requested"]:
+                    db.x("UPDATE sessions SET stop_note = ? WHERE id = ?", (note, o["id"]))
         if not force and not pending:
             o = others[0]
             shown = ADULT_LABEL if o["adult"] else o["item_name"]
@@ -626,7 +664,7 @@ def heartbeat(device, session_id, metrics):
         return {"stop": True, "reason": "record_stopped", "message": "Inspelningen stoppades från webbadminen."}
     if row["stop_requested"]:
         return {"stop": True, "reason": "takeover",
-                "message": "En annan box tog över uppspelningen."}
+                "message": row["stop_note"] or "En annan box tog över uppspelningen."}
     return {"stop": False}
 
 

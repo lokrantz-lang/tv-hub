@@ -105,6 +105,10 @@ class MobileActivity : Activity(), CardListener {
         findViewById<View>(R.id.m_profile).setOnClickListener { Profiles.choose(this) { onProfileChanged() } }
         Profiles.checkRevert(this)
         updateProfileChip()
+        findViewById<View>(R.id.m_worldcup).setOnClickListener {
+            if (prefs.adultMode) Toast.makeText(this, "Världscupen finns bara i vanligt läge.", Toast.LENGTH_SHORT).show()
+            else WorldCupActivity.start(this)
+        }
         findViewById<View>(R.id.m_night).setOnClickListener {
             if (prefs.adultMode) Toast.makeText(this, "Filmkväll finns bara i vanligt läge.", Toast.LENGTH_SHORT).show()
             else FilmNightActivity.start(this)

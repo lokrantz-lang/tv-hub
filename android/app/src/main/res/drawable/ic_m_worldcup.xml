@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Världscupen i hoppning: hinder med bom och ett hopp över. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M6,20 L6,10 M18,20 L18,10" android:strokeColor="#FFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:fillColor="#00000000" />
+    <path android:pathData="M6,12 L18,12 M6,16 L18,16" android:strokeColor="#FFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round" android:fillColor="#00000000" />
+    <path android:pathData="M3,9 C7,2 17,2 21,9" android:strokeColor="#FFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:fillColor="#00000000" />
+    <path android:pathData="M12,4.2 L12.7,5.6 L14.2,5.8 L13.1,6.8 L13.4,8.3 L12,7.6 L10.6,8.3 L10.9,6.8 L9.8,5.8 L11.3,5.6 Z" android:fillColor="#FFFFFF" />
+</vector>

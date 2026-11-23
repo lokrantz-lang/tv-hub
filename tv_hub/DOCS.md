@@ -388,6 +388,33 @@ den bara innehåller tillåtna filer under `tv_hub/app/`, provar koden och start
 *Ta bort hemfix* går tillbaka till tilläggets egen version. Gäller **inte appen** på boxarna och telefonen: den uppdateras via en ny APK.
 Hemfixen ligger i `/data/hotfix`. Efter en vanlig uppdatering av tillägget till en annan version tas den bort automatiskt.
 
+## Lovisa och prioritet
+
+Profilen **Lovisa** skapas automatiskt. På **Översikt** finns kortet *Bjud in Lovisa* med en åttasiffrig kod som gäller i 14 dagar och
+tre användningar (en ny skapas automatiskt, eller med *Ny kod*).
+
+1. Skicka henne länken `http://<Home Assistants IP>:8099/hej` och koden. Sidan har en stor knapp *Ladda ner TV Hub*, och visar serveradressen.
+2. Hon installerar appen, anger adressen och koden (hemma på wifi första gången).
+3. Hennes enhet är **låst till profilen Lovisa**: den ser bara den profilen, det finns inget att byta till, och vuxenläget finns inte.
+   Hon ser allt innehåll i vanligt läge. Enheten får använda telefonen utanför hemmet om Nabu Casa är inställt (*Boxar → Telefon utanför hemmet*).
+4. Vilken enhet som helst kan låsas på samma sätt: *Boxar → Låst till profil*.
+
+**Prioritet:** Toucan tillåter bara en ström. Börjar du titta medan hon tittar stoppas hennes ström direkt med texten "Henrik började titta och går
+före", och hon kan inte starta något medan du tittar. Det gäller bara enheter som är låsta till en profil. Prioriteten sitter på profilen
+(ägaren 100, andra 0).
+
+## Världscupen i hoppning
+
+Fliken **Världscupen** i webbadminen och **Världscupen** i boxens meny (på telefonen ikonen uppe till höger) visar säsongen 2026/27:
+nästa etapper överst (**Planering**), avklarade under **Historik**. Varje etapp visar datum, tid för världscupklassen (svensk tid, "Tid ej
+fastställd" när arrangören inte publicerat den), TV-kanal, vinnare om du lagt in en och sändningarna som finns i din programguide.
+
+- **Titta** startar sändningen (live eller i efterhand ur arkivet).
+- **Spela in** (boxen) planerar en inspelning av en kommande sändning. **Ladda ner** hämtar en redan sänd ur kanalens arkiv. Båda hamnar under Inspelningar.
+- **Finns det i Toucan?** (webbadminen) listar kanalerna som kan bära sändningarna och om de har arkiv och programguide. Saknas Sjuan eller TV4 står det.
+- **Automatik:** välj en box som spelar in alla världscupssändningar. Notis när en börjar styrs av intresset *Världscupen i hoppning* under Sport.
+- Programguiden minns en vecka. Det den visat sparas, så äldre etapper visar fortfarande kanal och tid.
+
 ## Golf och Ridsport
 
 Under *Sport* hittar du *Golf och ridsport: hitta kanalerna*. Listan bygger på vilka kanaler och tjänster som har rättigheterna i Sverige.

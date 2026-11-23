@@ -49,7 +49,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Kod (6 siffror)"
+            android:text="Kod (6 eller 8 siffror)"
             android:textColor="@color/muted"
             android:textSize="15sp" />
 
@@ -61,7 +61,7 @@
             android:layout_marginBottom="24dp"
             android:imeOptions="actionDone"
             android:inputType="number"
-            android:maxLength="7" />
+            android:maxLength="12" />
 
         <Button
             android:id="@+id/pair"

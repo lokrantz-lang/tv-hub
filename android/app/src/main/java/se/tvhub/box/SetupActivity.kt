@@ -54,8 +54,8 @@ class SetupActivity : Activity() {
     private fun startPairing() {
         val base = normalizeServer(server.text.toString())
         val pairingCode = code.text.toString().filter { it.isDigit() }
-        if (pairingCode.length != 6) {
-            status.text = "Koden ska vara sex siffror."
+        if (pairingCode.length != 6 && pairingCode.length != 8) {
+            status.text = "Koden ska vara sex eller åtta siffror."
             return
         }
         pair.isEnabled = false

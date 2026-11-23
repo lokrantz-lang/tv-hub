@@ -288,6 +288,8 @@ def main():
         version_294(ta, tb, pa, pb)
         version_295(ta, tb, pa, pb)
         version_297(ta, tb, pa, pb)
+        version_299(ta, tb, pa, pb)
+        version_2910(ta, tb, pa, pb)
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -757,7 +759,7 @@ def film_night(ta, pa):
         call("POST", f"{A}/api/profiles", {"name": name})
     s, viewers = call("GET", f"{D}/device/viewers", token=ta)
     names = [v["name"] for v in viewers]
-    check("profilerna från start (tittarlägena blev profiler)", names == ["Själv", "Tillsammans", "Gäst", "Testvuxen", "Testbarn"], names)
+    check("profilerna från start (tittarlägena blev profiler)", names == ["Själv", "Tillsammans", "Gäst", "Lovisa", "Testvuxen", "Testbarn"], names)
     byname = {v["name"]: v["id"] for v in viewers}
     self_id, kids_id, adult_id = byname["Själv"], byname["Tillsammans"], byname["Testvuxen"]
     check("Med döttrarna är barnvänligt från start", viewers[1]["rules"]["kids"] is True, viewers[1])
@@ -859,7 +861,7 @@ def film_night(ta, pa):
     check("byt namn på tittarläge", any(x["name"] == "Vänner" for x in vs), vs)
     s, _ = call("DELETE", f"{A}/api/viewers/{v['id']}")
     s, vs = call("GET", f"{A}/api/viewers")
-    check("ta bort tittarläge", len(vs) == 5, vs)
+    check("ta bort tittarläge", len(vs) == 6, vs)
     imdb = ("Const,Your Rating,Date Rated,Title,URL,Title Type,IMDb Rating,Runtime (mins),Year,Genres\n"
             "tt1,9,2024-05-01,Oppenheimer,u,movie,8.3,180,2023,Drama\n"
             "tt2,4,2024-05-02,Skräcknatten,u,movie,6,90,2019,Horror\n"
@@ -876,7 +878,7 @@ def film_night(ta, pa):
     s, res = call("POST", f"{A}/api/taste/import", {"viewer": kids_id, "text": "a;b\n1;2"})
     check("okänt format förklaras", s == 400, res)
     s, ti = call("GET", f"{A}/api/taste/item?type=vod&id=507")
-    check("biblioteket: tummar och sett per tittarläge", ti["available"] and len(ti["viewers"]) == 5
+    check("biblioteket: tummar och sett per tittarläge", ti["available"] and len(ti["viewers"]) == 6
           and any(x["seen"] for x in ti["viewers"]), ti)
     s, res = call("POST", f"{A}/api/rate", {"viewer": self_id, "type": "vod", "id": "501", "action": "seen"})
     s, n6 = call("GET", f"{D}/device/night?viewer={self_id}&limit=20", token=ta)
@@ -900,7 +902,7 @@ def film_night(ta, pa):
     s, res = call("POST", f"{A}/api/ai/run")
     done = wait_for(lambda: (call("GET", f"{A}/api/ai")[1].get("last_run") or {}).get("results"), timeout=30)
     s, ai = call("GET", f"{A}/api/ai")
-    check("AI-förslag räknas för alla tittarlägen", ai["last_run"]["ok"] and len(ai["last_run"]["results"]) == 8
+    check("AI-förslag räknas för alla tittarlägen", ai["last_run"]["ok"] and len(ai["last_run"]["results"]) == 10
           and "key" not in ai and ai["key_hint"] == "…-key", ai.get("last_run"))
     s, n7 = call("GET", f"{D}/device/night?viewer={adult_id}&limit=10", token=ta)
     check("AI-förslagen kommer först", n7["ai"] and n7["items"][0]["source"] == "ai"
@@ -1299,7 +1301,7 @@ def version_25(ta, tb, pa, pb):
     print("Version 2.5: profiler och Mina program")
     s, data = call("GET", f"{A}/api/profiles")
     profs = {p["name"]: p for p in data["profiles"]}
-    check("profiler: Själv, Tillsammans, Gäst och testprofilerna", list(profs) == ["Själv", "Tillsammans", "Gäst", "Testvuxen", "Testbarn"], list(profs))
+    check("profiler: Själv, Tillsammans, Gäst och testprofilerna", list(profs) == ["Själv", "Tillsammans", "Gäst", "Lovisa", "Testvuxen", "Testbarn"], list(profs))
     owner, child, guest = profs["Själv"]["id"], profs["Testbarn"]["id"], profs["Gäst"]["id"]
     check("bara ägaren får vuxenläget, Gäst är gäst", profs["Själv"]["allow_adult"] and not profs["Testbarn"]["allow_adult"]
           and profs["Gäst"]["guest"], profs)
@@ -1315,7 +1317,7 @@ def version_25(ta, tb, pa, pb):
     s, res = call("POST", f"{D}/device/profile-check", {"profile_id": mormor["id"], "pin": "2468"}, token=ta)
     check("rätt profil-PIN godtas", s == 200 and res["ok"], res)
     s, res = call("DELETE", f"{A}/api/profiles/{mormor['id']}")
-    check("ta bort profil", s == 200 and len(call("GET", f"{A}/api/profiles")[1]["profiles"]) == 5, res)
+    check("ta bort profil", s == 200 and len(call("GET", f"{A}/api/profiles")[1]["profiles"]) == 6, res)
     s, res = call("DELETE", f"{A}/api/profiles/{owner}")
     check("sista profilen med vuxenläge kan inte tas bort", s == 400, res)
 
@@ -1325,7 +1327,7 @@ def version_25(ta, tb, pa, pb):
     s, hh = call("GET", f"{D}/device/home", token=ta, profile=owner)
     check("favoriter är per profil", any(f["id"] == "102" for f in hi["favorites"]) and not any(f["id"] == "102" for f in hh["favorites"]),
           ([f["id"] for f in hi["favorites"]], [f["id"] for f in hh["favorites"]]))
-    check("hemdatan talar om vem som tittar", hi["active_profile"]["id"] == child and len(hi["profiles"]) == 5, hi["active_profile"])
+    check("hemdatan talar om vem som tittar", hi["active_profile"]["id"] == child and len(hi["profiles"]) == 6, hi["active_profile"])
     s, p = call("POST", f"{D}/device/play", {"type": "vod", "id": "508"}, token=ta, profile=child)
     call("POST", f"{D}/device/stop", {"session_id": p["session_id"], "metrics": {"position_ms": 700000, "duration_ms": 6000000}}, token=ta)
     s, hi = call("GET", f"{D}/device/home", token=ta, profile=child)
@@ -1450,7 +1452,7 @@ def version_26(ta, tb, pa, pb):
     urllib.request.urlopen(f"http://127.0.0.1:{FAKE_PORT}/__epg_calls").read()
     s, sp = call("GET", f"{A}/api/sports")
     names = [i["name"] for i in sp["interests"]]
-    check("intressena från början", names == ["Golf", "Ridsport", "Sverige, fotbollslandslagen"], names)
+    check("intressena från början", sorted(names) == sorted(["Golf", "Ridsport", "Sverige, fotbollslandslagen", "Världscupen i hoppning"]), names)
     # Lag läggs till av användaren (påhittade lag i testerna).
     call("POST", f"{A}/api/sports", {"name": "Stadens Delfiner", "kind": "team",
                                      "keywords": "stadens delfiner\ndelfiner + basket", "exclude": "miami\nnfl"})
@@ -2319,6 +2321,147 @@ def version_297(ta, tb, pa, pb):
     t = page.decode()
     check("2.9.7: webbadminen har graf, översikt och Visa som",
           all(x in t for x in ("pg-svg", "usage-body", "preview-body", "al-expiry", "data-act=\"archive\"")), None)
+
+
+def version_299(ta, tb, pa, pb):
+    """2.9.9: Världscupen (planering, historik, kontroll, knappar)."""
+    import sqlite3
+    import time as _t
+    print("Version 2.9.9: Världscupen")
+    s, wc = call("GET", f"{A}/api/worldcup")
+    check("2.9.9: webbadminen har 15 poster och kontroll", s == 200 and len(wc["legs"]) == 15 and wc["check"]["items"] and wc["next"], (s, list(wc)))
+    labels = {i["label"]: i for i in wc["check"]["items"]}
+    check("2.9.9: kontrollen hittar TV4 i Toucan-listan", labels["TV4"]["channels"], labels["TV4"])
+    s, r = call("POST", f"{A}/api/worldcup/result", {"leg": "stuttgart", "winner": "Testperson (SWE)", "horse": "Testhäst"})
+    check("2.9.9: resultat sparas", s == 200 and r["winner"] == "Testperson (SWE)", (s, r))
+    s, r = call("POST", f"{A}/api/worldcup/result", {"leg": "finnsinte", "winner": "x"})
+    check("2.9.9: okänd etapp nekas", s in (400, 404), (s, r))
+    s, r = call("POST", f"{A}/api/worldcup/scan", {})
+    check("2.9.9: programguiden kan läsas om härifrån", s == 200, (s, r))
+
+    # en sändning i programguiden för SVT1 (kanalen med arkiv)
+    now = int(_t.time())
+    db = sqlite3.connect(os.path.join(DATA_DIR, "tvhub.db"))
+    key = db.execute("SELECT epg_id, item_id FROM items WHERE type='live' AND name LIKE '%SVT1%' LIMIT 1").fetchone()
+    ekey = ((key[0] or "").strip().casefold() or f"ch:{key[1]}")
+    leg_start = _t.mktime((2026, 12, 20, 14, 0, 0, 0, 0, -1))
+    # läggs i etapp som pågår just nu i testet: vi flyttar inte tiden, utan använder en testrad nära nu på London-etappen om den passar,
+    # annars kontrolleras bara strukturen.
+    db.execute("INSERT OR REPLACE INTO epg (epg_key,start,end,title,title_norm,description) VALUES (?,?,?,?,?,?)",
+               (ekey, int(leg_start), int(leg_start) + 9000, "Världscupen i hoppning: London", "världscupen i hoppning: london", ""))
+    db.commit()
+    db.close()
+    s, w = call("GET", f"{D}/device/worldcup", token=ta)
+    check("2.9.9: boxen får planering", s == 200 and w["season"] == "2026/27" and len(w["legs"]) == 15, (s, list(w)))
+    london = [l for l in w["legs"] if l["id"] == "london"][0]
+    if london["events"] and london["events"][0]["record"]["action"] == "later":
+        check("2.9.9: längre än två veckor bort: ingen knapp utan förklaring", london["events"][0]["record"]["label"].startswith("Går att spela in") and london["events"][0]["record"]["body"] is None, london["events"][0])
+    elif london["events"]:
+        e = london["events"][0]
+        check("2.9.9: kommande sändning har Spela in-knapp med marginal", e["record"]["action"] == "record" and e["record"]["body"]["start"] == e["start"] - 120, e)
+        s, rec = call("POST", f"{D}/device/recordings", e["record"]["body"], token=ta)
+        check("2.9.9: Spela in skapar en inspelning", s in (200, 201), (s, rec))
+        s, w2 = call("GET", f"{D}/device/worldcup", token=ta)
+        e2 = [l for l in w2["legs"] if l["id"] == "london"][0]["events"][0]
+        check("2.9.9: inspelningen syns på sändningen", e2["recording"] and e2["recording"]["status"] == "scheduled", e2)
+    else:
+        check("2.9.9: London utan träff är en tom lista, inte ett fel", london["headline"].startswith("Ingen sändning"), london)
+    s, w = call("GET", f"{D}/device/worldcup", token=ta, mode="adult")
+    check("2.9.9: vuxenläget får ingen världscup", s == 200 and w["legs"] == [], (s, w))
+    s, r = call("PUT", f"{A}/api/worldcup/auto-record", {"device_id": 1})
+    check("2.9.9: automatisk inspelning på", s == 200 and r["record_device_id"] == 1, (s, r))
+    s, r = call("PUT", f"{A}/api/worldcup/auto-record", {"device_id": None})
+    check("2.9.9: och av", s == 200 and r["record_device_id"] is None, (s, r))
+    s, page = call("GET", f"{A}/", raw=True)
+    check("2.9.9: webbadminen har fliken Världscupen", all(x in page.decode() for x in ("tab-worldcup", "wc-legs", "wc-check")), None)
+
+
+def version_2910(ta, tb, pa, pb):
+    """2.10.0: Lovisas inbjudan, enhet låst till profil, prioritet."""
+    print("Version 2.10.0: Lovisa, låst profil, prioritet")
+    tokens = {pa["device_id"]: ta, pb["device_id"]: tb}
+
+    def stop_all():
+        s, ov = call("GET", f"{A}/api/overview")
+        for x in ov.get("sessions", []):
+            call("POST", f"{D}/device/stop", {"session_id": x["id"]}, token=tokens.get(x["device_id"]))
+
+    stop_all()
+    s, inv = call("GET", f"{A}/api/invite")
+    check("2.10: inbjudan finns med åttasiffrig kod", s == 200 and inv["valid"] and len(inv["code"]) == 8 and inv["uses_left"] == 3, inv)
+    s, profs = call("GET", f"{A}/api/profiles")
+    lov = [p for p in profs["profiles"] if p["name"] == "Lovisa"][0]
+    check("2.10: Lovisas profil finns utan vuxenläge", lov["allow_adult"] is False and lov["priority"] == 0, lov)
+    check("2.10: ägaren har högsta prioritet", [p for p in profs["profiles"] if p["name"] == "Själv"][0]["priority"] == 100, profs)
+    s, page = call("GET", f"{D}/hej", raw=True)
+    check("2.10: sidan för nedladdning visar adress och steg", s == 200 and b"Ladda ner TV Hub" in page and b"127.0.0.1" in page and inv["code"].encode() not in page, page[:200])
+
+    s, bad = call("POST", f"{D}/device/pair", {"code": "00000000", "name": "x"})
+    check("2.10: fel inbjudningskod nekas", s == 403, (s, bad))
+    s, pl = call("POST", f"{D}/device/pair", {"code": inv["code"], "name": "Lovisas telefon", "model": "Pixel"})
+    check("2.10: inbjudan ger en enhet", s == 200 and pl["token"], (s, pl))
+    tl = pl["token"]
+    tokens[pl["device_id"]] = tl
+    s, v = call("GET", f"{A}/api/invite")
+    check("2.10: en användning förbrukad", v["uses_left"] == 2 and v["code"] == inv["code"], v)
+    s, lst = call("GET", f"{D}/device/profiles", token=tl)
+    check("2.10: låst enhet ser bara sin profil", s == 200 and [p["name"] for p in lst["profiles"]] == ["Lovisa"] and lst.get("locked") is True, lst)
+    owner = [p for p in profs["profiles"] if p["name"] == "Själv"][0]["id"]
+    s, hi = call("GET", f"{D}/device/home", token=tl, profile=owner)
+    check("2.10: servern svarar som Lovisa trots begäran om ägarens profil", hi["active_profile"]["name"] == "Lovisa", hi.get("active_profile"))
+    s, ad = call("GET", f"{D}/device/home", token=tl, mode="adult", profile=owner)
+    check("2.10: inget vuxenläge", ad["mode"] == "normal", ad.get("mode"))
+    s, devs = call("GET", f"{A}/api/devices")
+    row = [d for d in (devs if isinstance(devs, list) else devs["devices"]) if d["name"] == "Lovisas telefon"][0]
+    check("2.10: enheten visas som låst och får fjärråtkomst", row["locked_profile"] == "Lovisa" and row["remote_allowed"] is True, row)
+
+    # prioritet: Henrik (ta, ägare) går före Lovisa
+    s, pa_play = call("POST", f"{D}/device/play", {"type": "live", "id": "102"}, token=tl)
+    check("2.10: Lovisa kan titta när ingen annan gör det", pa_play["status"] == "ok", pa_play)
+    s, mine = call("POST", f"{D}/device/play", {"type": "live", "id": "101"}, token=ta, profile=owner)
+    ok = mine["status"] in ("ok", "waiting")
+    check("2.10: ägaren tar över direkt, utan fråga", ok and mine["status"] != "conflict", mine)
+    s, hb = call("POST", f"{D}/device/heartbeat", {"session_id": pa_play["session_id"], "metrics": {}}, token=tl)
+    check("2.10: Lovisas ström stoppas med förklaring", hb["stop"] is True and "går före" in (hb.get("message") or ""), hb)
+    call("POST", f"{D}/device/stop", {"session_id": pa_play["session_id"]}, token=tl)  # appen stoppar efter beskedet
+    for _ in range(12):
+        if mine["status"] == "ok":
+            break
+        time.sleep(1.1)
+        s, mine = call("POST", f"{D}/device/play", {"type": "live", "id": "101"}, token=ta, profile=owner)
+    check("2.10: ägarens ström startar", mine["status"] == "ok", mine)
+    s, blocked = call("POST", f"{D}/device/play", {"type": "live", "id": "102"}, token=tl)
+    check("2.10: Lovisa kan inte ta över", blocked["status"] == "error" and "går före" in blocked["error"], blocked)
+    s, blocked2 = call("POST", f"{D}/device/play", {"type": "live", "id": "102", "force": True}, token=tl)
+    check("2.10: inte ens med tvång", blocked2["status"] == "error", blocked2)
+    stop_all()
+    s, free = call("POST", f"{D}/device/play", {"type": "live", "id": "102"}, token=tl)
+    check("2.10: när ägaren slutat kan Lovisa titta igen", free["status"] == "ok", free)
+    stop_all()
+
+    # låsa en vanlig box och ta bort låset
+    s, r = call("PUT", f"{A}/api/devices/{pb_id(pb)}", {"locked_profile_id": lov["id"]})
+    s, lst = call("GET", f"{D}/device/profiles", token=tb)
+    check("2.10: vilken box som helst kan låsas till en profil", [p["name"] for p in lst["profiles"]] == ["Lovisa"], lst)
+    s, r = call("PUT", f"{A}/api/devices/{pb_id(pb)}", {"locked_profile_id": None})
+    s, lst = call("GET", f"{D}/device/profiles", token=tb)
+    check("2.10: låset kan tas bort", len(lst["profiles"]) >= 5 and not lst.get("locked"), lst)
+
+    # inbjudan tar slut och skapas om
+    for _ in range(2):
+        call("POST", f"{D}/device/pair", {"code": inv["code"], "name": "extra"})
+    s, none = call("POST", f"{D}/device/pair", {"code": inv["code"], "name": "fyra"})
+    check("2.10: koden gäller bara tre gånger", s == 403, (s, none))
+    s, v = call("GET", f"{A}/api/invite")
+    check("2.10: tom inbjudan visas som ogiltig tills en ny skapas", v["valid"] is False and v["code"] is None, v)
+    s, v = call("POST", f"{A}/api/invite/new", {})
+    check("2.10: ny kod kan skapas", v["valid"] and v["code"] != inv["code"] and v["uses_left"] == 3, v)
+    s, page = call("GET", f"{A}/", raw=True)
+    check("2.10: webbadminen har inbjudan och lås", all(x in page.decode() for x in ("invite-code", "lock_profile")), None)
+
+
+def pb_id(pb):
+    return pb["device_id"]
 
 
 if __name__ == "__main__":

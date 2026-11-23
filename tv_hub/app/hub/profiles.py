@@ -27,6 +27,7 @@ def _row(r):
         "has_pin": bool(r["pin_hash"]) if "pin_hash" in keys else False,
         "allow_adult": bool(r["allow_adult"]) if "allow_adult" in keys else False,
         "guest": bool(r["guest"]) if "guest" in keys else False,
+        "priority": int(r["priority"] or 0) if "priority" in keys else 0,
     }
 
 
@@ -49,9 +50,13 @@ def owner_id():
 
 def resolve(value, device=None):
     """Profilen för ett anrop: X-TVHub-Profile, annars boxens standardprofil, annars ägaren."""
+    keys = device.keys() if device is not None and hasattr(device, "keys") else []
+    if "locked_profile_id" in keys and device["locked_profile_id"]:
+        locked = get(device["locked_profile_id"])  # låst enhet: alltid den profilen, vad appen än skickar
+        if locked:
+            return locked
     p = get(value) if value not in (None, "") else None
     if p is None and device is not None:
-        keys = device.keys() if hasattr(device, "keys") else []
         if "default_profile_id" in keys and device["default_profile_id"]:
             p = get(device["default_profile_id"])
     return p or get(owner_id()) or {"id": 0, "name": "", "allow_adult": True, "guest": False, "has_pin": False}
@@ -99,6 +104,8 @@ def update(profile_id, data):
         set_pin(current["id"], data.get("pin"))
     if "position" in data:
         db.x("UPDATE viewers SET position = ? WHERE id = ?", (int(data["position"]), current["id"]))
+    if "priority" in data:
+        db.x("UPDATE viewers SET priority = ? WHERE id = ?", (max(0, min(1000, int(data["priority"]))), current["id"]))
     return get(current["id"])
 
 

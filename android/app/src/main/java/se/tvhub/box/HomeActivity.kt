@@ -47,7 +47,7 @@ class HomeActivity : Activity(), CardListener {
     private data class Nav(val key: String, val label: String, val icon: Int)
 
     /** Menyval som öppnar en egen skärm i stället för en sida. */
-    private val ACTIVITY_NAVS = setOf("settings", "night", "tvguide")
+    private val ACTIVITY_NAVS = setOf("settings", "night", "tvguide", "worldcup")
 
     private val navs = listOf(
         Nav("home", "Hem", R.drawable.ic_m_home),
@@ -55,6 +55,7 @@ class HomeActivity : Activity(), CardListener {
         Nav("search", "Sök", R.drawable.ic_m_search),
         Nav("favorites", "Favoriter", R.drawable.ic_m_star),
         Nav("sport", "Sport", R.drawable.ic_m_sport),
+        Nav("worldcup", "Världscupen", R.drawable.ic_m_worldcup),
         Nav("live", "Live-TV", R.drawable.ic_m_live),
         Nav("tvguide", "TV-guide", R.drawable.ic_m_guide),
         Nav("vod", "Filmer", R.drawable.ic_m_movie),
@@ -354,6 +355,10 @@ class HomeActivity : Activity(), CardListener {
         }
         if (key == "night") {
             FilmNightActivity.start(this)
+            return
+        }
+        if (key == "worldcup") {
+            WorldCupActivity.start(this)
             return
         }
         if (key == "tvguide") {

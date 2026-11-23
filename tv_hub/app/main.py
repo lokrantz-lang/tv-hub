@@ -3,7 +3,7 @@
 import signal
 import threading
 
-from hub import VERSION, hotfix, ai, alerts, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, recordings, reminders, sports, sportsets, taste
+from hub import VERSION, hotfix, ai, alerts, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, recordings, reminders, sports, sportsets, taste, worldcup, family
 from hub.config import CFG
 from hub.server import start_servers
 
@@ -18,6 +18,9 @@ def housekeeping(stop_event):
             myprograms.convert_to_recent()
             myprograms.ensure_defaults()
             sportsets.ensure_keywords()
+            worldcup.ensure_interest()
+            family.ensure()
+            worldcup.remember_all()
         except Exception as exc:
             print(f"[fel] städning: {exc}", flush=True)
         stop_event.wait(600)
