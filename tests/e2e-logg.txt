@@ -70,7 +70,7 @@ Diagnostik
   ok   sammanfattning för Home Assistant
 Version 1.2: metadata, sortering och filter
 ----------------------------------------
-Exception occurred during processing of request from ('127.0.0.1', 45636)
+Exception occurred during processing of request from ('127.0.0.1', 56252)
 Traceback (most recent call last):
   File "/usr/local/lib/python3.13/socketserver.py", line 697, in process_request_thread
     self.finish_request(request, client_address)
@@ -702,6 +702,8 @@ Version 2.13.0: webbappen
   ok   2.13: laptopen ser inspelningar på alla boxar
   ok   2.16.1: planerad inspelning på en annan box kan avbokas
   ok   2.16.1: avbokning av något som inte finns ger fel
+  ok   2.17: hallplattan kan skicka en sändning ur arkivet till TV:n
+  ok   2.17: boxen får arkivkommandot med start och längd
   ok   2.13: inspelning på laptopen själv nekas
 Version 2.14.0: bilder och guidefil
   ok   2.14: omslag hämtas via TV Hub

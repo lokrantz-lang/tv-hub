@@ -1,5 +1,14 @@
 # Ändringar
 
+## 2.17.0
+
+- **Hallplattan (webbappen med `?wall=1`):** knappen *Tillbaka till Smart* överst (till Smarts plattläge på samma värd, port 8101),
+  större knappar och text för fingrar på 1280 × 800, och tillbaka till Smart efter 5 minuter utan beröring (inte medan något
+  spelas på plattan). Ingen ny app krävs.
+- **Spela på TV:n först:** på plattan frågar allt som spelas *Spela på …* (vardagsrummets box överst) eller *Spela här på plattan*.
+  Även sändningar ur arkivet (till exempel världscupen i efterhand) kan nu skickas till en box.
+- Lägg till länken `http://<Home Assistants IP>:8099/web?wall=1` i Smart. Logga in plattan en gång med en kod (namnet blir *Hallplatta*).
+
 ## 2.16.1
 
 - **Världscupen i appen:** rubriken ligger kvar överst när du rullar. Etapperna följer på varandra (den aktuella, sedan alla kommande,

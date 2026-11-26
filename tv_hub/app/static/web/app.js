@@ -10,6 +10,10 @@ const store = {
   get profile() { try { return localStorage.getItem("tvhub_profile") || ""; } catch { return ""; } },
   set profile(v) { try { localStorage.setItem("tvhub_profile", String(v)); } catch {} },
 };
+// Hallplattan: ?wall=1 (från Smart). Tillbaka-knapp, stora knappar, Spela på TV:n först och återgång till Smart.
+const WALL = new URLSearchParams(location.search).get("wall") === "1";
+const SMART_URL = `http://${location.hostname}:8101/?wall=1`;
+const WALL_IDLE_MS = 5 * 60 * 1000;
 let HOME = null;
 let PROFILE = null;
 let PAGE = "home";
@@ -66,6 +70,24 @@ $("lg-go").addEventListener("click", login);
 $("lg-code").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
 
 // ------------------------------------------------------------------ start, profil, navigering
+function setupWall() {
+  if (!WALL || setupWall.done) return;
+  setupWall.done = true;
+  document.body.classList.add("wall");
+  const back = document.createElement("a");
+  back.className = "btn back-smart"; back.href = SMART_URL; back.textContent = "◀ Tillbaka till Smart";
+  document.querySelector(".top").prepend(back);
+  const loginBack = back.cloneNode(true); loginBack.style.marginTop = "6px";
+  document.querySelector(".login-box").append(loginBack);
+  $("lg-name").value = "Hallplatta";
+  // Ingen rör skärmen på fem minuter och inget spelas här: tillbaka till Smart.
+  let timer;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => { if (!P.session) location.href = SMART_URL; else arm(); }, WALL_IDLE_MS); };
+  ["pointerdown", "keydown", "wheel", "touchstart", "scroll"].forEach((ev) => window.addEventListener(ev, arm, { passive: true, capture: true }));
+  arm();
+}
+setupWall();
+
 async function start() {
   if (!store.token) return showLogin();
   $("login").classList.add("hidden"); $("app").classList.remove("hidden");
@@ -553,7 +575,31 @@ $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) close
 // ------------------------------------------------------------------ spelaren
 const P = { session: null, hb: null, ts: null, req: null, idle: null };
 
+/** Hallplattan: välj TV (huvudval) eller spela här. Annars spelas det direkt här. */
 async function play(req, title, sub = "", resumeMs = 0, force = false) {
+  if (!req) return;
+  if (WALL && !force) return chooseWhere(req, title, sub, resumeMs);
+  return playHere(req, title, sub, resumeMs, force);
+}
+
+async function chooseWhere(req, title, sub, resumeMs) {
+  let boxes = [];
+  try { boxes = (await api("/device/boxes")).filter((b) => b.online); } catch (_) {}
+  // Vardagsrummets box först.
+  boxes.sort((a, b) => (/(z10|vardagsrum)/i.test(b.name) ? 1 : 0) - (/(z10|vardagsrum)/i.test(a.name) ? 1 : 0));
+  modal(`<div style="padding:26px"><h2 style="margin-top:0">${esc(title || req.name || "")}</h2>${sub ? `<p class="muted" style="margin-top:-6px">${esc(sub)}</p>` : ""}
+    <div class="where">${boxes.map((b, i) => `<button class="btn ${i === 0 ? "primary" : ""} big" data-b="${i}">📺 Spela på ${esc(b.name)}</button>`).join("")}
+    ${boxes.length ? "" : '<p class="muted">Ingen TV-box är på just nu.</p>'}
+    <button class="btn big" id="w-here">▶ Spela här på plattan</button><button class="btn" onclick="closeModal()">Avbryt</button></div></div>`);
+  $("modal-box").querySelectorAll("[data-b]").forEach((el) => el.onclick = async () => {
+    const b = boxes[+el.dataset.b];
+    const body = { device_id: b.id, type: req.type, id: req.id, name: req.name, series_id: req.series_id, start: req.start, duration: req.duration };
+    try { await api("/device/send", { method: "POST", body }); closeModal(); toast(`📺 Startar på ${b.name}`); } catch (e) { fail(e); }
+  });
+  $("w-here").onclick = () => { closeModal(); playHere(req, title, sub, resumeMs, false); };
+}
+
+async function playHere(req, title, sub = "", resumeMs = 0, force = false) {
   if (!req) return;
   await stopPlayback("replaced");
   $("player").classList.remove("hidden");
@@ -570,7 +616,7 @@ async function play(req, title, sub = "", resumeMs = 0, force = false) {
   }
   if (res.status === "conflict") {
     return msg(`${esc(res.message)}<div class="acts" style="justify-content:center"><button class="btn primary" id="pl-take">Ta över</button><button class="btn" id="pl-no">Avbryt</button></div>`, false, () => {
-      $("pl-take").onclick = () => play(req, title, sub, resumeMs, true);
+      $("pl-take").onclick = () => playHere(req, title, sub, resumeMs, true);
       $("pl-no").onclick = closePlayer;
     });
   }
@@ -606,7 +652,7 @@ function checkAudio(v) {
 function onPlayError(detail) {
   msg(`Webbläsaren kunde inte spela det här.<div class="small muted">Vissa kanaler använder format som webbläsaren inte kan spela (till exempel HEVC eller AC3-ljud). Det fungerar på TV-boxen.</div>
     <div class="small muted">(${esc(detail)})</div><div class="acts" style="justify-content:center"><button class="btn" id="pl-retry">Försök igen</button><button class="btn" id="pl-c2">Stäng</button></div>`, false, () => {
-    $("pl-retry").onclick = () => { const r = P.req; play(r.req, r.title, r.sub, r.resumeMs); };
+    $("pl-retry").onclick = () => { const r = P.req; playHere(r.req, r.title, r.sub, r.resumeMs); };
     $("pl-c2").onclick = closePlayer;
   });
 }

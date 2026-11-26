@@ -458,3 +458,10 @@ Smart (8443) och Fix & peng (10000) använder de andra Funnel-portarna. Kontroll
 4. Öppna `http://homeassistant:8099/web` (eller Home Assistants Tailscale-adress, `100.x.x.x`).
 
 ExpressVPN och liknande tjänster ger inte åtkomst hem och behövs inte.
+
+## Hallplattan (plattläge)
+
+Öppna `http://<Home Assistants IP>:8099/web?wall=1` från Smart (eller en annan kiosk). Logga in en gång med en kod. Plattläget har
+knappen *Tillbaka till Smart* (samma värd, port 8101), stora knappar, och går tillbaka till Smart efter 5 minuter utan beröring.
+Allt som spelas frågar först om det ska spelas på en TV-box som är på, eller här på plattan. Använder kiosken en lista med tillåtna
+adresser måste port 8099 läggas till där.

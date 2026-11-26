@@ -109,3 +109,24 @@ h1 { font-size:28px; margin:6px 0 16px; } h2 { font-size:18px; margin:26px 0 10p
   .side nav a i { width:auto; font-size:18px; }
   main { padding-bottom:72px; }
   .player, .modal, .toast { z-index:40; } .split { grid-template-columns:1fr; } .cats { position:static; max-height:200px; } .page { padding:4px 14px 60px; } .top { padding:12px 14px; } }
+
+/* ---------- Hallplattan (?wall=1), 1280 × 800 och fingrar ---------- */
+.back-smart { white-space:nowrap; background:var(--accent); color:#fff; }
+.back-smart:hover { background:#4a8ff8; }
+.where { display:flex; flex-direction:column; gap:10px; margin-top:16px; }
+.btn.big { padding:16px 20px; font-size:18px; text-align:left; }
+body.wall { font-size:17px; }
+body.wall .side { width:190px; padding:16px 10px; }
+body.wall .side nav a { padding:14px 12px; font-size:17px; }
+body.wall .top { padding:12px 22px; }
+body.wall .search input { padding:14px 16px; font-size:17px; }
+body.wall .page { padding:4px 22px 40px; }
+body.wall h1 { font-size:26px; margin:4px 0 12px; }
+body.wall .btn { padding:12px 18px; font-size:16px; }
+body.wall .btn.small { padding:10px 14px; font-size:15px; }
+body.wall .card { width:170px; }
+body.wall .card.ch { width:280px; }
+body.wall .chrow { padding:12px 14px; }
+body.wall .chip { padding:10px 18px; font-size:15px; }
+body.wall .tile { width:190px; padding:14px; }
+body.wall .modal-box { width:min(760px, 100%); }

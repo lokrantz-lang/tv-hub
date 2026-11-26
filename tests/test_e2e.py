@@ -2549,6 +2549,12 @@ def version_2130(ta, tb, pa, pb):
     check("2.16.1: planerad inspelning på en annan box kan avbokas", s == 200 and not any(x["id"] == wid for x in lst2), (s, r))
     s, r = call("DELETE", f"{D}/device/recordings/{wid}", token=tw)
     check("2.16.1: avbokning av något som inte finns ger fel", s == 404, s)
+    s, r = call("POST", f"{D}/device/send", {"device_id": pa["device_id"], "type": "catchup", "id": cid, "name": "Arkivtest",
+                                             "start": now - 7200, "duration": 60}, token=tw)
+    check("2.17: hallplattan kan skicka en sändning ur arkivet till TV:n", s == 200 and r.get("ok"), (s, r))
+    s, cmds = call("GET", f"{D}/device/commands?wait=0", token=ta)
+    got = [c for c in cmds.get("commands", []) if c.get("type") == "catchup"]
+    check("2.17: boxen får arkivkommandot med start och längd", got and got[0]["catchup_start"] == now - 7200 and got[0]["catchup_minutes"] == 60, cmds)
     s, rec = call("POST", f"{D}/device/recordings", {"stream_id": cid, "title": "Webbtest", "start": now + 3600, "end": now + 7200,
                                                    "box_id": pa["device_id"]}, token=tw)
     s, bad = call("POST", f"{D}/device/recordings", {"stream_id": cid, "title": "x", "start": now + 3600, "end": now + 7200,

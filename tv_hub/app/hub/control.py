@@ -235,6 +235,17 @@ def send_item(device_id, data):
         command = resolve("vod" if kind == "vod" else "channel", {f"{'vod' if kind == 'vod' else 'channel'}_id": item_id})
         if not command.get("id"):
             raise LookupError("Finns inte.")
+    elif kind == "catchup":
+        # Ur kanalens arkiv (till exempel en världscupssändning i efterhand), från webbappen eller hallplattan.
+        channel = catalog.get_item("live", item_id)
+        if channel is None or not catalog.in_scope("live", item_id, NORMAL):
+            raise LookupError("Kanalen finns inte.")
+        try:
+            start, minutes = int(data.get("start")), int(data.get("duration"))
+        except (TypeError, ValueError):
+            raise ValueError("Starttid och längd krävs.")
+        command = {"action": "play", "type": "catchup", "id": item_id, "name": str(data.get("name") or channel["name"])[:120],
+                   "catchup_start": start, "catchup_minutes": max(1, min(minutes, 360)), "icon": channel.get("icon")}
     else:
         raise ValueError("Kan inte skickas till en box.")
     if not db.q1("SELECT 1 FROM devices WHERE id = ? AND model != 'integration'", (int(device_id),)):
