@@ -1,5 +1,11 @@
 # Ändringar
 
+## 2.15.1
+
+- **Webbadminen, Sport:** under genomsökningen av programguiden laddades hela fliken om var fjärde sekund, så sidan hoppade och
+  öppna kort och formulär började om. Nu uppdateras bara statusraderna. När genomsökningen är klar laddas siffrorna om, men bara
+  om inget kort är öppet; annars står det *Klar – tryck ↻ för nya siffror*.
+
 ## 2.15.0
 
 - **Golf och ridsport i Toucans guidefil:** alla golf- och hästkanaler med guide-id fylls från guidefilen, även de som inte ingår i

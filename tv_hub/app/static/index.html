@@ -1560,12 +1560,28 @@ function evList(list, empty) {
   return `<ul class="ev-list">${list.map((e) => `<li><span class="t">${e.state === "now" ? '<span class="pill live">nu</span>' : esc(fmtTs(e.start))}</span>
     <span class="grow">${esc(e.title)} <span class="muted">· ${esc(e.channel)}${e.also && e.also.length ? " (även " + esc(e.also.join(", ")) + ")" : ""}</span></span></li>`).join("")}</ul>`;
 }
-function renderSports() {
+/* Under genomsökningen uppdateras bara statusraderna, aldrig listan, de öppna korten eller formulären. */
+let spPollTimer = null;
+function spPoll() {
+  clearTimeout(spPollTimer);
+  spPollTimer = setTimeout(async () => {
+    if (current !== "sports") return;
+    let r; try { r = await api("sports/status"); } catch (_) { return spPoll(); }
+    sp.data.status = r.status; sp.data.xmltv = r.xmltv;
+    renderSportStatus();
+    if (r.status.running) return spPoll();
+    // Klar: ladda om siffrorna bara om inget kort är öppet och inget fält används.
+    const busy = sp.open.size || (document.activeElement && document.activeElement.closest && document.activeElement.closest("#tab-sports input, #tab-sports textarea, #tab-sports select"));
+    if (!busy) loaders.sports();
+    else $("sp-status").insertAdjacentHTML("beforeend", ' <span class="pill accent">Klar – tryck ↻ för nya siffror</span>');
+  }, 4000);
+}
+function renderSportStatus() {
   const d = sp.data; const st = d.status;
   $("sp-status").innerHTML = st.running ? `Söker igenom programguiden: ${st.done} av ${st.total} kanaler…`
     : st.last_scan ? `Senast ${fmtAgo(new Date(st.last_scan * 1000).toISOString())}: ${st.channels} kanaler, ${st.programs.toLocaleString("sv-SE")} program${st.errors ? `, ${st.errors} kanaler gick inte att hämta` : ""}. Var ${st.interval_h}:e timme.`
     : "Programguiden har inte hämtats än. Den hämtas en stund efter start, eller med Sök igenom nu.";
-  if (st.running) setTimeout(() => current === "sports" && loaders.sports(), 4000);
+  if (st.running) spPoll();
   const xt = d.xmltv;
   $("sp-xmltv-body").innerHTML = !xt ? '<span class="pill warn">Ännu inte hämtad</span> Den hämtas efter nästa genomsökning, eller med knappen.'
     : !xt.ok ? `<span class="pill bad">Fel</span> ${esc(xt.error || "")}`
@@ -1574,6 +1590,10 @@ function renderSports() {
        ${Object.keys(xt.examples || {}).length ? `<div class="muted" style="margin-top:4px">${Object.entries(xt.examples).slice(0, 12).map(([k, v]) => `${esc(k)} (${v})`).join(", ")}</div>` : ""}
        ${(xt.sport || []).length ? `<details style="margin-top:6px" open><summary><b>Golf och ridsport: finns de i filen?</b> ${xt.sport.filter((c) => c.programs).length} av ${xt.sport.length} har program</summary>
          ${xt.sport.map((c) => `<div><span class="pill ${c.programs ? "ok" : c.in_file ? "warn" : ""}">${c.programs ? c.programs + " program" : c.in_file ? "i filen, inga program" : "finns inte i filen"}</span> ${esc(c.name)} <span class="muted">· ${esc(c.set)}</span></div>`).join("")}</details>` : ""}`;
+}
+function renderSports() {
+  const d = sp.data;
+  renderSportStatus();
   const boxOpts = (sel) => '<option value="">Nej</option>' + d.boxes.map((b) => `<option value="${b.id}" ${b.id === sel ? "selected" : ""}>Ja, på ${esc(b.name)}</option>`).join("");
   $("sp-list").innerHTML = d.interests.map((i) => {
     const c = i.counts || {};

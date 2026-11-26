@@ -1637,6 +1637,12 @@ def admin_sport_settings(h):
     return 200, out
 
 
+@route(ADMIN, "GET", r"/api/sports/status")
+def admin_sports_status(h):
+    """Lätt anrop för webbadminen medan genomsökningen pågår (bara statusen, inte hela listan)."""
+    return 200, {"status": sports.status(), "xmltv": xmltvguide.status()}
+
+
 @route(ADMIN, "GET", r"/api/sports/xmltv")
 def admin_xmltv(h):
     return 200, {"status": xmltvguide.status()}

@@ -2559,6 +2559,10 @@ def version_2140(ta, tb, pa, pb):
     check("2.14: okänd bildvärd nekas", s == 400, s)
     s, sp = call("GET", f"{A}/api/sports")
     check("2.14: webbadminen visar guidefilens status", s == 200 and "xmltv" in sp, list(sp))
+    s, ss = call("GET", f"{A}/api/sports/status")
+    check("2.15.1: lätt statusanrop under genomsökningen", s == 200 and "running" in ss["status"] and "xmltv" in ss, ss)
+    page = call("GET", f"{A}/", raw=True)[1].decode()
+    check("2.15.1: Sport-fliken laddar inte om listan under genomsökningen", "spPoll()" in page and "setTimeout(() => current === \"sports\" && loaders.sports(), 4000)" not in page)
     s, r = call("POST", f"{A}/api/sports/xmltv", {})
     check("2.14: guidefilen kan hämtas med knappen", s == 200 and r.get("started"), (s, r))
     def done():
