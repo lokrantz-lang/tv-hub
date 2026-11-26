@@ -270,13 +270,13 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
   <section class="tabpanel" id="tab-overview">
     <div class="panel"><div id="verdict" class="verdict"><span class="lvl"></span><div><div class="big">Hämtar status…</div></div></div></div>
     <div class="panel" style="margin-top:16px" id="invite-card">
-      <div class="hd"><h2>Bjud in Lovisa</h2><button class="btn" id="invite-new">Ny kod</button></div>
+      <div class="hd"><h2>Bjud in <span id="invite-name">…</span></h2><button class="btn" id="invite-new">Ny kod</button></div>
       <div class="bd">
-        <p style="margin:0 0 6px">Hennes kod: <b class="mono" style="font-size:22px;letter-spacing:2px" id="invite-code">…</b>
+        <p style="margin:0 0 6px">Kod: <b class="mono" style="font-size:22px;letter-spacing:2px" id="invite-code">…</b>
           <span class="small muted" id="invite-info"></span></p>
-        <p class="small muted" style="margin:0">Skicka henne en länk: <span class="mono">http://&lt;Home Assistants IP&gt;:8099/hej</span> (ladda ner appen) och koden.
-          Hon ser då bara sin egen profil, och du går före när bara en ström är ledig. Koden gäller ett dygn och för <b>en</b> enhet.
-          Tryck <b>Ny kod</b> varje gång hon ska logga in på något nytt (telefon, dator). Du får en notis när en ny enhet loggar in.</p>
+        <p class="small muted" style="margin:0">Skicka en länk: <span class="mono">http://&lt;Home Assistants IP&gt;:8099/hej</span> (ladda ner appen) och koden.
+          Den inbjudna ser då bara sin egen profil, och du går före när bara en ström är ledig. Koden gäller ett dygn och för <b>en</b> enhet.
+          Tryck <b>Ny kod</b> varje gång en ny enhet (telefon, dator) ska loggas in. Du får en notis när en ny enhet loggar in.</p>
       </div>
     </div>
     <div class="grid2" style="margin-top:16px">
@@ -1014,6 +1014,7 @@ let groupList = [];
 async function loadInvite() {
   try {
     const v = await api("invite");
+    $("invite-name").textContent = v.name || "Inbjuden";
     $("invite-code").textContent = v.code ? v.code.replace(/(\d{4})(\d{4})/, "$1 $2") : "(ny kod behövs)";
     $("invite-info").textContent = v.valid ? ` · gäller till ${new Date(v.expires * 1000).toLocaleString("sv-SE", { weekday: "short", hour: "2-digit", minute: "2-digit" })}, en enhet` : " · förbrukad eller utgången: tryck Ny kod";
   } catch (_) { $("invite-card").hidden = true; }

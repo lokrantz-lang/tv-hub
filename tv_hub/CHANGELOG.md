@@ -1,10 +1,16 @@
 # Ändringar
 
+## 2.14.2
+
+- **Inga personuppgifter i det publika förrådet:** namn och Funnel-adressen är borttagna ur koden, dokumentationen och
+  ändringsloggen. Den inbjudnas profil hittas nu via sitt id i stället för namnet. En befintlig profil behålls och kan döpas om
+  under Profiler, och nya installationer får profilen *Inbjuden*. Webbadminens kort heter *Bjud in* plus profilens namn.
+
 ## 2.14.1
 
 - **Säkerhet (viktigt med Funnel):** spärren mot gissning av koder kontrollerades först efter att koden prövats, så den stoppade
   inte en dator som gissar snabbt. Nu kontrolleras den före: efter tio fel stängs inloggningen i 15 minuter och ingen kod prövas,
-  inte ens en rätt. Lovisas inbjudan gäller ett dygn och en enhet (tryck *Ny kod* för nästa). Du får en notis när en ny enhet loggar in.
+  inte ens en rätt. Inbjudningskoden gäller ett dygn och en enhet (tryck *Ny kod* för nästa). Du får en notis när en ny enhet loggar in.
 
 ## 2.14.0
 
@@ -17,13 +23,13 @@
   ovanför. Vänster från första kortet tar tillbaka tangentbordet. *Rensa sökningen* ligger överst på tangentbordet.
 - **Världscupen:** gamla Global Champions Tour-rader under *Sågs i guiden* rensas bort.
 - **Webbappen via https (Tailscale Funnel):** omslag och kanallogor hämtas via TV Hub, eftersom webbläsaren stoppar bilder på http.
-- Webbappen nås utifrån på `https://homeassistant.tail1d54b1.ts.net/web` (Funnel på port 443 till TV Hubs port 8099).
+- Webbappen kan nås utifrån med Tailscale Funnel (port 443 till TV Hubs port 8099).
 
 ## 2.13.0
 
 - **TV Hub i webbläsaren (laptopen):** öppna `http://<Home Assistants adress>:8099/web` och logga in med en kod (samma som när en
-  box paras, eller Lovisas inbjudningskod). Hem, Live-TV med programguide, Filmer, Serier, Sport, Världscupen, Sök och Inspelningar,
-  med profiler. Lovisas dator låses till hennes profil som telefonen.
+  box paras, eller en inbjudningskod). Hem, Live-TV med programguide, Filmer, Serier, Sport, Världscupen, Sök och Inspelningar,
+  med profiler. En inbjuden dator låses till sin profil, precis som en telefon.
 - **Uppspelning i webbläsaren** via tillägget (`/web/stream/…`): webbläsaren får aldrig Toucans adress eller inloggning. Samma regler
   som boxarna: en ström åt gången, ta över, prioritet. Kanaler med AC3-ljud eller HEVC-bild kan sakna ljud eller bild i Chrome och
   Edge; då visas det, och *Spela på TV:n* finns på filmer.
@@ -80,13 +86,13 @@
 - Innehåll från 2.10.0 ingår.
 ## 2.10.0
 
-- **Lovisa (kräver ny app för inloggningen):** profilen *Lovisa* skapas automatiskt (ingen vuxenläge, ser allt i vanligt läge). På **Översikt**
-  finns kortet *Bjud in Lovisa* med en åttasiffrig kod (gäller i 14 dagar, tre användningar, skapas om automatiskt). Hon öppnar
+- **Inbjudan (kräver ny app för inloggningen):** en profil för den inbjudna skapas automatiskt (ingen vuxenläge, ser allt i vanligt läge). På **Översikt**
+  finns kortet *Bjud in* med en åttasiffrig kod (gäller i 14 dagar, tre användningar, skapas om automatiskt). Den inbjudna öppnar
   `http://<Home Assistants IP>:8099/hej` på telefonen, trycker *Ladda ner TV Hub*, installerar, anger adressen och koden. Klart.
-  Hennes enhet är **låst till hennes profil**: den ser bara Lovisa och servern svarar som Lovisa vad appen än skickar. Enheten får också
+  Enheten är **låst till sin profil**: den ser bara den profilen och servern svarar som den vad appen än skickar. Enheten får också
   använda telefonen utanför hemmet (Nabu Casa) om det är inställt under Boxar.
-- **Du går före:** Toucan tillåter bara en ström. Börjar du titta medan Lovisa tittar stoppas hennes ström direkt med texten
-  "Henrik började titta och går före." Hon kan inte ta över när du tittar, inte ens med tvång. Det gäller bara enheter som är låsta till en
+- **Du går före:** Toucan tillåter bara en ström. Börjar du titta medan den inbjudna tittar stoppas den strömmen direkt med texten
+  "<ditt namn> började titta och går före." Den låsta enheten kan inte ta över när du tittar, inte ens med tvång. Det gäller bara enheter som är låsta till en
   profil; mellan vanliga boxar är det som förut (frågan "tittar redan, ta över?"). Prioriteten sitter på profilen (ägaren 100, andra 0).
 - **Lås en box till en profil** (Boxar → *Låst till profil*) för vilken enhet som helst.
 - Appens kodruta tar nu sex eller åtta siffror.

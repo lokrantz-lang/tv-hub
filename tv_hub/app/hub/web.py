@@ -2,7 +2,7 @@
 
 Webbläsaren får aldrig portalens adress, användarnamn eller lösenord. Den spelar /web/stream/<session_id>, och
 tillägget hämtar strömmen från Toucan och skickar vidare bytes. Sessionen räknas som vanligt (en ström åt
-gången, prioritet, Lovisas låsta profil). session_id är slumpat (96 bitar) och gäller bara medan sessionen pågår.
+gången, prioritet, låsta profiler). session_id är slumpat (96 bitar) och gäller bara medan sessionen pågår.
 """
 import re
 import urllib.error

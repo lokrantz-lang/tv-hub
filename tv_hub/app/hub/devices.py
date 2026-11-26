@@ -61,7 +61,7 @@ def pair(code, name, model, app_version, ip):
         invite = family.take_invite(code)
         if invite is not None:
             # Inbjudan: enheten låses till profilen och får använda telefonen utanför hemmet.
-            who = invite["name"]
+            who = invite.get("name") or family.person_name()
             device_id = db.x(
                 """INSERT INTO devices (name, model, app_version, token_hash, created, last_seen, last_ip,
                                         locked_profile_id, default_profile_id, remote_allowed)
@@ -515,7 +515,7 @@ def _request_play(device, kind, item_id, ext=None, force=False, exclude_portals=
     if others:
         now_s = time.time()
         pending = [o for o in others if o["stop_requested"]]
-        # Prioritet: den som har högre prioritet (t.ex. Henrik) går före. Lägre prioritet kan inte ta över,
+        # Prioritet: den som har högre prioritet (t.ex. ägaren) går före. Lägre prioritet kan inte ta över,
         # och högre prioritet tar över direkt (den andra får veta varför).
         mine = family.priority_for(device["id"], viewer_id or getattr(scope, "profile_id", None))
         theirs = [family.priority_for(o["device_id"], o["viewer_id"]) for o in others]

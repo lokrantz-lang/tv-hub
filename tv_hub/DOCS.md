@@ -390,23 +390,24 @@ den bara innehåller tillåtna filer under `tv_hub/app/`, provar koden och start
 *Ta bort hemfix* går tillbaka till tilläggets egen version. Gäller **inte appen** på boxarna och telefonen: den uppdateras via en ny APK.
 Hemfixen ligger i `/data/hotfix`. Efter en vanlig uppdatering av tillägget till en annan version tas den bort automatiskt.
 
-## Lovisa och prioritet
+## Inbjudan och prioritet
 
-Profilen **Lovisa** skapas automatiskt. På **Översikt** finns kortet *Bjud in Lovisa* med en åttasiffrig kod som gäller ett dygn och
-för en enhet. Tryck *Ny kod* varje gång hon ska logga in på något nytt.
+En profil för den du bjuder in skapas automatiskt och heter *Inbjuden* från början. Döp om den under **Profiler**; namnet sparas bara
+i din databas. På **Översikt** finns kortet *Bjud in …* med en åttasiffrig kod som gäller ett dygn och för en enhet. Tryck *Ny kod*
+varje gång en ny enhet ska loggas in.
 
 **Skydd mot gissning:** efter tio felaktiga koder stängs inloggningen i 15 minuter, och under den tiden prövas ingen kod alls.
 Du får en notis (notify-tjänsten under *Boxar → Påminnelser till telefonen*) varje gång en ny enhet loggar in.
 
-1. Skicka henne länken `http://<Home Assistants IP>:8099/hej` och koden. Sidan har en stor knapp *Ladda ner TV Hub*, och visar serveradressen.
-2. Hon installerar appen, anger adressen och koden (hemma på wifi första gången).
-3. Hennes enhet är **låst till profilen Lovisa**: den ser bara den profilen, det finns inget att byta till, och vuxenläget finns inte.
-   Hon ser allt innehåll i vanligt läge. Enheten får använda telefonen utanför hemmet om Nabu Casa är inställt (*Boxar → Telefon utanför hemmet*).
+1. Skicka länken `http://<Home Assistants IP>:8099/hej` och koden. Sidan har en stor knapp *Ladda ner TV Hub*, och visar serveradressen.
+2. Den inbjudna installerar appen och anger adressen och koden (hemma på wifi första gången).
+3. Enheten är **låst till profilen**: den ser bara den profilen, det finns inget att byta till, och vuxenläget finns inte.
+   Allt innehåll syns i vanligt läge. Enheten får använda telefonen utanför hemmet om Nabu Casa är inställt (*Boxar → Telefon utanför hemmet*).
 4. Vilken enhet som helst kan låsas på samma sätt: *Boxar → Låst till profil*.
 
-**Prioritet:** Toucan tillåter bara en ström. Börjar du titta medan hon tittar stoppas hennes ström direkt med texten "Henrik började titta och går
-före", och hon kan inte starta något medan du tittar. Det gäller bara enheter som är låsta till en profil. Prioriteten sitter på profilen
-(ägaren 100, andra 0).
+**Prioritet:** Toucan tillåter bara en ström. Börjar du titta medan den inbjudna tittar stoppas den strömmen direkt med texten
+"<ditt profilnamn> började titta och går före", och den låsta enheten kan inte starta något medan du tittar. Det gäller bara enheter
+som är låsta till en profil. Prioriteten sitter på profilen (ägaren 100, andra 0).
 
 ## Världscupen i hoppning
 
@@ -437,7 +438,7 @@ inloggningsuppgifter och inga länkar. Vuxenkanaler räknas men namnges inte.
 ## Webbappen (laptopen)
 
 1. Öppna `http://<Home Assistants adress>:8099/web` i Chrome eller Edge.
-2. Skriv en kod: din egen från webbadminen (*Boxar → Para ny box*), eller Lovisas inbjudningskod.
+2. Skriv en kod: din egen från webbadminen (*Boxar → Para ny box*), eller en inbjudningskod.
 3. Klart. Datorn kommer ihåg inloggningen. *Logga ut datorn* finns längst ned till vänster.
 
 Uppspelningen går via tillägget. Vissa kanaler (AC3-ljud, HEVC-bild) går inte att spela i webbläsaren; spela dem på boxen.
@@ -445,7 +446,7 @@ Inspelning görs alltid på en box: välj vilken när du trycker *Spela in*.
 
 ### Utanför hemmet (Tailscale Funnel)
 
-TV Hub ligger på `https://homeassistant.tail1d54b1.ts.net/web` (Funnel, port 443 → 127.0.0.1:8099). Ingen app behövs.
+TV Hub nås på `https://<din Funnel-adress>/web` (Funnel, port 443 → 127.0.0.1:8099). Ingen app behövs.
 Smart (8443) och Fix & peng (10000) använder de andra Funnel-portarna. Kontrollera med
 `docker exec -it app_a0d7b954_tailscale /opt/tailscale funnel status` i Advanced SSH & Web Terminal (Protection mode av).
 

@@ -763,7 +763,7 @@ def film_night(ta, pa):
         call("POST", f"{A}/api/profiles", {"name": name})
     s, viewers = call("GET", f"{D}/device/viewers", token=ta)
     names = [v["name"] for v in viewers]
-    check("profilerna från start (tittarlägena blev profiler)", names == ["Själv", "Tillsammans", "Gäst", "Lovisa", "Testvuxen", "Testbarn"], names)
+    check("profilerna från start (tittarlägena blev profiler)", names == ["Själv", "Tillsammans", "Gäst", "Inbjuden", "Testvuxen", "Testbarn"], names)
     byname = {v["name"]: v["id"] for v in viewers}
     self_id, kids_id, adult_id = byname["Själv"], byname["Tillsammans"], byname["Testvuxen"]
     check("Med döttrarna är barnvänligt från start", viewers[1]["rules"]["kids"] is True, viewers[1])
@@ -1305,7 +1305,7 @@ def version_25(ta, tb, pa, pb):
     print("Version 2.5: profiler och Mina program")
     s, data = call("GET", f"{A}/api/profiles")
     profs = {p["name"]: p for p in data["profiles"]}
-    check("profiler: Själv, Tillsammans, Gäst och testprofilerna", list(profs) == ["Själv", "Tillsammans", "Gäst", "Lovisa", "Testvuxen", "Testbarn"], list(profs))
+    check("profiler: Själv, Tillsammans, Gäst och testprofilerna", list(profs) == ["Själv", "Tillsammans", "Gäst", "Inbjuden", "Testvuxen", "Testbarn"], list(profs))
     owner, child, guest = profs["Själv"]["id"], profs["Testbarn"]["id"], profs["Gäst"]["id"]
     check("bara ägaren får vuxenläget, Gäst är gäst", profs["Själv"]["allow_adult"] and not profs["Testbarn"]["allow_adult"]
           and profs["Gäst"]["guest"], profs)
@@ -2382,8 +2382,8 @@ def version_299(ta, tb, pa, pb):
 
 
 def version_2910(ta, tb, pa, pb):
-    """2.10.0: Lovisas inbjudan, enhet låst till profil, prioritet."""
-    print("Version 2.10.0: Lovisa, låst profil, prioritet")
+    """2.10.0: den inbjudnas inbjudan, enhet låst till profil, prioritet."""
+    print("Version 2.10.0: den inbjudna, låst profil, prioritet")
     tokens = {pa["device_id"]: ta, pb["device_id"]: tb}
 
     def stop_all():
@@ -2395,39 +2395,39 @@ def version_2910(ta, tb, pa, pb):
     s, inv = call("GET", f"{A}/api/invite")
     check("2.10: inbjudan finns med åttasiffrig kod", s == 200 and inv["valid"] and len(inv["code"]) == 8 and inv["uses_left"] == 1, inv)
     s, profs = call("GET", f"{A}/api/profiles")
-    lov = [p for p in profs["profiles"] if p["name"] == "Lovisa"][0]
-    check("2.10: Lovisas profil finns utan vuxenläge", lov["allow_adult"] is False and lov["priority"] == 0, lov)
+    lov = [p for p in profs["profiles"] if p["name"] == "Inbjuden"][0]
+    check("2.10: den inbjudnas profil finns utan vuxenläge", lov["allow_adult"] is False and lov["priority"] == 0, lov)
     check("2.10: ägaren har högsta prioritet", [p for p in profs["profiles"] if p["name"] == "Själv"][0]["priority"] == 100, profs)
     s, page = call("GET", f"{D}/hej", raw=True)
     check("2.10: sidan för nedladdning visar adress och steg", s == 200 and b"Ladda ner TV Hub" in page and b"127.0.0.1" in page and inv["code"].encode() not in page, page[:200])
 
     s, bad = call("POST", f"{D}/device/pair", {"code": "00000000", "name": "x"})
     check("2.10: fel inbjudningskod nekas", s == 403, (s, bad))
-    s, pl = call("POST", f"{D}/device/pair", {"code": inv["code"], "name": "Lovisas telefon", "model": "Pixel"})
+    s, pl = call("POST", f"{D}/device/pair", {"code": inv["code"], "name": "Inbjudens telefon", "model": "Pixel"})
     check("2.10: inbjudan ger en enhet", s == 200 and pl["token"], (s, pl))
     tl = pl["token"]
     tokens[pl["device_id"]] = tl
     s, v = call("GET", f"{A}/api/invite")
     check("2.14: inbjudan gäller en enhet och är sedan förbrukad", v["uses_left"] == 0 and v["valid"] is False and v["code"] is None, v)
     s, lst = call("GET", f"{D}/device/profiles", token=tl)
-    check("2.10: låst enhet ser bara sin profil", s == 200 and [p["name"] for p in lst["profiles"]] == ["Lovisa"] and lst.get("locked") is True, lst)
+    check("2.10: låst enhet ser bara sin profil", s == 200 and [p["name"] for p in lst["profiles"]] == ["Inbjuden"] and lst.get("locked") is True, lst)
     owner = [p for p in profs["profiles"] if p["name"] == "Själv"][0]["id"]
     s, hi = call("GET", f"{D}/device/home", token=tl, profile=owner)
-    check("2.10: servern svarar som Lovisa trots begäran om ägarens profil", hi["active_profile"]["name"] == "Lovisa", hi.get("active_profile"))
+    check("2.10: servern svarar som den inbjudna trots begäran om ägarens profil", hi["active_profile"]["name"] == "Inbjuden", hi.get("active_profile"))
     s, ad = call("GET", f"{D}/device/home", token=tl, mode="adult", profile=owner)
     check("2.10: inget vuxenläge", ad["mode"] == "normal", ad.get("mode"))
     s, devs = call("GET", f"{A}/api/devices")
-    row = [d for d in (devs if isinstance(devs, list) else devs["devices"]) if d["name"] == "Lovisas telefon"][0]
-    check("2.10: enheten visas som låst och får fjärråtkomst", row["locked_profile"] == "Lovisa" and row["remote_allowed"] is True, row)
+    row = [d for d in (devs if isinstance(devs, list) else devs["devices"]) if d["name"] == "Inbjudens telefon"][0]
+    check("2.10: enheten visas som låst och får fjärråtkomst", row["locked_profile"] == "Inbjuden" and row["remote_allowed"] is True, row)
 
-    # prioritet: Henrik (ta, ägare) går före Lovisa
+    # prioritet: ägaren (ta) går före den inbjudna
     s, pa_play = call("POST", f"{D}/device/play", {"type": "live", "id": "102"}, token=tl)
-    check("2.10: Lovisa kan titta när ingen annan gör det", pa_play["status"] == "ok", pa_play)
+    check("2.10: den inbjudna kan titta när ingen annan gör det", pa_play["status"] == "ok", pa_play)
     s, mine = call("POST", f"{D}/device/play", {"type": "live", "id": "101"}, token=ta, profile=owner)
     ok = mine["status"] in ("ok", "waiting")
     check("2.10: ägaren tar över direkt, utan fråga", ok and mine["status"] != "conflict", mine)
     s, hb = call("POST", f"{D}/device/heartbeat", {"session_id": pa_play["session_id"], "metrics": {}}, token=tl)
-    check("2.10: Lovisas ström stoppas med förklaring", hb["stop"] is True and "går före" in (hb.get("message") or ""), hb)
+    check("2.10: den inbjudnas ström stoppas med förklaring", hb["stop"] is True and "går före" in (hb.get("message") or ""), hb)
     call("POST", f"{D}/device/stop", {"session_id": pa_play["session_id"]}, token=tl)  # appen stoppar efter beskedet
     for _ in range(12):
         if mine["status"] == "ok":
@@ -2436,18 +2436,18 @@ def version_2910(ta, tb, pa, pb):
         s, mine = call("POST", f"{D}/device/play", {"type": "live", "id": "101"}, token=ta, profile=owner)
     check("2.10: ägarens ström startar", mine["status"] == "ok", mine)
     s, blocked = call("POST", f"{D}/device/play", {"type": "live", "id": "102"}, token=tl)
-    check("2.10: Lovisa kan inte ta över", blocked["status"] == "error" and "går före" in blocked["error"], blocked)
+    check("2.10: den inbjudna kan inte ta över", blocked["status"] == "error" and "går före" in blocked["error"], blocked)
     s, blocked2 = call("POST", f"{D}/device/play", {"type": "live", "id": "102", "force": True}, token=tl)
     check("2.10: inte ens med tvång", blocked2["status"] == "error", blocked2)
     stop_all()
     s, free = call("POST", f"{D}/device/play", {"type": "live", "id": "102"}, token=tl)
-    check("2.10: när ägaren slutat kan Lovisa titta igen", free["status"] == "ok", free)
+    check("2.10: när ägaren slutat kan den inbjudna titta igen", free["status"] == "ok", free)
     stop_all()
 
     # låsa en vanlig box och ta bort låset
     s, r = call("PUT", f"{A}/api/devices/{pb_id(pb)}", {"locked_profile_id": lov["id"]})
     s, lst = call("GET", f"{D}/device/profiles", token=tb)
-    check("2.10: vilken box som helst kan låsas till en profil", [p["name"] for p in lst["profiles"]] == ["Lovisa"], lst)
+    check("2.10: vilken box som helst kan låsas till en profil", [p["name"] for p in lst["profiles"]] == ["Inbjuden"], lst)
     s, r = call("PUT", f"{A}/api/devices/{pb_id(pb)}", {"locked_profile_id": None})
     s, lst = call("GET", f"{D}/device/profiles", token=tb)
     check("2.10: låset kan tas bort", len(lst["profiles"]) >= 5 and not lst.get("locked"), lst)
@@ -2583,7 +2583,7 @@ def version_2141():
     s, inv = call("GET", f"{A}/api/invite")
     if inv.get("code"):
         s, r = call("POST", f"{D}/device/pair", {"code": inv["code"], "name": "Inbjudan under spärren"})
-        check("2.14.1: inte heller Lovisas inbjudan", s == 429, (s, r))
+        check("2.14.1: inte heller den inbjudnas inbjudan", s == 429, (s, r))
     s, inv2 = call("GET", f"{A}/api/invite")
     check("2.14.1: inbjudan förbrukas inte av spärrade försök", inv2.get("uses_left") == inv.get("uses_left"), (inv, inv2))
 
