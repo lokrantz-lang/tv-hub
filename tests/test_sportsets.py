@@ -35,5 +35,14 @@ for n in ("Eurosport 1", "Eurosport 2 HD", "SE: V Sport Premium", "TV4 Sportkana
     check(f"sänder golf bland annat: {n}", car("Golf", n))
 for n in ("TV4 Sportkanalen", "TV4", "SVT2", "Eurosport 2"):
     check(f"sänder ridsport bland annat: {n}", car("Ridsport", n))
+
+# 2.15: tillfälliga eventkanaler räknas inte som egna kanaler
+from hub import sportsets as _ss  # noqa: E402
+for n in ("02:00 Australian PGA Championship | DP World Tour 11/26 [Viaplay SE]", ":Golf  02",
+          "Australian PGA Championship @ Nov 26 2:00 AM :Viaplay SE  26", "SE: PRIME PPV 8 - GOLF PGA-TOUREN BERMUDA"):
+    check(f"eventkanal sorteras bort: {n[:30]}", _ss.is_event_channel(n))
+for n in ("V Sport Golf FHD SE [Multi-Audio]", "Golf Channel HD US", "Sky Sports Golf UK", "Golf 2 HD TH [Thai]", "Horse & Country TV SE", "PGA TOUR"):
+    check(f"riktig kanal behålls: {n}", not _ss.is_event_channel(n))
+
 print("ALLT OK" if not fails else f"{fails} FEL")
 sys.exit(1 if fails else 0)

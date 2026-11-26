@@ -18,6 +18,7 @@ def export(now=None):
         "SELECT epg_key, COUNT(*) AS n, MAX(end) AS last FROM epg WHERE end > ? GROUP BY epg_key", (now,))}
     from . import sports
     live_cats = _cats("live")
+    scanned = {k for k, _ in sports.scan_channels()}
     live = []
     adult_live = 0
     for r in db.q("""SELECT item_id, name, category_id, epg_id, archive_days, adult FROM items
@@ -29,7 +30,8 @@ def export(now=None):
         n, last = guide.get(key, (0, None))
         live.append({"name": r["name"], "category": live_cats.get(r["category_id"], ""), "stream_id": r["item_id"],
                      "epg_id": r["epg_id"] or "", "archive_days": int(r["archive_days"] or 0),
-                     "guide_programs": n, "guide_days_ahead": round((last - now) / 86400, 1) if last else 0})
+                     "guide_programs": n, "guide_days_ahead": round((last - now) / 86400, 1) if last else 0,
+                     "in_scan": key in scanned})
     out = {"app": "TV Hub", "version": VERSION, "exported": time.strftime("%Y-%m-%d %H:%M", time.localtime(now)),
            "note": "Utan inloggningsuppgifter, serveradress och länkar.",
            "counts": {"live": len(live), "live_adult_hidden": adult_live}, "live": live}

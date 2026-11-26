@@ -383,12 +383,12 @@ Se `homeassistant/tv_hub_package.yaml` i förrådet. Det ger statussensor, svars
 och för Mina sporter: `sensor.tv_hub_nasta_match` (titel, med kanal, tid och om den pågår som attribut),
 `sensor.tv_hub_nasta_match_borjar` (tidpunkt) och `binary_sensor.tv_hub_match_pagar`.
 
-## Hemfix: uppdatera med en zipfil
+## Uppdatera med zipfil
 
-Under *Boxar* i webbadminen finns *Hemfix*. Dra in zipfilen (samma som levereras för en version) eller välj den. Tillägget kontrollerar att
+Under *Boxar* i webbadminen finns *Uppdatera med zipfil*. Dra in zipfilen (samma som levereras för en version) eller välj den. Tillägget kontrollerar att
 den bara innehåller tillåtna filer under `tv_hub/app/`, provar koden och startar sedan om sig självt (någon minut utan webbadmin).
-*Ta bort hemfix* går tillbaka till tilläggets egen version. Gäller **inte appen** på boxarna och telefonen: den uppdateras via en ny APK.
-Hemfixen ligger i `/data/hotfix`. Efter en vanlig uppdatering av tillägget till en annan version tas den bort automatiskt.
+*Ta bort zipfilens version* går tillbaka till tilläggets egen version. Gäller **inte appen** på boxarna och telefonen: den uppdateras via en ny APK.
+Zipfilens version ligger i `/data/hotfix`. Efter en vanlig uppdatering av tillägget till en annan version tas den bort automatiskt.
 
 ## Inbjudan och prioritet
 

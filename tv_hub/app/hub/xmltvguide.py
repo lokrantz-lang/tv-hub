@@ -75,15 +75,33 @@ def download(client, path=None, opener=None):
     return total
 
 
-def parse(path, wanted, lo, hi):
+def _sport_channels():
+    """Golf- och ridsportkanalerna (egna kanaler, utan eventkanaler) som har ett guide-id."""
+    from . import sportsets
+    out, seen = [], set()
+    for set_name in sportsets.SETS:
+        for c in sportsets.dedicated(set_name):
+            row = db.q1("SELECT epg_id FROM items WHERE type = 'live' AND item_id = ?", (c["id"],))
+            key = ((row and row["epg_id"]) or "").strip().casefold()
+            if key and (set_name, key) not in seen:
+                seen.add((set_name, key))
+                out.append({"set": set_name, "name": c["name"], "key": key})
+    return out
+
+
+def parse(path, wanted, lo, hi, with_ids=False):
     """Läser programmen för de önskade kanalerna (EPG-id, gemener) inom tidsfönstret.
-    Returnerar ({nyckel: [(start, slut, titel, beskrivning)]}, antal kanaler i filen, antal program i filen)."""
+    Returnerar ({nyckel: [(start, slut, titel, beskrivning)]}, antal kanaler i filen, antal program i filen)
+    och med with_ids också mängden kanal-id (gemener) som finns i filen."""
     out = {}
+    ids = set()
     channels = programmes = 0
     for _event, el in ET.iterparse(path, events=("end",)):
         tag = el.tag
         if tag == "channel":
             channels += 1
+            if with_ids:
+                ids.add((el.get("id") or "").strip().casefold())
             el.clear()
         elif tag == "programme":
             programmes += 1
@@ -94,7 +112,11 @@ def parse(path, wanted, lo, hi):
                     title = (el.findtext("title") or "").strip()
                     if title:
                         out.setdefault(key, []).append((start, end, title, (el.findtext("desc") or "").strip()))
+            if with_ids:
+                ids.add((el.get("channel") or "").strip().casefold())
             el.clear()
+    if with_ids:
+        return out, channels, programmes, ids
     return out, channels, programmes
 
 
@@ -114,9 +136,14 @@ def fill(force=False, now=None, client=None, opener=None):
             st["bytes"] = download(client, path, opener)
             st["downloaded"] = now
         keys = {k for k, _ in sports.scan_channels() if not k.startswith("ch:")}
+        # Golf- och ridsportkanalerna tas alltid med, oavsett genomsökningens lista och kanalval.
+        sport = _sport_channels()
+        keys |= {c["key"] for c in sport}
         have = {r["epg_key"] for r in db.q("SELECT DISTINCT epg_key FROM epg WHERE end > ?", (now,))}
         wanted = keys - have
-        found, channels, programmes = parse(path, wanted, now - sports.KEEP_BACK_S, now + sports.KEEP_AHEAD_S)
+        found, channels, programmes, in_file = parse(path, wanted | {c["key"] for c in sport}, now - sports.KEEP_BACK_S,
+                                                     now + sports.KEEP_AHEAD_S, with_ids=True)
+        found = {k: v for k, v in found.items() if k in wanted}
         archive = {}
         for r in db.q("SELECT epg_id, MAX(archive_days) AS a FROM items WHERE type = 'live' GROUP BY lower(epg_id)"):
             if r["epg_id"]:
@@ -132,8 +159,15 @@ def fill(force=False, now=None, client=None, opener=None):
         for key in sorted(found, key=lambda k: -len(found[k]))[:40]:
             r = db.q1("SELECT name FROM items WHERE type = 'live' AND lower(epg_id) = ? ORDER BY length(name) LIMIT 1", (key,))
             names[r["name"] if r else key] = len(found[key])
+        # Svaret per golf- och hästkanal: finns den i filen, och hur många program har den nu.
+        per = []
+        for c in sport:
+            n = db.q1("SELECT COUNT(*) AS n FROM epg WHERE epg_key = ? AND end > ?", (c["key"], now))["n"]
+            per.append({"set": c["set"], "name": c["name"], "key": c["key"], "in_file": c["key"] in in_file,
+                        "programs": n, "from_file": len(found.get(c["key"], []))})
+        per.sort(key=lambda x: (x["set"], not x["programs"], x["name"].casefold()))
         st.update(at=now, ok=True, error=None, channels_in_file=channels, programs_in_file=programmes,
-                  missing_before=len(wanted), filled=len(found), inserted=inserted, examples=names)
+                  missing_before=len(wanted), filled=len(found), inserted=inserted, examples=names, sport=per)
     except Exception as exc:  # noqa: BLE001
         st.update(at=now, ok=False, error=f"{type(exc).__name__}: {str(exc)[:160]}")
     db.set_setting(STATUS_KEY, st)

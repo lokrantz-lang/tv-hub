@@ -70,7 +70,7 @@ Diagnostik
   ok   sammanfattning för Home Assistant
 Version 1.2: metadata, sortering och filter
 ----------------------------------------
-Exception occurred during processing of request from ('127.0.0.1', 35196)
+Exception occurred during processing of request from ('127.0.0.1', 44382)
 Traceback (most recent call last):
   File "/usr/local/lib/python3.13/socketserver.py", line 697, in process_request_thread
     self.finish_request(request, client_address)
@@ -707,10 +707,15 @@ Version 2.14.0: bilder och guidefil
   ok   2.14: webbadminen visar guidefilens status
   ok   2.14: guidefilen kan hämtas med knappen
   ok   2.14: guidefilen ger en status (fel eller ok)
+  ok   2.14: webbappens ikon och manifest (icon.svg)
+  ok   2.14: webbappens ikon och manifest (icon-192.png)
+  ok   2.14: webbappens ikon och manifest (manifest.webmanifest)
+  ok   2.14: inbjudan fungerar för webbappen
+  ok   2.14: inbjuden dator ser bara sin profil
+  ok   2.14: inbjuden dator får aldrig vuxenläge
 Version 2.14.1: spärr mot gissning av koder
   ok   2.14.1: gissning spärras efter högst tio fel
   ok   2.14.1: under spärren prövas ingen kod, inte ens en rätt
-  ok   2.14.1: inte heller den inbjudnas inbjudan
   ok   2.14.1: inbjudan förbrukas inte av spärrade försök
   ok   webbadmin serveras
   ok   admin-API nås inte via box-porten

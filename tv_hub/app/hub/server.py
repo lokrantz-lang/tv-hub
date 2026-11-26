@@ -930,6 +930,8 @@ def dev_landing(h):
 
 # ----- Webbappen (laptopen) -----
 WEB_DIR = os.path.join(STATIC_DIR, "web")
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+mimetypes.add_type("image/svg+xml", ".svg")
 
 
 @route(DEVICE, "GET", r"/web/?(?:index\.html)?")

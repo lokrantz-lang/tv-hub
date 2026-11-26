@@ -18,7 +18,8 @@ input:focus, select:focus { outline:2px solid var(--accent); border-color:transp
 .app { display:flex; min-height:100vh; }
 .side { width:220px; flex:none; background:var(--s1); padding:22px 14px; position:sticky; top:0; height:100vh; display:flex; flex-direction:column; gap:18px; }
 .side nav { display:flex; flex-direction:column; gap:2px; }
-.side nav a { padding:10px 12px; border-radius:8px; cursor:pointer; color:var(--muted); font-weight:600; }
+.side nav a { padding:10px 12px; border-radius:8px; cursor:pointer; color:var(--muted); font-weight:600; display:flex; gap:8px; align-items:center; }
+.side nav a i { font-style:normal; width:20px; text-align:center; }
 .side nav a:hover { background:var(--s2); color:var(--text); } .side nav a.on { background:var(--s2); color:var(--text); }
 .side-foot { margin-top:auto; }
 main { flex:1; min-width:0; }
@@ -94,4 +95,14 @@ h1 { font-size:28px; margin:6px 0 16px; } h2 { font-size:18px; margin:26px 0 10p
 .empty { color:var(--muted); padding:20px 0; }
 .spin { width:28px; height:28px; border:3px solid var(--s3); border-top-color:#fff; border-radius:50%; animation:sp 0.8s linear infinite; margin:30px auto; }
 @keyframes sp { to { transform:rotate(360deg); } }
-@media (max-width:820px) { .side { display:none; } .split { grid-template-columns:1fr; } .cats { position:static; max-height:200px; } .page { padding:4px 14px 60px; } .top { padding:12px 14px; } }
+@media (max-width:820px) {
+  /* Mobil: menyn blir en rad längst ner, som i en app. */
+  .side { position:fixed; top:auto; bottom:0; left:0; right:0; width:auto; height:auto; padding:4px 2px calc(4px + env(safe-area-inset-bottom));
+          flex-direction:row; z-index:15; border-top:1px solid var(--s3); }
+  .side .logo, .side-foot { display:none; }
+  .side nav { flex-direction:row; justify-content:space-around; width:100%; gap:0; }
+  .side nav a { flex:1; flex-direction:column; gap:2px; padding:6px 2px; font-size:10px; min-width:0; text-align:center; }
+  .side nav a span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .side nav a i { width:auto; font-size:18px; }
+  main { padding-bottom:72px; }
+  .player, .modal, .toast { z-index:40; } .split { grid-template-columns:1fr; } .cats { position:static; max-height:200px; } .page { padding:4px 14px 60px; } .top { padding:12px 14px; } }

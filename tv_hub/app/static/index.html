@@ -86,7 +86,16 @@ tbody tr:last-child td { border-bottom: 0; }
 .scroll { overflow-x: auto; }
 .pill { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
 .pill.ok { color: var(--ok); border-color: currentColor; } .pill.bad { color: var(--bad); border-color: currentColor; }
-.pill.warn { color: var(--warn); border-color: currentColor; } .pill.accent { color: var(--accent); border-color: currentColor; }
+.pill.warn { color: var(--warn); border-color: currentColor; }
+.wc-hero { background: linear-gradient(100deg, #1b2a4a, #2f7cf6); color: #fff; border-radius: 14px; padding: 18px 22px; margin-bottom: 12px; }
+.wc-hero .muted { color: rgba(255,255,255,.75); }
+.wc-kicker { font-weight: 800; letter-spacing: 1px; font-size: 12px; opacity: .9; } .wc-kicker.live { color: #ffb3ad; }
+.wc-big { font-size: 30px; font-weight: 800; margin: 2px 0 4px; }
+.wc-tiles { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; }
+.wc-tile { flex: none; width: 150px; display: flex; flex-direction: column; gap: 3px; align-items: flex-start; text-align: left; background: var(--panel, #fff);
+  border: 2px solid var(--line); border-radius: 10px; padding: 9px 10px; cursor: pointer; color: inherit; font: inherit; }
+.wc-tile.on { border-color: var(--accent); } .wc-tile:hover { border-color: var(--accent); }
+.wc-tile .pill { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .pill.accent { color: var(--accent); border-color: currentColor; }
 .list { list-style: none; margin: 0; padding: 0; }
 .list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
 .list li:first-child { border-top: 0; }
@@ -817,11 +826,11 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
       </div>
     </div>
     <div class="panel" style="margin-top:16px">
-      <div class="hd"><h2>Hemfix: uppdatera tillägget med en zipfil</h2><span id="hf-pill" class="small"></span></div>
+      <div class="hd"><h2>Uppdatera med zipfil</h2><span id="hf-pill" class="small"></span></div>
       <div class="bd">
-        <p class="small muted" style="margin-top:0">Dra in zipfilen som du fått för en ny version, eller välj den. Koden kontrolleras och provas, och tillägget startar sedan om sig självt (någon minut utan webbadmin). Gäller bara tillägget och webbadminen, <strong>inte appen på boxarna och telefonen</strong>, som fortfarande uppdateras via en ny APK. Installerar du en nyare version av tillägget på vanligt sätt tas hemfixen bort av sig själv.</p>
+        <p class="small muted" style="margin-top:0">Dra in zipfilen som du fått för en ny version, eller välj den. Koden kontrolleras och provas, och tillägget startar sedan om sig självt (någon minut utan webbadmin). Gäller bara tillägget och webbadminen, <strong>inte appen på boxarna och telefonen</strong>, som fortfarande uppdateras via en ny APK. Installerar du en nyare version av tillägget på vanligt sätt tas zipfilens version bort av sig själv.</p>
         <label id="hf-drop" class="btn" style="cursor:pointer;display:block;text-align:center;padding:22px;border:2px dashed #888">Släpp zipfilen här eller klicka för att välja<input type="file" id="hf-file" accept=".zip,application/zip" class="hidden"></label>
-        <div class="row" style="margin-top:10px"><button class="btn" type="button" id="hf-remove">Ta bort hemfix (tillbaka till tilläggets egen version)</button></div>
+        <div class="row" style="margin-top:10px"><button class="btn" type="button" id="hf-remove">Ta bort zipfilens version (tillbaka till tilläggets egen)</button></div>
       </div>
     </div>
     <div class="panel" style="margin-top:16px">
@@ -952,34 +961,59 @@ function wcEvent(e) {
   return `<div class="small" style="padding:4px 0;border-top:1px solid var(--line)">${st} <b>${esc(e.title)}</b>${e.main ? ' <span class="pill accent">världscupklassen</span>' : ""}
     <div class="muted">${esc(e.when)} · ${esc(e.channel)}${rec}</div>${e.unconfirmed ? '<div class="muted">Enligt offentlig tablå, ej bekräftad i din programguide.</div>' : ""}</div>`;
 }
+const WC_FLAG = { ESP: "🇪🇸", ITA: "🇮🇹", GER: "🇩🇪", FRA: "🇫🇷", NOR: "🇳🇴", SWE: "🇸🇪", SUI: "🇨🇭", GBR: "🇬🇧", NED: "🇳🇱", BEL: "🇧🇪",
+  AUT: "🇦🇹", USA: "🇺🇸", IRL: "🇮🇪", POL: "🇵🇱", CZE: "🇨🇿", DEN: "🇩🇰", FIN: "🇫🇮", POR: "🇵🇹" };
+let wcSel = null;
+function wcHero(h) {
+  if (!h) return '<div class="wc-hero"><div class="wc-big">Säsongen är slut</div></div>';
+  const e = h.event;
+  return `<div class="wc-hero"><div class="wc-kicker ${h.live ? "live" : ""}">${h.live ? "● SÄNDS NU" : esc((h.countdown || "Nästa").toUpperCase())}</div>
+    <div class="wc-big">${esc(h.leg_name)} ${WC_FLAG[h.country] || ""}</div>
+    ${e ? `<div>${esc(e.title)}</div><div class="muted">${esc(e.when)} · ${esc(e.channel)}${e.unconfirmed ? " · enligt tablå" : ""}</div>` : '<div class="muted">Tiderna kommer när TV4 publicerar dem.</div>'}</div>`;
+}
+function wcTile(l) {
+  const lab = l.kind === "final" && l.state !== "done" ? ["FINAL", "accent"] : l.state === "done" && l.winner ? ["🏆 " + l.winner, "ok"]
+    : l.state === "done" ? ["Avgjord", ""] : l.state === "ongoing" ? ["● Pågår", "live"] : l.id === wc.next ? ["Nästa", "accent"]
+    : [l.kind === "other" ? "Ingen etapp" : "Kommande", ""];
+  return `<button type="button" class="wc-tile ${l.id === wcSel ? "on" : ""}" data-wcl="${esc(l.id)}"><b>${WC_FLAG[l.country] || ""} ${esc(l.name)}</b>
+    <span class="muted small">${esc(l.dates)}</span><span class="pill ${lab[1]}">${esc(lab[0])}</span></button>`;
+}
 function wcLeg(l) {
-  const win = l.winner ? `🏆 ${esc(l.winner)}${l.horse ? " på " + esc(l.horse) : ""}` : (l.state === "done" ? "Vinnare ej inlagd" : "");
   const lvl = WC_LEVEL[l.level] ?? "";
-  return `<details class="ev" ${l.state === "ongoing" || l.id === wc.next ? "open" : ""} style="margin-bottom:8px">
-    <summary><b>${esc(l.name)}</b> <span class="muted">${esc(l.dates)} · ${esc(l.country)}</span>
-      ${l.kind === "final" ? '<span class="pill accent">Final</span>' : ""}${l.kind === "other" ? '<span class="pill">Ingen etapp</span>' : ""}${l.preliminary ? '<span class="pill warn">Preliminärt datum</span>' : ""}
-      <span class="pill ${lvl}">${esc(l.headline)}</span></summary>
+  return `<div class="ev" style="margin-top:10px"><div class="row" style="justify-content:space-between"><h3 style="margin:0">${WC_FLAG[l.country] || ""} ${esc(l.name)}
+      ${l.kind === "final" ? '<span class="pill accent">Final</span>' : ""}${l.preliminary ? '<span class="pill warn">Preliminärt datum</span>' : ""}</h3>
+      <span class="pill ${lvl}">${esc(l.headline)}</span></div>
     <div class="small" style="padding:6px 0">
-      <div>Världscupklassen: <b>${esc(l.wc_label)}</b>${l.tv ? " · TV: " + esc(l.tv) : ""}</div>
+      <div>${esc(l.dates)} · Världscupklassen: <b>${esc(l.wc_label)}</b>${l.tv ? " · TV: " + esc(l.tv) : ""}</div>
       ${l.note ? `<div class="muted">${esc(l.note)}</div>` : ""}
-      <div style="margin:4px 0">${win}</div>
+      ${l.winner ? `<div style="margin:4px 0">🏆 ${esc(l.winner)}${l.horse ? " på " + esc(l.horse) : ""}</div>` : ""}
       ${l.events.map(wcEvent).join("")}
       ${l.seen.length ? `<div class="muted" style="margin-top:6px">Sågs i guiden (finns inte kvar): ${l.seen.map((x) => esc(x.when + " · " + x.channel)).join(", ")}</div>` : ""}
-      <div class="row" style="margin-top:6px"><input id="wcw-${l.id}" placeholder="Vinnare (t.ex. Namn (NAT))" value="${esc(l.winner || "")}" style="flex:2"><input id="wch-${l.id}" placeholder="Häst" value="${esc(l.horse || "")}" style="flex:1"><button class="btn" data-wcres="${l.id}">Spara resultat</button></div>
-    </div></details>`;
+      <div class="row" style="margin-top:8px"><input id="wcw-${l.id}" placeholder="Vinnare (t.ex. Namn (NAT))" value="${esc(l.winner || "")}" style="flex:2"><input id="wch-${l.id}" placeholder="Häst" value="${esc(l.horse || "")}" style="flex:1"><button class="btn" data-wcres="${l.id}">Spara resultat</button></div>
+    </div></div>`;
+}
+function wcShow(id) {
+  wcSel = id;
+  document.querySelectorAll("#wc-tiles .wc-tile").forEach((t) => t.classList.toggle("on", t.dataset.wcl === id));
+  const l = wc.legs.find((x) => x.id === id);
+  $("wc-legs").innerHTML = l ? wcLeg(l) : "";
+  $("wc-legs").querySelectorAll("[data-wcres]").forEach((b) => b.addEventListener("click", () => guarded(async () => {
+    const lid = b.dataset.wcres;
+    await api("worldcup/result", { method: "POST", body: { leg: lid, winner: $("wcw-" + lid).value, horse: $("wch-" + lid).value } });
+    toast("Resultatet sparat."); loaders.worldcup();
+  }, b)));
 }
 let wc = { next: null };
 loaders.worldcup = async () => {
   try { wc = await api("worldcup"); } catch (e) { return toast(e.message); }
   $("wc-season").textContent = "säsongen " + wc.season;
   $("wc-rights").textContent = wc.rights;
-  $("wc-now").innerHTML = wc.now.length ? `<div class="notice">Sänds nu: ${wc.now.map((e) => esc(e.title + " · " + e.channel)).join(", ")}</div>` : "";
-  $("wc-legs").innerHTML = wc.legs.map(wcLeg).join("");
-  $("wc-legs").querySelectorAll("[data-wcres]").forEach((b) => b.addEventListener("click", () => guarded(async () => {
-    const id = b.dataset.wcres;
-    await api("worldcup/result", { method: "POST", body: { leg: id, winner: $("wcw-" + id).value, horse: $("wch-" + id).value } });
-    toast("Resultatet sparat."); loaders.worldcup();
-  }, b)));
+  if (!wcSel || !wc.legs.some((l) => l.id === wcSel)) wcSel = (wc.hero && wc.hero.leg) || wc.next || (wc.legs[0] && wc.legs[0].id);
+  $("wc-now").innerHTML = wcHero(wc.hero) + `<div class="wc-tiles" id="wc-tiles">${wc.legs.map(wcTile).join("")}</div>` +
+    (wc.status_line ? `<p class="small muted" style="margin:6px 0 0">ⓘ ${esc(wc.status_line)}</p>` : "");
+  $("wc-tiles").querySelectorAll("[data-wcl]").forEach((t) => t.addEventListener("click", () => wcShow(t.dataset.wcl)));
+  wcShow(wcSel);
+  $("wc-tiles").querySelector(".on")?.scrollIntoView({ inline: "center", block: "nearest" });
   const tb = wc.tabla;
   $("wc-tabla-body").innerHTML = !tb ? '<span class="pill warn">Ännu inte hämtad</span> Tryck på knappen, eller vänta på nästa skanning.' :
     `<div>Senast: ${new Date(tb.at * 1000).toLocaleString("sv-SE")} · ${tb.days_ok} dagar lästes${tb.days_empty ? `, ${tb.days_empty} tomma` : ""}${tb.inserted != null ? ` · ${tb.inserted} program lades in` : ""}</div>` +
@@ -1537,7 +1571,9 @@ function renderSports() {
     : !xt.ok ? `<span class="pill bad">Fel</span> ${esc(xt.error || "")}`
     : `<span class="pill ok">${fmtAgo(new Date(xt.at * 1000).toISOString())}</span> Filen hade ${(xt.channels_in_file || 0).toLocaleString("sv-SE")} kanaler och ${(xt.programs_in_file || 0).toLocaleString("sv-SE")} program.
        ${xt.missing_before || 0} av dina kanaler saknade program; <strong>${xt.filled || 0}</strong> fick program härifrån (${(xt.inserted || 0).toLocaleString("sv-SE")} program).
-       ${Object.keys(xt.examples || {}).length ? `<div class="muted" style="margin-top:4px">${Object.entries(xt.examples).slice(0, 12).map(([k, v]) => `${esc(k)} (${v})`).join(", ")}</div>` : ""}`;
+       ${Object.keys(xt.examples || {}).length ? `<div class="muted" style="margin-top:4px">${Object.entries(xt.examples).slice(0, 12).map(([k, v]) => `${esc(k)} (${v})`).join(", ")}</div>` : ""}
+       ${(xt.sport || []).length ? `<details style="margin-top:6px" open><summary><b>Golf och ridsport: finns de i filen?</b> ${xt.sport.filter((c) => c.programs).length} av ${xt.sport.length} har program</summary>
+         ${xt.sport.map((c) => `<div><span class="pill ${c.programs ? "ok" : c.in_file ? "warn" : ""}">${c.programs ? c.programs + " program" : c.in_file ? "i filen, inga program" : "finns inte i filen"}</span> ${esc(c.name)} <span class="muted">· ${esc(c.set)}</span></div>`).join("")}</details>` : ""}`;
   const boxOpts = (sel) => '<option value="">Nej</option>' + d.boxes.map((b) => `<option value="${b.id}" ${b.id === sel ? "selected" : ""}>Ja, på ${esc(b.name)}</option>`).join("");
   $("sp-list").innerHTML = d.interests.map((i) => {
     const c = i.counts || {};
@@ -2479,7 +2515,7 @@ $("bk-file").addEventListener("change", (e) => { const file = e.target.files[0];
 async function loadHotfix() {
   const h = await api("hotfix").catch(() => null);
   if (!h) return;
-  $("hf-pill").textContent = h.active ? `Hemfix ${h.hotfix_version} aktiv (tilläggets egen: ${h.image_version})` : `Kör tilläggets egen version ${h.version}`;
+  $("hf-pill").textContent = h.active ? `Zipfil ${h.hotfix_version} aktiv (tilläggets egen: ${h.image_version})` : `Kör tilläggets egen version ${h.version}`;
 }
 function uploadHotfix(file) {
   if (!file) return;
@@ -2500,7 +2536,7 @@ const hfDrop = $("hf-drop");
 ["dragleave", "drop"].forEach((ev) => hfDrop.addEventListener(ev, (e) => { e.preventDefault(); hfDrop.style.borderColor = "#888"; }));
 hfDrop.addEventListener("drop", (e) => uploadHotfix(e.dataTransfer.files[0]));
 $("hf-remove").addEventListener("click", (e) => guarded(async () => {
-  if (!confirm("Ta bort hemfixen? Tillägget startar om med sin egen version.")) return;
+  if (!confirm("Ta bort zipfilens version? Tillägget startar om med sin egen version.")) return;
   const r = await api("hotfix", { method: "DELETE" });
   toast(r.restarting ? "Startar om…" : "Borttagen. Starta om tillägget i Home Assistant."); }, e.target));
 
@@ -2761,7 +2797,7 @@ loaders.diagnostics = async () => {
     }).join("") || '<li class="empty">Ingen uppdatering ännu.</li>';
   }
 };
-const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden stannade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar", probe: "Källans svar", timeshift: "Efterhandsadress", record: "Inspelning", cast: "Chromecast", hotfix: "Hemfix" };
+const EVENT_LABEL = { play: "Startade", stop: "Stoppade", stall: "Bilden stannade", error: "Uppspelningsfel", failover: "Bytte portal", speedtest: "Hastighetstest", paired: "Parad", takeover_requested: "Övertagande", sync: "Listuppdatering", server_test: "Kapacitetstest", play_no_portal: "Ingen portal", quality: "Kvalitet", start: "Spelar", probe: "Källans svar", timeshift: "Efterhandsadress", record: "Inspelning", cast: "Chromecast", hotfix: "Zipfil" };
 function describeEvent(ev) {
   const d = ev.detail || {};
   switch (ev.kind) {

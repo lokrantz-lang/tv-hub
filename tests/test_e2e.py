@@ -2565,6 +2565,19 @@ def version_2140(ta, tb, pa, pb):
         s, x = call("GET", f"{A}/api/sports/xmltv")
         return x.get("status") and x["status"].get("at")
     check("2.14: guidefilen ger en status (fel eller ok)", wait_for(done, 30), None)
+    for name, ctype in (("icon.svg", "image/svg+xml"), ("icon-192.png", "image/png"), ("manifest.webmanifest", "application/manifest+json")):
+        req = urllib.request.Request(f"{D}/web/{name}")
+        with urllib.request.urlopen(req, timeout=10) as r:
+            ok = r.status == 200 and (r.headers.get("Content-Type") or "").startswith(ctype)
+        check(f"2.14: webbappens ikon och manifest ({name})", ok, name)
+    # Inbjuden dator i webbappen: låst till den inbjudnas profil, inget vuxenläge.
+    s, inv = call("POST", f"{A}/api/invite/new", {})
+    s, pw = call("POST", f"{D}/device/pair", {"code": inv["code"], "name": "Inbjudens dator", "model": "Webbläsare", "app_version": "web"})
+    check("2.14: inbjudan fungerar för webbappen", s == 200 and pw.get("token"), (s, pw))
+    s, lst = call("GET", f"{D}/device/profiles", token=pw["token"])
+    check("2.14: inbjuden dator ser bara sin profil", lst.get("locked") is True and [p["name"] for p in lst["profiles"]] == ["Inbjuden"], lst)
+    s, hm = call("GET", f"{D}/device/home", token=pw["token"], mode="adult")
+    check("2.14: inbjuden dator får aldrig vuxenläge", hm["mode"] == "normal", hm.get("mode"))
 
 
 def version_2141():

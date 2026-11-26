@@ -63,10 +63,21 @@ def _channels(set_name, key, exclude_key=None):
                    WHERE i.type = 'live' AND i.adult = 0 ORDER BY i.name""")
     out = []
     for r in rows:
+        if key == "dedicated" and is_event_channel(r["name"]):
+            continue
         if _matches(r["name"], include, exclude) and not _adult_category(r["category"]):
             out.append({"id": r["id"], "name": r["name"], "category": r["category"],
                         "archive": int(r["archive_days"] or 0) > 0})
     return out
+
+
+# Tillfälliga eventkanaler (en tävling eller ett pass, med tid, datum eller "@" i namnet): inga egna kanaler för sporten.
+EVENT_NAME = re.compile(r"(^\s*:|@|\b\d{1,2}[:.]\d{2}\b|\bppv\b|\b(dag|day|round|runda) \d|\bchampionship\b|"
+                        r"\b(19|20)\d\d\b|\b(jan|feb|mar|apr|maj|may|jun|jul|aug|sep|okt|oct|nov|dec)\b \d)", re.I)
+
+
+def is_event_channel(name):
+    return bool(EVENT_NAME.search(str(name or "")))
 
 
 def _adult_category(name):

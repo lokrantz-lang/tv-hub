@@ -83,15 +83,18 @@ function paintProfile(p) {
   b.textContent = PROFILE ? (PROFILE.emoji || PROFILE.name.slice(0, 1)) : "?";
   b.style.background = PROFILE ? PROFILE.color : "#444";
   b.title = PROFILE ? `${PROFILE.name}${p.locked ? "" : " – byt profil"}` : "";
-  b.onclick = p.locked ? null : () => chooseProfile(p.profiles);
+  b.onclick = () => chooseProfile(p.locked ? [] : p.profiles);
   $("side-foot").innerHTML = PROFILE ? `Tittar som <b>${esc(PROFILE.name)}</b><br><a href="#" id="logout">Logga ut datorn</a>` : "";
   const lo = $("logout");
   if (lo) lo.onclick = (e) => { e.preventDefault(); if (confirm("Logga ut den här datorn?")) { store.token = null; location.reload(); } };
 }
 
 function chooseProfile(list) {
-  modal(`<div style="padding:24px"><h2 style="margin-top:0">Vem tittar?</h2><div class="chips">${list.map((p) =>
-    `<button class="chip" data-p="${p.id}" style="font-size:15px;padding:10px 18px">${esc(p.emoji || "")} ${esc(p.name)}${p.has_pin ? " 🔒" : ""}</button>`).join("")}</div></div>`);
+  modal(`<div style="padding:24px">${list.length ? `<h2 style="margin-top:0">Vem tittar?</h2><div class="chips">${list.map((p) =>
+    `<button class="chip" data-p="${p.id}" style="font-size:15px;padding:10px 18px">${esc(p.emoji || "")} ${esc(p.name)}${p.has_pin ? " 🔒" : ""}</button>`).join("")}</div>`
+    : `<h2 style="margin-top:0">${esc(PROFILE ? PROFILE.name : "")}</h2>`}
+    <div class="acts" style="margin-top:18px"><button class="btn" id="m-logout">Logga ut den här datorn</button><button class="btn" onclick="closeModal()">Stäng</button></div></div>`);
+  $("m-logout").onclick = () => { if (confirm("Logga ut den här datorn?")) { store.token = null; location.reload(); } };
   $("modal-box").querySelectorAll("[data-p]").forEach((el) => el.onclick = async () => {
     const p = list.find((x) => String(x.id) === el.dataset.p);
     if (p.has_pin) {

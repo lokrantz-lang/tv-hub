@@ -1,5 +1,22 @@
 # Ändringar
 
+## 2.15.0
+
+- **Golf och ridsport i Toucans guidefil:** alla golf- och hästkanaler med guide-id fylls från guidefilen, även de som inte ingår i
+  genomsökningens lista. Rutan *Toucans guidefil* (Sport → Programguiden) visar för varje kanal om den finns i filen och hur många
+  program den har. Saknas den i filen har Toucan ingen programguide för den.
+- **Eventkanaler sorteras bort** ur golf- och ridsportkanalerna (tillfälliga kanaler med tid, datum, "@" eller PPV i namnet, som
+  ":Golf 02" och "02:00 Australian PGA Championship …").
+- **Webbappen på mobilen:** menyn ligger som en rad längst ner. Logga ut finns under profilknappen uppe till höger.
+- **Webbadminen, Världscupen:** samma upplägg som i appen, med ett stort kort för nästa sändning, etapperna i en rad och vald etapp under.
+- **Webbadminen:** panelen *Hemfix* heter nu *Uppdatera med zipfil*.
+- Kanalexporten visar om kanalen ingår i genomsökningen (`in_scan`).
+
+## 2.14.3
+
+- **Webbappen har en ikon:** syns i webbläsarens flik och när sidan läggs på hemskärmen eller installeras som app (Chrome/Edge:
+  *Installera TV Hub*).
+
 ## 2.14.2
 
 - **Inga personuppgifter i det publika förrådet:** namn och Funnel-adressen är borttagna ur koden, dokumentationen och
