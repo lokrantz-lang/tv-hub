@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>TV Hub</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/web/app.css">
+</head>
+<body>
+<div id="login" class="login hidden">
+  <div class="login-box">
+    <div class="logo">▶ TV Hub</div>
+    <p class="muted">Logga in den här datorn med en kod.</p>
+    <label>Kod<input id="lg-code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="6 eller 8 siffror"></label>
+    <label>Namn på datorn<input id="lg-name" maxlength="40" value="Laptop"></label>
+    <button id="lg-go" class="btn primary">Logga in</button>
+    <p id="lg-err" class="err"></p>
+    <p class="small muted">Henrik: koden får du i webbadminen under <b>Boxar → Para ny box</b>.<br>Lovisa: koden får du av Henrik.</p>
+  </div>
+</div>
+
+<div id="app" class="app hidden">
+  <aside class="side">
+    <div class="logo">▶ TV Hub</div>
+    <nav id="nav">
+      <a data-page="home">🏠 Hem</a>
+      <a data-page="live">📺 Live-TV</a>
+      <a data-page="vod">🎬 Filmer</a>
+      <a data-page="series">🎞 Serier</a>
+      <a data-page="sport">🏆 Sport</a>
+      <a data-page="worldcup">🏇 Världscupen</a>
+      <a data-page="recordings">⏺ Inspelningar</a>
+    </nav>
+    <div class="side-foot small muted" id="side-foot"></div>
+  </aside>
+  <main>
+    <header class="top">
+      <form id="search-form" class="search"><input id="search" type="search" placeholder="Sök filmer, serier, kanaler och sändningar…"></form>
+      <button id="profile-btn" class="avatar" title="Byt profil"></button>
+    </header>
+    <section id="page" class="page"></section>
+  </main>
+</div>
+
+<div id="modal" class="modal hidden"><div class="modal-box" id="modal-box"></div></div>
+
+<div id="player" class="player hidden">
+  <video id="video" controls autoplay playsinline></video>
+  <div class="player-top">
+    <div><div id="pl-title" class="pl-title"></div><div id="pl-sub" class="small muted"></div></div>
+    <button id="pl-close" class="btn">✕ Stäng</button>
+  </div>
+  <div id="pl-msg" class="pl-msg hidden"></div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/web/mpegts.js"></script>
+<script src="/web/app.js"></script>
+</body>
+</html>

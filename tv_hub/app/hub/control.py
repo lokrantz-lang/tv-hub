@@ -95,7 +95,7 @@ def online(device_id):
 def boxes(exclude=None):
     out = []
     for row in db.q("SELECT id, name, model FROM devices ORDER BY id"):
-        if row["model"] == "integration" or row["id"] == exclude:
+        if row["model"] in ("integration", "Webbläsare") or row["id"] == exclude:
             continue
         out.append({"id": row["id"], "name": row["name"], "online": online(row["id"])})
     return out

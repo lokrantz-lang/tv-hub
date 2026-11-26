@@ -172,5 +172,15 @@ check("automatisk inspelning kan slås på", r["record_device_id"] == dev_id and
 r = worldcup.auto_record(None)
 check("och av", r["record_device_id"] is None)
 
+
+# 2.14: gamla GCT-rader i "Sågs i guiden" rensas
+from hub import db as _db  # noqa: E402
+_db.set_setting(worldcup.SEEN_KEY, {"madrid": [
+    {"channel": "beIN SPORTS 9 HD", "start": 1, "end": 2, "title": "Longines Global Champions Tour - Vienna Jumping - Grand Prix"},
+    {"channel": "Sjuan", "start": 3, "end": 4, "title": "Världscupen i hoppning: Madrid"}]})
+seen = worldcup._seen()
+check("gamla Global Champions Tour-rader rensas ur historiken", [r["channel"] for r in seen["madrid"]] == ["Sjuan"], seen)
+check("rensningen sparas", [r["channel"] for r in _db.get_setting(worldcup.SEEN_KEY)["madrid"]] == ["Sjuan"])
+
 print("ALLT OK" if not fails else f"{fails} FEL")
 sys.exit(1 if fails else 0)

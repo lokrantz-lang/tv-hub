@@ -129,8 +129,20 @@ def _leg_rows(leg, now):
 
 
 def _seen():
+    """Det programguiden visat tidigare. Rader som inte längre räknas som världscupen (till exempel Global Champions
+    Tour, som räknades fram till 2.12.0) tas bort."""
     data = db.get_setting(SEEN_KEY)
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    clean = {}
+    for leg_id, rows in data.items():
+        leg = LEG_BY_ID.get(leg_id)
+        if leg is None:
+            continue
+        clean[leg_id] = [r for r in rows if _leg_match(leg, r.get("title") or "", "")]
+    if clean != data:
+        db.set_setting(SEEN_KEY, clean)
+    return clean
 
 
 def _remember(leg, events):
@@ -342,7 +354,9 @@ def _status_line(now):
         return "Programguide för " + ", ".join(sorted(got)) + " hämtas från TV4.se."
     if st.get("note"):
         return None
-    return "Toucan saknar programguide för TV4 och Sjuan. Tiderna kommer från TV4:s tablå."
+    if not st:
+        return "Toucan saknar programguide för TV4 och Sjuan. Tablån från TV4.se är inte hämtad än (webbadminen → Världscupen)."
+    return "Toucan saknar programguide för TV4 och Sjuan, och TV4.se gav inga program. Tiderna kommer från den offentliga tablån."
 
 
 def overview(scope=NORMAL, device=None, now=None):

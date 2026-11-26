@@ -30,9 +30,9 @@ header.top {
 .brand { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
 .brand .meta { color: var(--muted); font-size: 13px; }
-nav.tabs { display: flex; gap: 2px; overflow-x: auto; margin-top: 8px; scrollbar-width: none; }
+nav.tabs { display: flex; flex-wrap: wrap; gap: 2px 0; margin-top: 8px; }
 nav.tabs button {
-  background: none; border: 0; padding: 10px 12px; border-bottom: 2px solid transparent;
+  background: none; border: 0; padding: 8px 11px; border-bottom: 2px solid transparent;
   color: var(--muted); cursor: pointer; white-space: nowrap;
 }
 nav.tabs button[aria-selected="true"] { color: var(--text); border-color: var(--accent); font-weight: 600; }
@@ -435,6 +435,9 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
         <div class="hd"><h2>Programguiden</h2><button class="btn" id="sp-scan">Sök igenom nu</button></div>
         <div class="bd">
           <p class="small muted" style="margin-top:0" id="sp-status"></p>
+          <div class="ev" style="margin:0 0 10px"><div class="row" style="justify-content:space-between"><strong style="font-size:14px">Toucans guidefil</strong><button class="btn ghost" id="sp-xmltv">Hämta guidefilen nu</button></div>
+            <p class="small muted" style="margin:4px 0">Kompletterar kanaler där Toucan inte svarar kanal för kanal (till exempel golfkanalerna). Hämtas högst två gånger per dygn, och läses efter varje genomsökning.</p>
+            <div id="sp-xmltv-body" class="small"></div></div>
           <details class="ev"><summary>Kanaler som söks igenom</summary>
             <p class="small muted">Utan val: svenska kategorier och sportkategorier (förvalda nedan). Vuxenkategorier aldrig. Fler kanaler gör genomsökningen längre (en kanal i taget, med paus).</p>
             <div id="sp-cats" style="display:grid; gap:4px; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); max-height:260px; overflow:auto"></div>
@@ -1527,6 +1530,12 @@ function renderSports() {
     : st.last_scan ? `Senast ${fmtAgo(new Date(st.last_scan * 1000).toISOString())}: ${st.channels} kanaler, ${st.programs.toLocaleString("sv-SE")} program${st.errors ? `, ${st.errors} kanaler gick inte att hämta` : ""}. Var ${st.interval_h}:e timme.`
     : "Programguiden har inte hämtats än. Den hämtas en stund efter start, eller med Sök igenom nu.";
   if (st.running) setTimeout(() => current === "sports" && loaders.sports(), 4000);
+  const xt = d.xmltv;
+  $("sp-xmltv-body").innerHTML = !xt ? '<span class="pill warn">Ännu inte hämtad</span> Den hämtas efter nästa genomsökning, eller med knappen.'
+    : !xt.ok ? `<span class="pill bad">Fel</span> ${esc(xt.error || "")}`
+    : `<span class="pill ok">${fmtAgo(new Date(xt.at * 1000).toISOString())}</span> Filen hade ${(xt.channels_in_file || 0).toLocaleString("sv-SE")} kanaler och ${(xt.programs_in_file || 0).toLocaleString("sv-SE")} program.
+       ${xt.missing_before || 0} av dina kanaler saknade program; <strong>${xt.filled || 0}</strong> fick program härifrån (${(xt.inserted || 0).toLocaleString("sv-SE")} program).
+       ${Object.keys(xt.examples || {}).length ? `<div class="muted" style="margin-top:4px">${Object.entries(xt.examples).slice(0, 12).map(([k, v]) => `${esc(k)} (${v})`).join(", ")}</div>` : ""}`;
   const boxOpts = (sel) => '<option value="">Nej</option>' + d.boxes.map((b) => `<option value="${b.id}" ${b.id === sel ? "selected" : ""}>Ja, på ${esc(b.name)}</option>`).join("");
   $("sp-list").innerHTML = d.interests.map((i) => {
     const c = i.counts || {};
@@ -1598,6 +1607,10 @@ $("sp-save-cats").addEventListener("click", (e) => guarded(async () => {
 }, e.currentTarget));
 $("sp-auto-cats").addEventListener("click", (e) => guarded(async () => {
   await api("sports/settings", { method: "PUT", body: { categories: [] } }); toast("Automatiskt val"); loaders.sports();
+}, e.currentTarget));
+$("sp-xmltv").addEventListener("click", (e) => guarded(async () => {
+  await api("sports/xmltv", { method: "POST" }); toast("Hämtar Toucans guidefil i bakgrunden. Det kan ta några minuter.");
+  setTimeout(loaders.sports, 20000);
 }, e.currentTarget));
 $("sp-scan").addEventListener("click", (e) => guarded(async () => {
   const r = await api("sports/scan", { method: "POST" }); toast(r.started ? "Söker igenom programguiden i bakgrunden…" : r.message);

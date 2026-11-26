@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (VERSION, channelexport, usage, worldcup, family, extguide, ai, alerts, backup, hotfix, sportsets, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
+from . import (VERSION, web, xmltvguide, channelexport, usage, worldcup, family, extguide, ai, alerts, backup, hotfix, sportsets, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
                sports,
                recordings, reminders, remote, taste, updates)
 from .config import CFG
@@ -474,10 +474,41 @@ def _img_cache_store(path, body):
 def admin_img(h):
     """Hämtar affischer via servern. Källans bilder ligger ofta på http, vilket webbläsaren
     blockerar när webbadminen öppnas via https (Nabu Casa). Bilderna sparas i en cache."""
-    import hashlib
-    import urllib.request
-    global IMG_DIR
+    return _serve_img(h, h.query.get("u", [""])[0])
+
+
+_img_hosts = {"at": 0, "hosts": set()}
+
+
+def _known_image_host(url):
+    """Webbappen (kan nås utifrån via Funnel): bara bilder från värdar som katalogen själv pekar på."""
+    from urllib.parse import urlsplit
+    now = time.time()
+    if now - _img_hosts["at"] > 3600:
+        hosts = set()
+        for r in db.q("SELECT DISTINCT substr(icon, 1, 120) AS u FROM items WHERE icon LIKE 'http%' LIMIT 20000"):
+            try:
+                hosts.add((urlsplit(r["u"]).hostname or "").lower())
+            except ValueError:
+                pass
+        hosts |= {p_["host"].lower().rsplit(":", 1)[0] for p_ in _portal_hosts() if p_.get("host")}
+        _img_hosts.update(at=now, hosts=hosts)
+    try:
+        return (urlsplit(url).hostname or "").lower() in _img_hosts["hosts"]
+    except ValueError:
+        return False
+
+
+def web_img(h):
     url = h.query.get("u", [""])[0]
+    if not _known_image_host(url):
+        raise HttpError(400, "Adressen är inte tillåten")
+    return _serve_img(h, url)
+
+
+def _serve_img(h, url):
+    import hashlib
+    global IMG_DIR
     if not re.match(r"^https?://", url) or len(url) > 1000:
         raise HttpError(400, "Ogiltig bildadress")
     if IMG_DIR is None:
@@ -897,6 +928,75 @@ def dev_landing(h):
     h.wfile.write(body)
 
 
+# ----- Webbappen (laptopen) -----
+WEB_DIR = os.path.join(STATIC_DIR, "web")
+
+
+@route(DEVICE, "GET", r"/web/?(?:index\.html)?")
+def web_index(h):
+    return _web_file(h, "index.html")
+
+
+route(DEVICE, "GET", r"/web/img")(web_img)
+
+
+@route(DEVICE, "GET", r"/web/([\w.\-]+)")
+def web_static(h, name):
+    return _web_file(h, name)
+
+
+def _web_file(h, name):
+    path = os.path.join(WEB_DIR, name)
+    if not os.path.isfile(path):
+        raise HttpError(404, "Saknas")
+    with open(path, "rb") as fh:
+        body = fh.read()
+    ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    if ctype.startswith("text/") or ctype.endswith("javascript"):
+        ctype += "; charset=utf-8"
+    h.send_response(200)
+    h.send_header("Content-Type", ctype)
+    h.send_header("Content-Length", str(len(body)))
+    h.send_header("Cache-Control", "no-cache")
+    h.send_header("X-Content-Type-Options", "nosniff")
+    h.send_header("Referrer-Policy", "no-referrer")
+    h.end_headers()
+    h.wfile.write(body)
+
+
+@route(DEVICE, "GET", r"/web/stream/([0-9a-f]{24})")
+def web_stream(h, session_id):
+    web.stream(h, session_id)
+
+
+@route(DEVICE, "POST", r"/device/web-play")
+def dev_web_play(h):
+    """Som /device/play, men webbläsaren får en länk via tillägget i stället för Toucans adress."""
+    dev, scope = h.context()
+    if not web.is_web(dev):
+        raise HttpError(403, "Bara för webbappen.")
+    data = h.read_json()
+    result = devices.request_play(
+        dev, data.get("type"), data.get("id"), ext=data.get("ext"), force=bool(data.get("force")),
+        name=data.get("name"), scope=scope, series_id=data.get("series_id"), start=data.get("start"),
+        duration=data.get("duration"), icon=data.get("icon"), viewer_id=scope.pid,
+    )
+    if result.get("status") == "ok":
+        result.pop("url", None)
+        result.pop("user_agent", None)
+        result["stream"] = f"/web/stream/{result['session_id']}"
+    return 200, result
+
+
+@route(DEVICE, "GET", r"/device/web-recordings")
+def dev_web_recordings(h):
+    """Webbappen: inspelningarna på alla boxar (bara vanligt läge), med boxens namn."""
+    dev, scope = h.context()
+    if scope.adult or scope.private:
+        return 200, []
+    return 200, [r for r in recordings.all_recordings() if not r.get("adult")][:200]
+
+
 @route(DEVICE, "GET", r"/device/ping")
 def dev_ping(h):
     return 200, {"app": "tvhub", "version": VERSION}
@@ -1262,7 +1362,14 @@ def dev_recording_create(h):
         rec, created = recordings.create_media(dev, scope, kind, data.get("id"), data.get("title"), data.get("ext"),
                                                data.get("series_id"))
         return (201 if created else 200), rec
-    rec, created = recordings.create(dev, scope, data.get("stream_id"), data.get("title"),
+    target = dev
+    if data.get("box_id") is not None:
+        # Webbappen och telefonen: spela in på en vald box.
+        box = db.q1("SELECT * FROM devices WHERE id = ?", (_int_arg({"x": [str(data.get("box_id"))]}, "x", 0),))
+        if box is None or box["model"] in ("integration", web.WEB_MODEL):
+            raise HttpError(404, "Boxen finns inte.")
+        target = box
+    rec, created = recordings.create(target, scope, data.get("stream_id"), data.get("title"),
                                      data.get("start"), data.get("end"))
     return (201 if created else 200), rec
 
@@ -1473,7 +1580,8 @@ def admin_sports(h):
         items.append(i)
     cats = [{"category_id": c["category_id"], "name": c["name"], "auto": bool(sports.AUTO_CATEGORY.search(c["name"] or "")) and not c["hidden"]}
             for c in catalog.categories("live") if not c["adult"]]
-    return 200, {"interests": items, "settings": sports.settings(), "status": sports.status(), "categories": cats,
+    return 200, {"interests": items, "settings": sports.settings(), "status": sports.status(), "xmltv": xmltvguide.status(),
+                 "categories": cats,
                  "boxes": [{"id": b["id"], "name": b["name"]} for b in control.boxes()]}
 
 
@@ -1521,6 +1629,17 @@ def admin_sport_preview(h, iid):
 def admin_sport_settings(h):
     out = sports.save_settings(h.read_json())
     return 200, out
+
+
+@route(ADMIN, "GET", r"/api/sports/xmltv")
+def admin_xmltv(h):
+    return 200, {"status": xmltvguide.status()}
+
+
+@route(ADMIN, "POST", r"/api/sports/xmltv")
+def admin_xmltv_run(h):
+    threading.Thread(target=xmltvguide.run_now, daemon=True).start()
+    return 200, {"started": True}
 
 
 @route(ADMIN, "POST", r"/api/sports/scan")
@@ -1750,7 +1869,8 @@ LANDING = """<!doctype html><html lang="sv"><meta charset="utf-8">
 <li style="margin-bottom:12px">Öppna <b>TV Hub</b>. Skriv den här adressen när appen frågar efter server:<br><b style="font-size:20px">%(address)s</b></li>
 <li style="margin-bottom:12px">Skriv koden du fått av %(owner)s. Klart: du ser bara din egen profil.</li>
 </ol>
-<p style="color:#9aa1ab">Du måste vara på hemmets wifi första gången.</p></body></html>"""
+<p style="color:#9aa1ab">Du måste vara på hemmets wifi första gången.</p>
+<p><b>På datorn:</b> öppna <b>%(address)s/web</b> och logga in med en kod på samma sätt.</p></body></html>"""
 
 
 @route(ADMIN, "GET", r"/api/worldcup")

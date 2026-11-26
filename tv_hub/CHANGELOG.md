@@ -1,5 +1,32 @@
 # Ändringar
 
+## 2.14.0
+
+- **Toucans guidefil (XMLTV):** många kanaler (bland annat V Sport Golf och Golf Channel US) saknar programguide när Toucan
+  tillfrågas kanal för kanal. TV Hub hämtar nu också Toucans samlade guidefil (högst två gånger per dygn) och fyller de kanaler
+  som saknar program. Webbadminen, fliken Sport → Programguiden, visar hur många kanaler filen hade och vilka som fick program,
+  med knappen *Hämta guidefilen nu*. Toucans svar per kanal och tablån från TV4.se skrivs aldrig över.
+- **Webbadminen:** flikarna bryts till två rader, så att alla syns.
+- **Sök på boxen (ny app):** när du går till träffarna försvinner tangentbordet helt och träffarna får hela bredden, med sökordet
+  ovanför. Vänster från första kortet tar tillbaka tangentbordet. *Rensa sökningen* ligger överst på tangentbordet.
+- **Världscupen:** gamla Global Champions Tour-rader under *Sågs i guiden* rensas bort.
+- **Webbappen via https (Tailscale Funnel):** omslag och kanallogor hämtas via TV Hub, eftersom webbläsaren stoppar bilder på http.
+- Webbappen nås utifrån på `https://homeassistant.tail1d54b1.ts.net/web` (Funnel på port 443 till TV Hubs port 8099).
+
+## 2.13.0
+
+- **TV Hub i webbläsaren (laptopen):** öppna `http://<Home Assistants adress>:8099/web` och logga in med en kod (samma som när en
+  box paras, eller Lovisas inbjudningskod). Hem, Live-TV med programguide, Filmer, Serier, Sport, Världscupen, Sök och Inspelningar,
+  med profiler. Lovisas dator låses till hennes profil som telefonen.
+- **Uppspelning i webbläsaren** via tillägget (`/web/stream/…`): webbläsaren får aldrig Toucans adress eller inloggning. Samma regler
+  som boxarna: en ström åt gången, ta över, prioritet. Kanaler med AC3-ljud eller HEVC-bild kan sakna ljud eller bild i Chrome och
+  Edge; då visas det, och *Spela på TV:n* finns på filmer.
+- **Spela in från datorn** på vald box, och **Spela på TV:n** (skicka en film till en box som är på).
+- Datorer visas inte i listan över boxar att skicka till eller spela in på.
+- Utanför hemmet: med Tailscale (se DOCS, *Webbappen*).
+- Sidan för nedladdning (`/hej`) visar också adressen till webbappen.
+- Statusraden på Världscupen säger om tablån från TV4.se inte är hämtad än.
+
 ## 2.12.0
 
 - **Världscupen, ny sida (ny app):** överst ett stort kort med det som sänds nu eller nästa sändning, nedräkning och knapparna Titta och

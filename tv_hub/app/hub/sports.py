@@ -319,6 +319,11 @@ def scan(stop_event=None):
             conn.execute("DELETE FROM epg WHERE end < ?", (now - KEEP_BACK_S,))
             conn.execute("DELETE FROM sport_done WHERE at < ?", (now - 30 * 86400,))
         try:
+            from . import xmltvguide
+            xmltvguide.fill()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[fel] guidefil: {exc}", flush=True)
+        try:
             from . import extguide
             extguide.fill()
         except Exception as exc:  # noqa: BLE001

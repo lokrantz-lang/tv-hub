@@ -1707,6 +1707,7 @@ class HomeActivity : Activity(), CardListener {
         private val hint: TextView = view.findViewById(R.id.hint)
         private val keyPane: View = view.findViewById(R.id.key_pane)
         private val shelves: RecyclerView = view.findViewById(R.id.shelves)
+        private val resultQuery: TextView = view.findViewById(R.id.result_query)
         private val shelfAdapter = ShelfAdapter(this@HomeActivity).also { it.style = ViewStyle.TITLE }
         private val keyAdapter = RowAdapter(onClick = { row, _ -> press(row.key) }, onKey = { _, p, code -> keyEdge(p, code) })
         private val keyColumns = 6
@@ -1719,13 +1720,14 @@ class HomeActivity : Activity(), CardListener {
             val letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ1234567890".map { it.toString() }
             // Röstsök överst, om boxen har Googles röstinmatning.
             val voice = if (Voice.available(this@HomeActivity)) listOf(Row("🎤  Sök med rösten", key = "voice")) else emptyList()
-            val rows = voice + letters.map { Row(it, key = it) } +
-                listOf(Row("Mellanslag", key = " "), Row("⌫", key = "back"), Row("Rensa", key = "clear"))
-            val offset = voice.size
+            // Rensa överst (en rad), så att en ny sökning är ett tryck bort.
+            val rows = voice + listOf(Row("✕  Rensa sökningen", key = "clear")) + letters.map { Row(it, key = it) } +
+                listOf(Row("Mellanslag", key = " "), Row("⌫", key = "back"))
+            val offset = voice.size + 1
             keyManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
                 override fun getSpanSize(position: Int): Int = when {
                     position < offset -> keyColumns
-                    position >= offset + letters.size -> 2
+                    position >= offset + letters.size -> keyColumns / 2
                     else -> 1
                 }
             }
@@ -1747,16 +1749,16 @@ class HomeActivity : Activity(), CardListener {
 
         /** Tangentbordet tar plats; träffarna får mindre. */
         private fun expandKeys() {
-            keys.visibility = View.VISIBLE
-            hint.visibility = View.VISIBLE
-            keyPane.layoutParams = keyPane.layoutParams.also { it.width = (330 * resources.displayMetrics.density).toInt() }
+            keyPane.visibility = View.VISIBLE
+            resultQuery.visibility = View.GONE
         }
 
-        /** Går man till träffarna fälls tangentbordet in så att träffarna syns. Vänster från första kortet tar tillbaka det. */
+        /** Går man till träffarna försvinner tangentbordet helt och träffarna får hela bredden.
+         *  Sökordet visas ovanför träffarna. Vänster från första kortet tar tillbaka tangentbordet. */
         private fun collapseKeys() {
-            keys.visibility = View.GONE
-            hint.visibility = View.GONE
-            keyPane.layoutParams = keyPane.layoutParams.also { it.width = (220 * resources.displayMetrics.density).toInt() }
+            keyPane.visibility = View.GONE
+            resultQuery.text = "Sökning: $query     ◀ vänster för att ändra"
+            resultQuery.visibility = View.VISIBLE
         }
 
         private fun inShelves(v: View?): Boolean {

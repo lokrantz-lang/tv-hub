@@ -430,3 +430,27 @@ Träffarna på filmer och serier bygger på titlar och är därför inte fullst�
 Webbadminen, fliken **Världscupen** → *Exportera kanallista*. Filen innehåller alla kanaler (namn, kategori, EPG-id,
 arkivdagar, antal program i guiden) och film- och seriekategorierna med antal. Ingen serveradress, inga
 inloggningsuppgifter och inga länkar. Vuxenkanaler räknas men namnges inte.
+
+## Webbappen (laptopen)
+
+1. Öppna `http://<Home Assistants adress>:8099/web` i Chrome eller Edge.
+2. Skriv en kod: din egen från webbadminen (*Boxar → Para ny box*), eller Lovisas inbjudningskod.
+3. Klart. Datorn kommer ihåg inloggningen. *Logga ut datorn* finns längst ned till vänster.
+
+Uppspelningen går via tillägget. Vissa kanaler (AC3-ljud, HEVC-bild) går inte att spela i webbläsaren; spela dem på boxen.
+Inspelning görs alltid på en box: välj vilken när du trycker *Spela in*.
+
+### Utanför hemmet (Tailscale Funnel)
+
+TV Hub ligger på `https://homeassistant.tail1d54b1.ts.net/web` (Funnel, port 443 → 127.0.0.1:8099). Ingen app behövs.
+Smart (8443) och Fix & peng (10000) använder de andra Funnel-portarna. Kontrollera med
+`docker exec -it app_a0d7b954_tailscale /opt/tailscale funnel status` i Advanced SSH & Web Terminal (Protection mode av).
+
+### Alternativ: Tailscale-appen
+
+1. Home Assistant: *Inställningar → Tillägg → Tilläggsbutik*, sök **Tailscale**, installera och starta.
+2. Öppna tilläggets webbsida och logga in (till exempel med Google).
+3. Laptopen: installera Tailscale från tailscale.com och logga in med samma konto.
+4. Öppna `http://homeassistant:8099/web` (eller Home Assistants Tailscale-adress, `100.x.x.x`).
+
+ExpressVPN och liknande tjänster ger inte åtkomst hem och behövs inte.

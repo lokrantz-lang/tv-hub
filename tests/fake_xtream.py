@@ -6,6 +6,7 @@ Styr felbeteenden med GET /__mode?mode=ok|down_api|auth_fail|slow|vod_timeout|vo
 import base64
 import json
 import re
+import os
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -296,6 +297,20 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 4 and parts[0] in ("live", "movie", "series"):
             if parts[1] != USER or parts[2] != PASS:
                 return self.send(403, b"forbidden", "text/plain")
+            # Riktig MPEG-TS för test av webbspelaren (FAKE_TS=/sökväg/till/fil.ts).
+            if os.environ.get("FAKE_TS") and parts[0] == "live":
+                with open(os.environ["FAKE_TS"], "rb") as fh:
+                    data = fh.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "video/mp2t")
+                self.end_headers()
+                try:
+                    for i in range(0, len(data), 188 * 700):
+                        self.wfile.write(data[i:i + 188 * 700])
+                        time.sleep(0.05)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                return
             # Film: så snabbt som möjligt i 3 MB. Live: 1 MB/s.
             self.send_response(200)
             self.send_header("Content-Type", "video/mp2t")

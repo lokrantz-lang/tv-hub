@@ -291,6 +291,8 @@ def main():
         version_299(ta, tb, pa, pb)
         version_2910(ta, tb, pa, pb)
         version_2120(ta, tb, pa, pb)
+        version_2130(ta, tb, pa, pb)
+        version_2140(ta, tb, pa, pb)
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -2482,6 +2484,88 @@ def version_2120(ta, tb, pa, pb):
     raw = json.dumps(ex)
     check("2.12: kanalexporten har kanaler och kategorier", s == 200 and ex["counts"]["live"] > 0 and "vod_categories" in ex, (s, ex.get("counts")))
     check("2.12: kanalexporten saknar lösenord och adresser", "password" not in raw and "http://" not in raw and "https://" not in raw, raw[:300])
+
+
+def version_2130(ta, tb, pa, pb):
+    """2.13.0: webbappen (laptopen) med ström via tillägget."""
+    print("Version 2.13.0: webbappen")
+    s, ov = call("GET", f"{A}/api/overview")
+    for x in ov.get("sessions", []):
+        call("POST", f"{A}/api/sessions/{x['id']}/stop", {})
+    s, page = call("GET", f"{D}/web/", raw=True)
+    check("2.13: webbappen serveras", s == 200 and b"TV Hub" in page and b"/web/app.js" in page, s)
+    s, js = call("GET", f"{D}/web/app.js", raw=True)
+    s2, lib = call("GET", f"{D}/web/mpegts.js", raw=True)
+    check("2.13: skript och spelare finns", s == 200 and b"web-play" in js and s2 == 200 and len(lib) > 100000, (s, s2))
+    s, code = call("POST", f"{A}/api/devices/pair-code")
+    s, pw = call("POST", f"{D}/device/pair", {"code": code["code"], "name": "Laptop", "model": "Webbläsare", "app_version": "web"})
+    check("2.13: laptopen loggar in med kod", s == 200 and pw.get("token"), (s, pw))
+    tw = pw["token"]
+    s, chans = call("GET", f"{D}/device/browse?type=live&limit=5", token=tw)
+    cid = chans["items"][0]["id"]
+    s, bad = call("POST", f"{D}/device/web-play", {"type": "live", "id": cid}, token=ta)
+    check("2.13: boxar kan inte använda webbens uppspelning", s == 403, s)
+    s, boxes = call("GET", f"{D}/device/boxes", token=tw)
+    check("2.13: laptopen visas inte som box att skicka till", all(b["id"] != pw["device_id"] for b in boxes) and boxes, boxes)
+    res = None
+    for _ in range(20):
+        s, res = call("POST", f"{D}/device/web-play", {"type": "live", "id": cid, "force": True}, token=tw)
+        if res.get("status") != "waiting":
+            break
+        time.sleep(1)
+    check("2.13: uppspelning ger en länk via tillägget", s == 200 and res.get("status") == "ok" and res.get("stream", "").startswith("/web/stream/"), res)
+    raw = json.dumps(res)
+    check("2.13: svaret har ingen Toucan-adress eller lösenord", "url" not in res and "http" not in raw and "user_agent" not in res, raw[:300])
+    req = urllib.request.Request(D + res["stream"])
+    with urllib.request.urlopen(req, timeout=20) as r:
+        head = r.read(188 * 50)
+        ctype = r.headers.get("Content-Type")
+    check("2.13: strömmen kommer fram via tillägget", len(head) == 188 * 50 and head[0] == 0x47 and ctype == "video/mp2t", (len(head), ctype))
+    s, hb = call("POST", f"{D}/device/heartbeat", {"session_id": res["session_id"], "metrics": {}}, token=tw)
+    check("2.13: hjärtslag fungerar", s == 200 and hb.get("stop") is False, hb)
+    call("POST", f"{D}/device/stop", {"session_id": res["session_id"]}, token=tw)
+    try:
+        urllib.request.urlopen(D + res["stream"], timeout=10)
+        gone = False
+    except urllib.error.HTTPError as exc:
+        gone = exc.code == 404
+    check("2.13: stoppad session går inte att spela", gone)
+    try:
+        urllib.request.urlopen(D + "/web/stream/" + "0" * 24, timeout=10)
+        bad404 = False
+    except urllib.error.HTTPError as exc:
+        bad404 = exc.code == 404
+    check("2.13: okänd ström nekas", bad404)
+    now = int(time.time())
+    s, rec = call("POST", f"{D}/device/recordings", {"stream_id": cid, "title": "Webbtest", "start": now + 3600, "end": now + 7200,
+                                                   "box_id": pa["device_id"]}, token=tw)
+    check("2.13: inspelning från laptopen hamnar på vald box", s in (200, 201) and rec.get("id"), (s, rec))
+    s, lst = call("GET", f"{D}/device/recordings", token=ta)
+    check("2.13: boxen ser inspelningen", any(r["title"] == "Webbtest" for r in lst), [r["title"] for r in lst][:5])
+    s, wl = call("GET", f"{D}/device/web-recordings", token=tw)
+    check("2.13: laptopen ser inspelningar på alla boxar", any(r["title"] == "Webbtest" for r in wl), s)
+    s, bad = call("POST", f"{D}/device/recordings", {"stream_id": cid, "title": "x", "start": now + 3600, "end": now + 7200,
+                                                   "box_id": pw["device_id"]}, token=tw)
+    check("2.13: inspelning på laptopen själv nekas", s == 404, s)
+
+
+def version_2140(ta, tb, pa, pb):
+    """2.14.0: bilder via TV Hub för webbappen, Toucans guidefil i webbadminen."""
+    print("Version 2.14.0: bilder och guidefil")
+    s, items = call("GET", f"{D}/device/browse?type=vod&limit=50", token=ta)
+    icon = next((i["icon"] for i in items["items"] if i.get("icon")), None)
+    s, body = call("GET", f"{D}/web/img?u=" + urllib.parse.quote(icon, safe=""), raw=True)
+    check("2.14: omslag hämtas via TV Hub", s == 200 and body[:4] == b"\x89PNG", (s, icon))
+    s, _ = call("GET", f"{D}/web/img?u=" + urllib.parse.quote("http://example.com/x.png", safe=""))
+    check("2.14: okänd bildvärd nekas", s == 400, s)
+    s, sp = call("GET", f"{A}/api/sports")
+    check("2.14: webbadminen visar guidefilens status", s == 200 and "xmltv" in sp, list(sp))
+    s, r = call("POST", f"{A}/api/sports/xmltv", {})
+    check("2.14: guidefilen kan hämtas med knappen", s == 200 and r.get("started"), (s, r))
+    def done():
+        s, x = call("GET", f"{A}/api/sports/xmltv")
+        return x.get("status") and x["status"].get("at")
+    check("2.14: guidefilen ger en status (fel eller ok)", wait_for(done, 30), None)
 
 if __name__ == "__main__":
     main()
