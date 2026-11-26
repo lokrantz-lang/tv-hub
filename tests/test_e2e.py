@@ -290,6 +290,7 @@ def main():
         version_297(ta, tb, pa, pb)
         version_299(ta, tb, pa, pb)
         version_2910(ta, tb, pa, pb)
+        version_2120(ta, tb, pa, pb)
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -2352,6 +2353,7 @@ def version_299(ta, tb, pa, pb):
     db.commit()
     db.close()
     s, w = call("GET", f"{D}/device/worldcup", token=ta)
+    check("2.10.2: kanalknappar finns", isinstance(w.get("channels"), list) and all(c["command"]["type"] == "live" for c in w["channels"]), w.get("channels"))
     check("2.9.9: boxen får planering", s == 200 and w["season"] == "2026/27" and len(w["legs"]) == 15, (s, list(w)))
     london = [l for l in w["legs"] if l["id"] == "london"][0]
     if london["events"] and london["events"][0]["record"]["action"] == "later":
@@ -2463,6 +2465,23 @@ def version_2910(ta, tb, pa, pb):
 def pb_id(pb):
     return pb["device_id"]
 
+
+
+def version_2120(ta, tb, pa, pb):
+    """2.12.0: Världscupens nya sida, Sport per sport med kanaler och turneringar, kanalexport."""
+    print("Version 2.12.0: Världscupen, Sport, kanalexport")
+    s, wc = call("GET", f"{D}/device/worldcup", token=ta)
+    check("2.12: världscupen har stort kort och statusrad", s == 200 and "hero" in wc and "status_line" in wc, (s, list(wc)))
+    check("2.12: varningar bara när en kanal saknas helt", all("saknas" not in h or "Finns inte" in h for h in wc.get("hints", [])), wc.get("hints"))
+    s, ov = call("GET", f"{D}/device/sports", token=ta)
+    if ov.get("interests"):
+        iid = ov["interests"][0]["id"]
+        s, one = call("GET", f"{D}/device/sports?interest={iid}", token=ta)
+        check("2.12: en sport ger kanaler och bibliotek", s == 200 and "channels" in one and "library" in one, (s, list(one)))
+    s, ex = call("GET", f"{A}/api/channels/export")
+    raw = json.dumps(ex)
+    check("2.12: kanalexporten har kanaler och kategorier", s == 200 and ex["counts"]["live"] > 0 and "vod_categories" in ex, (s, ex.get("counts")))
+    check("2.12: kanalexporten saknar lösenord och adresser", "password" not in raw and "http://" not in raw and "https://" not in raw, raw[:300])
 
 if __name__ == "__main__":
     main()

@@ -167,3 +167,105 @@ def ensure_keywords():
         if db.q1("SELECT 1 FROM sport_interests WHERE lower(name) = ?", (name.casefold(),)):
             upgrade_interest(name)
     db.set_setting("sportsets_kw_v1", "1")
+
+
+# ---------------------------------------------------------------- Sport-fliken: kanaler och turneringar
+
+NOISE = re.compile(r"\b(huvudsändning|huvudsandning|featured groups?|featured holes?|live|direkt|replay|repris|highlights?)\b", re.I)
+CUT = re.compile(r"\s(?:dag|day|runda|round|rd|final ?round|golf|fhd|uhd|hd|4k|\d{1,2}[./]\d{1,2})\b|\s[-–|·.]\s|\s{2,}", re.I)
+LEAD = re.compile(r"^\s*(?:\d{1,2}[.:]\d{2}\s+)+")
+
+
+def tournament(name):
+    """'14.00 Presidents Cup  Dag 3 golf 9.27 HBO Max SE' -> 'Presidents Cup'."""
+    text = LEAD.sub("", str(name or ""))
+    text = re.sub(r"^\s*[a-z]{2,3}\s*[:|]\s*", "", text, flags=re.I)  # "SE: "
+    text = NOISE.sub(" ", text).strip(" -–|·.")
+    text = re.sub(r"^\s+", "", text)
+    m = CUT.search(" " + text)
+    if m:
+        text = (" " + text)[:m.start()]
+    text = re.sub(r"\s+", " ", text).strip(" -–|·.,")
+    return text[:60] or str(name or "")[:60]
+
+
+def set_for(interest):
+    """Uppsättningen (Golf, Ridsport) som hör till intresset, om någon."""
+    name = (interest or {}).get("name") or ""
+    for key in SETS:
+        if key.casefold() == name.casefold():
+            return key
+    return None
+
+
+def _now_titles(items, now):
+    keys = {sports._epg_key(i): i["id"] for i in items}
+    out = {}
+    for key, cid in keys.items():
+        r = db.q1("SELECT title, start, end FROM epg WHERE epg_key = ? AND start <= ? AND end > ?", (key, now, now))
+        if r:
+            out[cid] = (r["title"], r["start"], r["end"])
+    return out
+
+
+def sport_channels(set_name, scope, now=None, limit=30):
+    """Alla egna kanaler för sporten (Golf Channel, Sky Sports Golf …), med vad som sänds nu."""
+    import time as _t
+    now = int(now or _t.time())
+    items = []
+    for c in dedicated(set_name):
+        if not catalog.in_scope("live", c["id"], scope):
+            continue
+        item = catalog.get_item("live", c["id"])
+        if item and not item.get("adult"):
+            items.append(item)
+    titles = _now_titles(items, now)
+    out = []
+    for item in items:
+        t = titles.get(item["id"])
+        item["now_title"] = t[0] if t else None
+        item["now_progress"] = int((now - t[1]) * 1000 / max(1, t[2] - t[1])) if t else -1
+        out.append(item)
+    # Kanaler som sänder något nu först, sedan svenska, sedan namn.
+    out.sort(key=lambda i: (i["now_title"] is None, not sports.SWEDISH_NAME.search(i["name"] or ""), (i["name"] or "").casefold()))
+    return out[:limit]
+
+
+def library(interest, scope, limit_groups=10, per_group=20):
+    """Filmer och serier (repriser av turneringar) som matchar intresset, grupperade per turnering, nyast först."""
+    test = sports.matcher(interest)
+    words = set()
+    for line in interest["keywords"]:
+        first = sports.norm(line.split("+")[0])
+        if len(first) >= 3:
+            words.add(first)
+    if not words:
+        return []
+    seen, found = set(), []
+    for w in sorted(words):
+        for r in db.q("""SELECT type, item_id, name FROM items WHERE type IN ('vod', 'series') AND adult = 0
+                         AND lower(name) LIKE ? LIMIT 400""", (f"%{w}%",)):
+            k = (r["type"], r["item_id"])
+            if k in seen:
+                continue
+            seen.add(k)
+            if test(r["name"], ""):
+                found.append(k)
+    groups = {}
+    for kind, iid in found[:1500]:
+        if not catalog.in_scope(kind, iid, scope):
+            continue
+        item = catalog.get_item(kind, iid)
+        if not item or item.get("adult"):
+            continue
+        name = tournament(item["name"])
+        groups.setdefault(name.casefold(), {"name": name, "items": []})["items"].append(item)
+    out = []
+    for g in groups.values():
+        g["items"].sort(key=lambda i: -(int(i.get("added") or 0)))
+        g["latest"] = int(g["items"][0].get("added") or 0)
+        g["count"] = len(g["items"])
+        g["items"] = g["items"][:per_group]
+        out.append(g)
+    out.sort(key=lambda g: -g["latest"])
+    return out[:limit_groups]

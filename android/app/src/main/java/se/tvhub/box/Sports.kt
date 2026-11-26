@@ -35,7 +35,16 @@ object Sports {
 
     data class Interest(val id: Int, val name: String, val count: Int)
 
-    data class Overview(val now: List<Event>, val upcoming: List<Event>, val past: List<Event>, val interests: List<Interest>)
+    /** En kanal för sporten (Golf Channel …) med vad som sänds nu. */
+    data class SportChannel(val item: Item, val nowTitle: String?, val progress: Int)
+
+    /** En turnering i biblioteket (repriser under Filmer/Serier). */
+    data class Tournament(val name: String, val count: Int, val items: List<Item>)
+
+    data class Overview(
+        val now: List<Event>, val upcoming: List<Event>, val past: List<Event>, val interests: List<Interest>,
+        val channels: List<SportChannel> = emptyList(), val library: List<Tournament> = emptyList(),
+    )
 
     /** Senaste översikten (för raden på Hem). */
     var cached: Overview? = null
@@ -64,8 +73,16 @@ object Sports {
         val interests = if (ints == null) emptyList() else (0 until ints.length()).mapNotNull { i ->
             ints.optJSONObject(i)?.let { Interest(it.optInt("id"), it.optString("name"), it.optInt("count")) }
         }
+        val chArr = data.optJSONArray("channels")
+        val channels = if (chArr == null) emptyList() else (0 until chArr.length()).mapNotNull { i ->
+            chArr.optJSONObject(i)?.let { SportChannel(Item.from(it), it.optStringOrNull("now_title"), it.optInt("now_progress", -1)) }
+        }
+        val libArr = data.optJSONArray("library")
+        val library = if (libArr == null) emptyList() else (0 until libArr.length()).mapNotNull { i ->
+            libArr.optJSONObject(i)?.let { Tournament(it.optString("name"), it.optInt("count"), Item.list(it.optJSONArray("items"))) }
+        }
         return Overview(parseEvents(data.optJSONArray("now")), parseEvents(data.optJSONArray("upcoming")),
-            parseEvents(data.optJSONArray("past")), interests)
+            parseEvents(data.optJSONArray("past")), interests, channels, library)
     }
 
     /** Hämtar översikten. changed anropas bara när den ändrats. */

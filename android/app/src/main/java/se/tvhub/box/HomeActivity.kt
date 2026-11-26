@@ -2027,6 +2027,14 @@ class HomeActivity : Activity(), CardListener {
             if (o.now.isNotEmpty()) list.add(Shelf("now", "Just nu", o.now.map { Sports.card(it) }))
             if (o.upcoming.isNotEmpty()) list.add(Shelf("upcoming", "Kommande", o.upcoming.map { Sports.card(it) }))
             if (o.past.isNotEmpty()) list.add(Shelf("past", "I efterhand", o.past.map { Sports.card(it) }))
+            if (o.channels.isNotEmpty()) {
+                list.add(Shelf("channels", "Alla kanaler (${o.channels.size})", o.channels.map { c ->
+                    Card.channel(c.item, c.nowTitle, c.progress)
+                }))
+            }
+            for (t in o.library) {
+                list.add(Shelf("lib:${t.name}", "${t.name} · ${t.count} i biblioteket", t.items.map { Card.poster(it) }))
+            }
             adapter.submit(list)
             info.text = if (list.isEmpty()) {
                 if (o.interests.isEmpty() && chipKey == "all") "Inga sporter eller lag valda. Lägg till dem i webbadminen under Sport."

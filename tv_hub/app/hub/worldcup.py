@@ -18,7 +18,7 @@ import json
 import re
 import time
 
-from . import db, sports, sportsets
+from . import db, extguide, sports, sportsets
 from .catalog import Scope
 
 NORMAL = Scope(adult=0)
@@ -69,8 +69,11 @@ LEGS = [
 ]
 LEG_BY_ID = {leg["id"]: leg for leg in LEGS}
 
-HOPP = ("hoppning", "hasthoppning", "show jumping", "showjumping", "jumping")
-WORLD_CUP = ("varldscupen", "varldscup", "varldscupfinalen", "varldscupfinal", "world cup", "worldcup", "longines")
+HOPP = ("hoppning", "hasthoppning", "show jumping", "showjumping", "jumping", "ridsport")
+WORLD_CUP = ("varldscupen", "varldscup", "varldscupfinalen", "varldscupfinal", "world cup", "worldcup")
+# Andra tävlingar med samma sponsor eller städer (Longines Global Champions Tour i Verona, Nations Cup …): aldrig världscupen.
+NOT_WC = ("global champions", "champions tour", "champions league", "lgct", "gct", "gcl", "super cup", "super grand prix",
+          "nations cup", "nationernas cup", "playoffs")
 SIHS = ("sweden international horse show", "sihs", "stockholm international horse show")
 EXCLUDE = ("trav", "galopp", "dressyr", "dressage", "horse racing", "ponny")
 
@@ -109,6 +112,8 @@ def _leg_match(leg, title, description):
         return _has(text, [_n(x).strip() for x in SIHS])
     hopp = _has(text, [_n(x).strip() for x in HOPP])
     wc = _has(text, [_n(x).strip() for x in WORLD_CUP])
+    if not wc and _has(text, [_n(x).strip() for x in NOT_WC]):
+        return False
     city = _n(leg.get("city") or leg["name"]).strip()
     if leg["kind"] == "final":
         return hopp and wc and (f" {city} " in text or _has(text, ["final", "finalen", "varldscupfinalen", "varldscupfinal"]))
@@ -235,6 +240,7 @@ def leg_view(leg, scope, now, recs=None):
         item = dict(e)
         item["main"] = bool(main and e["id"] == main["id"])
         item.pop("ids", None)
+        item["open_command"] = {"action": "play", "type": "live", "id": str(e["channel_id"]), "name": e["channel"], "icon": e.get("icon")}
         item["record"] = _record_request(e, now)
         item["recording"] = _recording_for(recs, e) if recs else None
         item["play_label"] = {"now": "Titta nu", "past": "Titta i efterhand"}.get(e["state"])
@@ -273,6 +279,72 @@ def remember_all(now=None):
         _remember(leg, sports.build_events(_leg_rows(leg, now), NORMAL, None, now))
 
 
+WATCH_CHANNELS = ("TV4", "Sjuan", "TV4 Sportkanalen")
+
+
+def watch_channels():
+    """Snabbknappar: din bästa kanal för TV4, Sjuan och Sportkanalen (svenskt namn, arkiv och HD först)."""
+    out = []
+    for label in WATCH_CHANNELS:
+        spec = next((w for w in CHANNEL_WANTS if w[0] == label), None)
+        found = _find_channels(spec[2], spec[3]) if spec else []
+        if found:
+            c = found[0]
+            out.append({"label": label, "channel_id": c["id"], "channel": c["name"], "icon": c.get("icon"),
+                        "command": {"action": "play", "type": "live", "id": str(c["id"]), "name": c["name"], "icon": c.get("icon")}})
+    return out
+
+
+def _countdown(start, now):
+    s = start - now
+    if s <= 0:
+        return "Sänds nu"
+    if s < 3600:
+        return f"Om {max(1, s // 60)} min"
+    if s < 86400:
+        h, m = s // 3600, (s % 3600) // 60
+        return f"Om {h} h {m} min" if m else f"Om {h} h"
+    d = (_day_start(start) - _day_start(now)) // 86400
+    return "I morgon" if d == 1 else f"Om {d} dagar"
+
+
+def _day_start(ts):
+    t = time.localtime(ts)
+    return int(time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1)))
+
+
+def _hero(legs, now):
+    """Det stora kortet överst: det som sänds nu, annars nästa sändning (världscupklassen först)."""
+    cands = []
+    for leg in legs:
+        if leg["kind"] == "other":
+            continue
+        for e in leg["events"]:
+            if e["state"] in ("now", "upcoming"):
+                cands.append((0 if e["state"] == "now" else 1, 0 if e.get("main") else 1, e["start"], leg, e))
+    if cands:
+        cands.sort(key=lambda c: c[:3])
+        _, _, _, leg, e = cands[0]
+        return {"leg": leg["id"], "leg_name": leg["name"], "country": leg["country"], "event": e,
+                "countdown": _countdown(e["start"], now), "live": e["state"] == "now"}
+    nxt = next((leg for leg in legs if leg["kind"] != "other" and leg["state"] != "done"), None)
+    if nxt:
+        return {"leg": nxt["id"], "leg_name": nxt["name"], "country": nxt["country"], "event": None,
+                "countdown": _countdown(nxt["wc_time"] or nxt["start"], now), "live": False}
+    return None
+
+
+def _status_line(now):
+    st = extguide.status() or {}
+    chans = st.get("channels") or {}
+    got = {k: v.get("programs", 0) for k, v in chans.items() if v.get("source") == "tv4.se" and v.get("programs")}
+    if got:
+        return "Programguide för " + ", ".join(sorted(got)) + " hämtas från TV4.se."
+    if st.get("note"):
+        return None
+    return "Toucan saknar programguide för TV4 och Sjuan. Tiderna kommer från TV4:s tablå."
+
+
 def overview(scope=NORMAL, device=None, now=None):
     now = int(now or time.time())
     recs = None
@@ -284,7 +356,8 @@ def overview(scope=NORMAL, device=None, now=None):
     upcoming = [leg for leg in league if leg["state"] != "done"]
     nxt = upcoming[0] if upcoming else None
     return {
-        "season": SEASON, "legs": legs, "next": nxt["id"] if nxt else None,
+        "hero": _hero(legs, now), "status_line": _status_line(now) if scope.adult == 0 else None,
+        "season": SEASON, "legs": legs, "channels": watch_channels() if scope.adult == 0 else [], "next": nxt["id"] if nxt else None,
         "now": [e for leg in legs for e in leg["events"] if e["state"] == "now"],
         "rights": "TV4 har världscupen i hoppning från säsongen 2026/27. SVT visar finalen och mästerskapen tillsammans med TV4.",
         "icon": "🏇",
@@ -320,6 +393,21 @@ def _find_channels(include, exclude):
     return out
 
 
+def _guide_missing(label):
+    """Varför guiden saknas för kanalen, i klartext."""
+    st = extguide.status() or {}
+    ch = (st.get("channels") or {}).get(label)
+    if not st:
+        return "Toucan har ingen programguide för den, och tablån från TV4.se är inte hämtad än"
+    if ch and ch.get("programs"):
+        return "programguiden kommer från TV4.se"
+    if st.get("errors"):
+        return "Toucan har ingen programguide för den, och TV4.se gick inte att läsa (se Tablå från TV4.se)"
+    if label not in (st.get("page_channels") or []) and st.get("page_channels"):
+        return "Toucan har ingen programguide för den, och kanalen finns inte på TV4.se:s tablå"
+    return "Toucan har ingen programguide för den, och TV4.se gav inga program (se Tablå från TV4.se)"
+
+
 def check(now=None):
     """Vad finns i Toucan-listan och programguiden för världscupen? Klartext för webbadminen."""
     now = int(now or time.time())
@@ -340,7 +428,7 @@ def check(now=None):
         else:
             bits = [f"{len(chans)} kanal{'er' if len(chans) > 1 else ''} hittad{'e' if len(chans) > 1 else ''}",
                     "arkiv finns" if archive else "inget arkiv (går inte att ladda ner i efterhand)",
-                    "programguiden läses" if guide_ok else "programguiden saknas för den (kanalen skannas inte än)"]
+                    "programguiden finns" if guide_ok else _guide_missing(label)]
             level = "ok" if (archive and guide_ok) else "warn"
             text = ", ".join(bits) + "."
         items.append({"label": label, "required": required, "level": level, "text": text, "why": why, "channels": chans})

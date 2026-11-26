@@ -259,7 +259,8 @@ def scan_channels():
         # Kanalen med arkiv och HD hämtas (arkivflaggan i guiden gäller den kanalen).
         best = max(items, key=lambda i: (int(i["archive_days"] or 0) > 0, "hd" in (i["name"] or "").casefold(), -len(i["name"] or "")))
         out.append((key, best["id"]))
-    out.sort()
+    # Sportkanalerna (Golf, Ridsport …) först, så att de aldrig faller bort när listan kortas.
+    out.sort(key=lambda kv: (not any(i["id"] in extra for i in groups[kv[0]]), kv[0]))
     return out[:MAX_CHANNELS]
 
 
@@ -317,6 +318,11 @@ def scan(stop_event=None):
                     conn.execute("DELETE FROM epg_scan WHERE epg_key = ?", (r["epg_key"],))
             conn.execute("DELETE FROM epg WHERE end < ?", (now - KEEP_BACK_S,))
             conn.execute("DELETE FROM sport_done WHERE at < ?", (now - 30 * 86400,))
+        try:
+            from . import extguide
+            extguide.fill()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[fel] extern tablå: {exc}", flush=True)
         rematch()
         db.log_event("epg_scan", {"channels": len(channels), "programs": db.q1("SELECT COUNT(*) AS n FROM epg")["n"]})
     except Exception as exc:  # noqa: BLE001

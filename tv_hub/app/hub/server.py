@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import (VERSION, usage, worldcup, family, ai, alerts, backup, hotfix, sportsets, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
+from . import (VERSION, channelexport, usage, worldcup, family, extguide, ai, alerts, backup, hotfix, sportsets, limits, catalog, control, db, devices, diagnostics, extras, info, myprograms, portals, profiles,
                sports,
                recordings, reminders, remote, taste, updates)
 from .config import CFG
@@ -1408,6 +1408,13 @@ def dev_sports(h):
         evs = sports.events(scope, int(iid))
         out = sports._split(evs)
         out["interests"] = []
+        interest = sports.get_interest(int(iid))
+        out["channels"], out["library"] = [], []
+        if interest:
+            set_name = sportsets.set_for(interest)
+            if set_name:
+                out["channels"] = sportsets.sport_channels(set_name, scope)
+            out["library"] = sportsets.library(interest, scope)
         return 200, out
     return 200, sports.overview(scope)
 
@@ -1751,7 +1758,15 @@ def admin_worldcup(h):
     out = worldcup.overview()
     out["check"] = worldcup.check()
     out["settings"] = worldcup.settings_view()
+    out["tabla"] = extguide.status()
     return 200, out
+
+
+@route(ADMIN, "POST", r"/api/worldcup/tabla")
+def admin_worldcup_tabla(h):
+    """Hämtar TV4:s tablå nu (tar en halv minut) och räknar om träffar och inspelningar."""
+    threading.Thread(target=extguide.run_now, daemon=True).start()
+    return 200, {"started": True}
 
 
 @route(ADMIN, "POST", r"/api/worldcup/result")
@@ -1781,8 +1796,8 @@ def dev_worldcup(h):
         return 200, {"legs": [], "season": worldcup.SEASON, "next": None, "now": []}
     out = worldcup.overview(scope, dev)
     chk = worldcup.check()
-    out["hints"] = [i["label"] + ": " + i["text"] for i in chk["items"] if i["required"] and i["level"] != "ok"] + \
-        [n["text"] for n in chk["notes"] if n["level"] != "ok"]
+    # Bara det som verkligen stoppar (kanalen finns inte alls). Guidens ursprung står i statusraden längst ner.
+    out["hints"] = [i["label"] + ": " + i["text"] for i in chk["items"] if i["required"] and i["level"] == "bad"]
     return 200, out
 
 
@@ -1942,6 +1957,11 @@ def admin_alert_settings_save(h):
 @route(ADMIN, "POST", r"/api/alerts/test")
 def admin_alert_test(h):
     return 200, alerts.test()
+
+
+@route(ADMIN, "GET", r"/api/channels/export")
+def admin_channels_export(h):
+    return 200, channelexport.export()
 
 
 @route(ADMIN, "GET", r"/api/backup")

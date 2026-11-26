@@ -1,0 +1,692 @@
+Portaler
+  ok   skapa portal som inte svarar
+  ok   skapa fungerande portal
+  ok   URL normaliseras
+  ok   lösenord returneras aldrig
+  ok   ogiltig URL avvisas
+  ok   fungerande portal blir aktiv trots lägre prioritet
+Katalog
+  ok   synk klar
+  ok   räknare
+  ok   sök 'svt' ger 2 kanaler
+  ok   sök med å/ä/ö och versaler
+  ok   sök på flera ord
+  ok   kategorier med antal
+  ok   serie med säsonger
+Favoriter och grupper
+  ok   två favoriter
+  ok   skapa grupp
+  ok   dubblettgrupp nekas
+  ok   grupp med sorterade objekt
+Parning
+  ok   utan nyckel nekas
+  ok   fel kod nekas
+  ok   para Z10
+  ok   kod kan bara användas en gång
+  ok   hemskärm
+  ok   EPG avkodas
+  ok   kanal upp/ner
+Dolt vuxenläge
+  ok   admin ser antal vuxenobjekt
+  ok   vanligt läge: ingen vuxenkategori
+  ok   vanligt läge: räknar bort vuxeninnehåll
+  ok   vanligt läge: vuxenfavorit dold
+  ok   vanligt läge: vuxenkategori för filmer dold
+  ok   vanligt läge: sök hittar inte vuxenkanal
+  ok   vuxenläge: bara vuxenkategorin
+  ok   vuxenläge: bara vuxenkategorin för filmer
+  ok   vuxenläge: bara vuxenfavoriter
+  ok   vuxenläge: inga vanliga grupper
+  ok   vuxenläge: vuxenfilmen i sin kategori
+  ok   vuxenläge utan historik: favoriter dolda
+  ok   vuxenläge med historik: favoriter syns
+  ok   vanligt läge påverkas inte av historikvalet
+  ok   vuxenläge: sök hittar vuxenkanal
+  ok   vuxenläge: sök hittar inte vanliga kanaler
+  ok   vanligt läge: kan inte starta vuxenkanal
+  ok   vuxenläge: kan inte starta vanlig kanal
+Uppspelning och anslutningsvakt
+  ok   Z10 startar
+  ok   Alpha får konflikt
+  ok   Alpha väntar vid övertagande
+  ok   Z10 ombeds stoppa
+  ok   Alpha startar efter att Z10 stoppat
+  ok   kanalbyte på samma box ger ingen konflikt
+  ok   gammal session stoppar inte nya
+  ok   avsnitt
+  ok   ogiltigt id avvisas
+  ok   ingen reserv: tydligt fel
+Diagnostik
+  ok   hastighetstest levererar rätt mängd
+  ok   hack klassas som hemnätet (12,5 Mbit/s)
+  ok   kapacitetstest nekas när en box tittar
+  ok   kapacitetstest mäter
+  ok   varnar för främmande anslutning (t.ex. MyTVOnline)
+  ok   synk delvis när VOD inte svarar
+  ok   förklarar varför VOD-listan inte uppdaterades
+  ok   gamla VOD-listan behålls
+  ok   tom lista skriver inte över
+  ok   alla portaler nere: källan pekas ut
+  ok   sammanfattning för Home Assistant
+Version 1.2: metadata, sortering och filter
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 47776)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.13/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/usr/local/lib/python3.13/http/server.py", line 451, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/local/lib/python3.13/http/server.py", line 439, in handle_one_request
+    method()
+    ~~~~~~^^
+  File "/home/claude/tv-hub/tests/fake_xtream.py", line 227, in do_GET
+    return self.send(200, VOD + (DUPES if STATE.get("dupes") else []))
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/tv-hub/tests/fake_xtream.py", line 137, in send
+    self.wfile.write(body)
+    ~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/local/lib/python3.13/socketserver.py", line 845, in write
+    self._sock.sendall(b)
+    ~~~~~~~~~~~~~~~~~~^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+  ok   detaljsida hämtar filminfo direkt
+  ok   bakgrundshämtning av filminfo klar
+  ok   sortera på längd (kortast först)
+  ok   filter: kortare än 2 h
+  ok   filter: från 2020, sorterat på år
+  ok   filter: genre
+  ok   kombinerade filter
+  ok   genrelista utan vuxengenre
+  ok   serie: år och längd från serielistan
+Dolda kategorier
+  ok   dold kategori syns inte i boxen
+  ok   dold kategori syns inte i sök
+  ok   admin ser dolda kategorier
+Fortsätt titta, sedda och senaste kanaler
+  ok   starta film
+  ok   filmen syns i Fortsätt titta
+  ok   uppspelning vet var du slutade
+  ok   detaljsidan vet var du slutade
+  ok   färdigsedd film försvinner och markeras som sedd
+  ok   fortsätt titta är separat per läge
+  ok   avsnitt i Fortsätt titta med serienamn
+  ok   serien visar var du är
+  ok   senaste kanaler
+Programguide och catch-up
+  ok   nu-program för flera kanaler
+  ok   guide med tidigare program
+  ok   kanal utan arkiv: inget spelbart bakåt
+  ok   catch-up ger timeshift-adress
+  ok   catch-up i framtiden nekas
+Sparade filter
+  ok   sparat filter syns i boxen
+  ok   sparade filter är separata per läge
+Profiler per box
+  ok   box utan vuxenläge får vanligt läge
+  ok   barnprofil: bara gruppen
+  ok   barnprofil: sök bara i gruppen
+  ok   barnprofil: hittar innehåll i gruppen
+  ok   barnprofil: kan inte spela annat
+  ok   barnprofil: serie utanför gruppen nekas
+  ok   barnprofil: serie i gruppen går att spela
+Bevakningar
+  ok   bevakning skapad, befintliga räknas som sedda
+  ok   ny titel ger träff
+  ok   träffen syns i boxen
+Appuppdatering
+  ok   ny appversion hittas
+  ok   ingen uppdatering när versionen är aktuell
+  ok   APK levereras via Home Assistant
+Version 1.3: inspelning och timeshift
+  ok   box A tittar på kanal 102
+  ok   liveström talar om hur långt arkivet räcker (timeshift)
+  ok   planera inspelning framåt
+  ok   samma program två gånger blir en inspelning
+  ok   sänt program utan arkiv nekas
+  ok   sänt program spelas in från arkivet
+  ok   längre än 6 timmar nekas
+  ok   vuxenkanal kan inte spelas in i vanligt läge
+  ok   vuxenkanal i vuxenläge
+  ok   2.9: vuxeninspelningar syns inte utan historik
+  ok   inspelningar separeras per läge
+  ok   schemaläggaren ser allt
+  ok   antal inspelningar i hemdata
+  ok   guiden visar vad som går att spela in
+Inspelning samtidigt som man tittar
+  ok   inspelning startar trots att boxen tittar
+  ok   tittandet fortsätter under inspelningen
+  ok   status: spelar in
+  ok   översikten visar inspelningen
+  ok   box B får fråga om box A:s tittande
+  ok   inspelning blockerar inte box B
+  ok   box A visas inte som tittande när den bara spelar in
+  ok   fel kanal för inspelningen nekas
+  ok   annan box kan inte använda inspelningen
+  ok   arkivinspelning ger timeshift-adress
+Stoppa och ta bort
+  ok   stopp från webbadminen når boxen
+  ok   boxen rapporterar färdig inspelning
+  ok   webbadminen visar box och storlek
+  ok   färdig inspelning markeras för radering
+  ok   boxen ser att filen ska raderas
+  ok   boxen tar bort raden när filen är raderad
+  ok   planerad inspelning tas bort direkt
+Planera från webbadminen
+  ok   planera inspelning på box B från mobilen
+  ok   box B får schemat
+  ok   box måste väljas
+Version 1.4: biblioteket i webbadminen
+  ok   admin: sortera och filtrera som i boxen
+  ok   admin: kombinerade filter
+  ok   admin: vanligt läge visar inte 18+
+  ok   admin: bara 18+
+  ok   admin: allt
+  ok   admin: sidor
+  ok   admin: sök kanaler
+  ok   admin: kategorilistan följer innehållsvalet
+  ok   admin: vuxenkanaler visas med Bara 18+
+  ok   admin: genrer
+  ok   admin: detaljer med handling
+  ok   affischadresser finns
+  ok   affisch via servern (https-säkert)
+  ok   affisch från cachen
+  ok   bildproxyn vägrar annat än bilder
+  ok   bildproxyn vägrar lokala filer
+  ok   bildproxyn nås inte via box-porten
+Version 1.5: vuxenregel, historik, nytt tillagt, manuell inspelning, tydligare varningar
+  ok   vuxenkategori: XXX | For Adults
+  ok   vuxenkategori: 18+ For Adults
+  ok   vuxenkategori: others For Adults
+  ok   vuxenkategori: AI Porn 18+ For Adults
+  ok   vuxenkategori: For Adults
+  ok   inte vuxen: Adult Swim
+  ok   inte vuxen: xXx: Return of Xander Cage
+  ok   inte vuxen: Hustlers
+  ok   inte vuxen: Vuxna människor
+  ok   inte vuxen: 18+ Thriller
+  ok   inte vuxen: Adults in the Room
+  ok   manuellt markerad vuxenkategori döljs i vanligt läge
+  ok   admin ser manuell markering
+  ok   avmarkerad kategori syns i vanligt läge, automatisk återställd
+  ok   automatisk markering gäller igen efter synk
+  ok   vuxenfilm startar
+  ok   utan historik: Fortsätt titta tom
+  ok   med historik: filmen finns (sparades ändå)
+  ok   utan historik: startar från början
+  ok   med historik: fortsätter där du slutade
+  ok   nytt tillagt: nyaste först med dagens datum
+  ok   nytt tillagt visar bara titlar med TV Hubs eget datum
+  ok   raden Nytt: filmer använder TV Hubs datum
+  ok   webbadminen: nytt tillagt med TV Hubs datum
+  ok   nytt tillagt fungerar för kanaler
+  ok   manuell inspelning av kanal utan programguide
+  ok   manuell inspelning från webbadminen, namn från kanalen
+  ok   fel anger boxen och slås ihop
+  ok   fel förklaras på svenska
+  ok   hemskärmens rader: nya serier och topprankat
+  ok   ordet hackar används inte
+Spela in filmer och serier
+  ok   spela in film
+  ok   samma film två gånger blir en inspelning
+  ok   vuxenfilm kan inte spelas in i vanligt läge
+  ok   filmen hämtas trots att boxen tittar
+  ok   tittandet fortsätter under nedladdningen
+  ok   fel strömtyp för inspelningen nekas
+  ok   spela in hela serien
+  ok   serien igen: inga dubbletter
+  ok   avsnitten har namn, serie och format
+  ok   avsnittet hämtas
+  ok   spela in film från webbadminen
+  ok   spela in en säsong från webbadminen
+Favoritavsnitt
+  ok   lägg till avsnitt som favorit
+  ok   avsnittet syns bland favoriterna
+  ok   seriesidan vet vilka avsnitt som är favoriter
+  ok   favoritavsnitt syns inte i vuxenläget
+  ok   avsnitt i okänd serie nekas
+  ok   ta bort favoritavsnitt
+Filmkväll
+  ok   nya filmer har fått info
+  ok   profilerna från start (tittarlägena blev profiler)
+  ok   Med döttrarna är barnvänligt från start
+  ok   filmkväll ger förslag
+  ok   samma film bara en gång
+  ok   svensk version föredras
+  ok   antal versioner visas
+  ok   vuxeninnehåll föreslås aldrig
+  ok   motivering och fakta finns
+  ok   barnvänligt: bara barnfilmer
+  ok   barnvänligt: ingen skräck
+  ok   barnvänligt går att slå av
+  ok   animerat ut
+  ok   bara animerat
+  ok   kortare än 2 h
+  ok   svenskt
+  ok   redan sett, inte i kväll och aldrig tas bort
+  ok   gäller bara det tittarläget
+  ok   exclude (lista som fylls på)
+  ok   tumme upp sparas
+  ok   sedd och älskad föreslås inte igen direkt
+  ok   motivering bygger på det ni gillat
+  ok   ogiltigt betyg nekas
+  ok   detaljsidan: versioner
+  ok   detaljsidan: tummen för tittarläget
+  ok   Vill se kommer först
+  ok   detaljsidan: Vill se
+  ok   sett klart loggas en gång med tittarläge
+  ok   utan vald profil loggas på boxens standardprofil
+  ok   tumme från en annan profil loggas på den profilen
+  ok   vuxeninnehåll loggas aldrig
+  ok   ingen filmkväll i vuxenläget
+  ok   vuxeninnehåll kan inte betygsättas
+  ok   skapa tittarläge
+  ok   tittarlägets regler används
+  ok   byt namn på tittarläge
+  ok   ta bort tittarläge
+  ok   import från IMDb
+  ok   IMDb-betyg blir tummar
+  ok   import från Letterboxd
+  ok   okänt format förklaras
+  ok   biblioteket: tummar och sett per tittarläge
+  ok   markera sedd i webbadminen gäller alla versioner
+  ok   versionsval sparas
+  ok   AI är av från start
+  ok   AI utan tjänst nekas
+  ok   egen server (OpenAI-standard) utan nyckel
+  ok   fel nyckel förklaras
+  ok   AI-förslag räknas för alla tittarlägen
+  ok   AI-förslagen kommer först
+  ok   AI-förslag följer Aldrig
+  ok   AI-förslag följer barnvänligt
+  ok   fråga AI:n
+  ok   chattens förslag blir kvällens lista
+  ok   kopiera till valfri AI
+  ok   klistra in svar från valfri AI
+  ok   svar utan JSON förklaras
+  ok   Anthropic fungerar
+  ok   tjänst som inte svarar förklaras
+  ok   utan AI fungerar filmkväll ändå
+Kategorinamn, startkategori och Nytt
+  ok   eget kategorinamn sparas
+  ok   eget namn syns i appen
+  ok   eget namn i appens kategorilista
+  ok   startkategori skickas till appen
+  ok   startkategori markeras i webbadminen
+  ok   okänd startkategori nekas
+  ok   startkategori kan tas bort
+  ok   tomt namn = Toucans namn igen
+  ok   Nytt: nyaste först med datum
+  ok   Nytt: okänd typ nekas
+  ok   sök efter uppdatering direkt
+  ok   sifferknappar: kanal med nummer
+  ok   sifferknappar: vuxenkanal syns inte i vanligt läge
+  ok   sifferknappar: ogiltigt nummer nekas
+  ok   ★-knappen växlar favorit
+  ok   spelarmenyn ser om kanalen är favorit
+Fjärrstart och röstkommandon
+  ok   lyssnar på Home Assistant
+  ok   telefonen ser de andra boxarna
+  ok   spela på box från webbadminen når boxen direkt
+  ok   boxen syns som påslagen
+  ok   utan kommando: tom lista efter väntan
+  ok   TV-apparater från Home Assistant
+  ok   röstkommando sparas och skript skapas
+  ok   skriptet slår på TV:n, byter källa och skickar händelsen
+  ok   Google → skript → händelse → boxen spelar
+  ok   testa kommandot från webbadminen
+  ok   serie: avsnitt med kö, fortsätter där ni var
+  ok   senaste programmet ur arkivet
+  ok   program utan kanal nekas
+  ok   okänd titel förklaras
+  ok   kanal via namn
+  ok   paus slår inte på TV:n
+  ok   standardkommandon för en box
+  ok   standardkommandon skapas inte två gånger
+  ok   skriptet kan skapas om och visas som text
+  ok   ta bort kommandot tar bort skriptet
+  ok   spela på TV:n från telefonen
+  ok   vuxeninnehåll skickas inte till en box
+  ok   okänd box nekas
+Utanför hemmet (Nabu Casa)
+  ok   admin i Home Assistant når webbadminen
+  ok   vanlig användare nekas webbadminen
+  ok   vanlig användare får en sida som förklarar
+  ok   appens användare nekas webbadminen
+  ok   okänd användare nekas
+  ok   utan inställning: inte tillgängligt
+  ok   http-adress nekas
+  ok   felaktig nyckel nekas
+  ok   spara Nabu Casa-uppgifter
+  ok   enhet utan tillstånd får ingen nyckel
+  ok   fjärråtkomst är avstängd som standard
+  ok   boxen får uppgifterna hemma
+  ok   uppgifterna kräver parad box
+  ok   testa vägen: fungerar
+  ok   telefonen når TV Hub via Nabu Casa
+  ok   film via Nabu Casa
+  ok   spela via Nabu Casa ger Toucans adress direkt
+  ok   utan boxens nyckel nekas
+  ok   fel boxnyckel nekas
+  ok   parning går inte via Nabu Casa
+  ok   nyckeln lämnas inte ut via Nabu Casa
+  ok   webbadminen nås inte med appens användare
+  ok   ogiltig ingress-session nekas
+  ok   boxlistan visar Nabu Casa
+  ok   senaste användning visas
+  ok   test med annan vanlig användare fungerar
+  ok   test med ogiltig nyckel förklarar
+Version 2.1
+  ok   nytt per dag: dagar med kategorier och antal
+  ok   nytt per dag: inga vuxenkategorier i vanligt läge
+  ok   nytt per dag: titlarna för en dag och kategori
+  ok   nytt per dag: vuxenläget blandar inte in vanliga kategorier
+  ok   PIN: för kort kod nekas
+  ok   PIN: vuxenläge utan upplåsning ger vanligt läge
+  ok   PIN: appen får veta att kod krävs
+  ok   PIN: fel kod nekas
+  ok   PIN: rätt kod ger vuxenläget
+  ok   PIN: nyckeln gäller bara boxen som låste upp
+  ok   PIN: låses när vuxenläget stängs
+  ok   PIN: utan kod som förut
+  ok   ta bort från Fortsätt titta
+  ok   påminnelser: notify-tjänster från Home Assistant
+  ok   påminnelser: tjänsten sparas
+  ok   påminnelser: testnotis
+  ok   påminnelse sparas
+  ok   samma påminnelse två gånger blir en
+  ok   påminnelse om vuxenkanal nekas i vanligt läge
+  ok   påminnelse om program som börjat nekas
+  ok   boxen ser sina påminnelser
+  ok   påminnelsen når boxen när programmet börjar
+  ok   påminnelsen skickas till telefonen
+  ok   skickad påminnelse försvinner ur listan
+  ok   annan box kan inte ta bort påminnelsen
+  ok   påminnelse tas bort
+Version 2.5: profiler och Mina program
+  ok   profiler: Själv, Tillsammans, Gäst och testprofilerna
+  ok   bara ägaren får vuxenläget, Gäst är gäst
+  ok   PIN-hash lämnas aldrig ut
+  ok   lägg till profil
+  ok   samma namn två gånger nekas
+  ok   ändra profil och sätt PIN
+  ok   fel profil-PIN nekas
+  ok   rätt profil-PIN godtas
+  ok   ta bort profil
+  ok   sista profilen med vuxenläge kan inte tas bort
+  ok   favoriter är per profil
+  ok   hemdatan talar om vem som tittar
+  ok   Fortsätt titta är per profil
+  ok   gäst: inget sparas och inget visas
+  ok   gäst kan inte spara favoriter
+  ok   barnets profil kan inte slå på vuxenläget
+  ok   barnets profil får ingen upplåsning
+  ok   ägaren kan (ingen kod satt)
+  ok   box som kräver PIN: vanligt läge utan kod
+  ok   box utan PIN-krav: vuxenläge utan kod
+  ok   webbadminen visar PIN-kravet per box
+  ok   boxens standardprofil och återgång
+  ok   orimlig återgångstid nekas
+  ok   vuxenlägets tid är 15 minuter som standard
+  ok   vuxenlägets tid kan ändras per box
+  ok   andra boxen behåller sin tid
+  ok   orimlig vuxenlägestid 0 nekas
+  ok   orimlig vuxenlägestid 181 nekas
+  ok   orimlig vuxenlägestid -5 nekas
+  ok   förslagen Rapport, TV4 Nyheterna och Robinson (Aktuellt hoppas över utan arkiv)
+  ok   förslagen läggs inte till två gånger
+  ok   huvudsändning utan tid nekas
+  ok   huvudsändning sparas
+  ok   Rapport: två senaste sändningarna att välja mellan
+  ok   huvudsändningen ur arkivet
+  ok   snabbvalen är per profil
+  ok   utan arkiv: förklaring i stället för fel
+  ok   arkiv utan sett: senaste avsnittet
+  ok   arkiv: nästa avsnitt efter det senast sedda
+  ok   arkiv: påbörjat avsnitt fortsätter där du var
+  ok   program ur arkivet hamnar inte i Fortsätt titta
+  ok   ta bort snabbval
+Version 2.6: Mina sporter
+  ok   intressena från början
+  ok   svenska kategorier och sportkategorier söks automatiskt
+  ok   programguiden hämtas för kanalerna, aldrig vuxenkanaler
+  ok   just nu: Testlaget FC och golf
+  ok   kommande: lagets match en gång (två kanaler blir en sändning)
+  ok   … med den andra kanalen som 'även på'
+  ok   laget med samma namn i annan sport och trav räknas inte
+  ok   ridsport: hästhoppning
+  ok   i efterhand: landskampen ur arkivet
+  ok   i efterhand bara det som finns i arkivet
+  ok   sänds nu: spela kanalen
+  ok   antal per intresse
+  ok   filtrera på ett intresse
+  ok   När går …?: hittar landskampen i arkivet
+  ok   När går …?: filmer i biblioteket också
+  ok   När går …?: för kort sökning
+  ok   intresse utan sökord nekas
+  ok   nytt intresse matchas direkt
+  ok   röststart: matchen som sänds nu
+  ok   röststart utan match nu: säger när nästa är
+  ok   sensorn: nästa match
+  ok   matchen börjar strax: boxen får frågan
+  ok   frågan skickas bara en gång
+  ok   lagets matcher planeras som inspelningar på vald box
+  ok   inspelningen börjar före och slutar efter sändningen
+  ok   borttagen inspelning planeras inte igen
+  ok   TV-guiden: program per kanal, aldrig vuxenkanaler i vanligt läge
+  ok   vuxenläget: inga sporter
+Version 2.7: revisionsåtgärder
+  ok   F01: osäkra mätvärden kastas
+  ok   F01: normala mätvärden fungerar
+  ok   F03: saknat användar-id via Ingress nekas
+  ok   F03: anrop inifrån tillägget släpps igenom
+  ok   F03: uppslagsfel nekas (inte släpps igenom)
+  ok   vuxenkanal startar i vuxenläge
+  ok   F05: summary visar aldrig vuxentitel
+  ok   F05: konfliktmeddelandet nämner inte vuxentiteln
+  ok   F05: adminöversikten visar inte vuxentiteln
+  ok   F05: schemat i vanligt läge maskerar vuxentitel och kanal
+  ok   F05: … men inte i vuxenläge
+  ok   F05: planerad inspelning kan fortfarande starta (tjänsten)
+  ok   F05: inspelning långt före sin tid får ingen ström
+  ok   F05: klar inspelning får ingen ström
+  ok   F05: programguide för vuxenkanal i vanligt läge är tom
+  ok   F05: epg-now utelämnar vuxenkanalen
+  ok   F05: okänd vod spelas inte
+  ok   F05: okänd live spelas inte
+  ok   F05: avsnitt med okänd serie spelas inte
+  ok   F06: samtidiga starter ger bara en ström
+  ok   F07: samma kod ger exakt en enhet vid parallella försök
+  ok   F07: försöksräknaren stoppar efter tillåtet antal
+  ok   F07: rätt svar nollställer räknaren
+  ok   F07: parallella felaktiga PIN-försök spärras efter fem
+  ok   F04: profil-PIN spärras efter fem fel (också rätt kod under spärren)
+  ok   F09: bildproxyn nekar http://127.0.0.1:18080/api/overview
+  ok   F09: bildproxyn nekar http://169.254.169.254/latest/meta-data
+  ok   F09: bildproxyn nekar http://[::1]:8123/x.png
+  ok   F09: bildproxyn nekar http://localhost:8080/x.png
+  ok   F09: bildproxyn nekar http://10.0.0.5/x.jpg
+  ok   F09: bildproxyn nekar http://192.168.1.1/x.jpg
+  ok   F09: bildproxyn nekar http://172.30.32.1:8123/x.png
+  ok   F09: källans egen adress är undantagen
+  ok   F09: omdirigering till intern adress stoppas
+  ok   F10: negativ Content-Length nekas
+  ok   F16: admin-API kräver JSON (inte formulär)
+  ok   F10: fler anslutningar än trådgränsen får 503
+  ok   F11: samtidiga nedladdningar ger en komplett fil
+  ok   F14: AI-underlaget innehåller inte profilens namn
+  ok   F17: borttagen profil lämnar ingen sessionshistorik
+Version 2.8: diagnostik av efterhandsfel
+  ok   2.8: efterhandsström startar
+  ok   2.8: källans svar loggas efter containerfel
+  ok   2.8: svaret visar status, typ och början
+  ok   2.8: inga kontouppgifter i loggen
+  ok   2.8: högst en undersökning per tidsfönster och box
+  ok   2.8: nätverksfel undersöks inte
+  ok   2.8: vuxenkanal: ingen text ur svaret i loggen
+  ok   2.8: Diagnostik har sökruta och filter
+  ok   2.8: gesterna beskrivs inte i dokumentationen
+Version 2.9: efterhandsadress, sorteringar, backup, notiser
+  ok   2.9: efterhandsström startar
+  ok   2.9: hittar adressen som ger video
+  ok   2.9: prövade sökvägsadressen först
+  ok   2.9: sparad adress används utan ny sökning
+  ok   2.9: tomt svar loggas som ingen video
+  ok   2.9: ny sökning görs efter att adressen glömts
+  ok   2.9: sökningen misslyckas men spelning startas ändå
+  ok   2.9: misslyckad sökning upprepas inte direkt
+  ok   2.9: sökningen loggas utan kontouppgifter
+  ok   2.9: sortering name_desc fungerar
+  ok   2.9: sortering added_asc fungerar
+  ok   2.9: sortering year_asc fungerar
+  ok   2.9: sortering poster fungerar
+  ok   2.9: Ö–A är A–Ö baklänges
+  ok   2.9: affisch först, sedan utan
+  ok   2.9: boxöversikt visar uppkopplad
+  ok   2.9: avbrottsnotiser har standardvärden
+  ok   2.9: orimlig tid nekas
+  ok   2.9: inställningarna sparas
+  ok   2.9: testnotis skickas eller kräver notify-tjänst
+  ok   2.9: kopian har rätt format
+  ok   2.9: kopian innehåller inga koder, nycklar eller token
+  ok   2.9: profilen finns i kopian
+  ok   2.9: import lyckas
+  ok   2.9: profilen är tillbaka utan kod
+  ok   2.9: ny import skapar inga dubbletter
+  ok   2.9: främmande fil nekas
+  ok   2.9: trasig kopia nekas
+  ok   2.9: webbadminen har backup och avbrottsnotiser
+Version 2.9.1: kategorival
+  ok   2.9.1: kategorierna har skip_all och suggest_sport
+  ok   2.9.1: kategorin lämnar Alla
+  ok   2.9.1: Sport-fliken visar kategorin
+  ok   2.9.1: appen får veta vilka kategorier som är utanför Alla
+  ok   2.9.1: profilen ser inte sin dolda kategori
+  ok   2.9.1: admin ser profilens val
+  ok   2.9.1: återställning ger tillbaka kategorin
+  ok   2.9.1: filmfiltren sparas
+  ok   2.9.1: allt tillbaka när valet tas bort
+  ok   2.9.1: webbadminen har profilval och Inte i Alla
+Version 2.9.2: favoriter per profil
+  ok   2.9.2: profillistan markerar ägaren
+  ok   2.9.2: favorit för en vald profil
+  ok   2.9.2: visa för alla profiler (inte gäster)
+  ok   2.9.2: bara valda profiler
+  ok   2.9.2: kopiera alla favoriter
+  ok   2.9.2: kopiering skapar inga dubbletter
+  ok   2.9.2: okänd profil nekas
+  ok   2.9.2: vuxenfavoriter delas inte härifrån
+  ok   2.9.2: webbadminen har profilval för favoriter
+Version 2.9.4: sedda avsnitt och Chromecast
+  ok   2.9.4: avsnitt räknas som sedda vid 85 %
+  ok   2.9.4: markera avsnitt som sedda
+  ok   2.9.4: sedda avsnitt syns i serien
+  ok   2.9.4: markera som osett
+  ok   2.9.4: okänd serie nekas
+  ok   2.9.4: Chromecast-händelse tas emot
+  ok   2.9.4: diagnostiken visar Chromecast
+Version 2.9.5: hemfix, Mina program, sportuppsättningar
+  ok   2.9.5: hemfixstatus
+  ok   2.9.5: ogiltig fil nekas
+  ok   2.9.5: sökväg utanför app nekas
+  ok   2.9.5: otillåten filtyp nekas
+  ok   2.9.5: syntaxfel nekas före installation
+  ok   2.9.5: nekad hemfix lämnar inget kvar
+  ok   2.9.5: giltig hemfix installeras
+  ok   2.9.5: hemfixen är aktiv
+  ok   2.9.5: kontrollmarkeringar för start finns
+  ok   2.9.5: hemfix tas bort
+  ok   2.9.5: hemfix nås inte via box-porten
+  ok   2.9.5: Mina program kan hämtas
+  ok   2.9.5: sportuppsättningar för Golf och Ridsport
+  ok   2.9.5: golf: bevakningar och sökord läggs till
+  ok   2.9.5: samma uppsättning igen ger inga dubbletter
+  ok   2.9.5: golf har fler sökord
+  ok   2.9.5: okänd uppsättning nekas
+  ok   2.9.5: webbadminen har hemfix och golf/ridsport
+Version 2.9.7: portaler, översikt, Visa som
+  ok   2.9.7: portalen har arkivflagga
+  ok   2.9.7: svarstidsserie
+  ok   2.9.7: serie för 30 dagar
+  ok   2.9.7: portal skapas
+  ok   2.9.7: portal kan pausas
+  ok   2.9.7: arkiverad portal göms ur listan
+  ok   2.9.7: arkiverade kan visas, är avstängda
+  ok   2.9.7: portal kan tas tillbaka från arkivet
+  ok   2.9.7: översikt har dagar och uppskattning
+  ok   2.9.7: tid summeras utan inspelningar
+  ok   2.9.7: data uppskattas från bitrate
+  ok   2.9.7: vuxenläget blir Övrigt, gäst egen rad
+  ok   2.9.7: fördelning per box
+  ok   2.9.7: historik utan vuxenläge och inspelningar
+  ok   2.9.7: historik per profil
+  ok   2.9.7: titel för vuxen läcker inte
+  ok   2.9.7: orimlig bitrate nekas
+  ok   2.9.7: egna bitrates används
+  ok   2.9.7: översikten nås inte via box-porten
+  ok   2.9.7: Visa som ger Hem för profil och box
+  ok   2.9.7: Visa som visar inget vuxeninnehåll
+  ok   2.9.7: okänd profil faller tillbaka på boxens standard
+  ok   2.9.7: okänd box nekas
+  ok   2.9.7: läget 'två senaste' kan sparas
+  ok   2.9.7: alternativen är sändningar att välja mellan
+  ok   2.9.7: orimligt antal dagar nekas
+  ok   2.9.7: abonnemangsvarning kan ställas in
+  ok   2.9.7: webbadminen har graf, översikt och Visa som
+Version 2.9.9: Världscupen
+  ok   2.9.9: webbadminen har 15 poster och kontroll
+  ok   2.9.9: kontrollen hittar TV4 i Toucan-listan
+  ok   2.9.9: resultat sparas
+  ok   2.9.9: okänd etapp nekas
+  ok   2.9.9: programguiden kan läsas om härifrån
+  ok   2.10.2: kanalknappar finns
+  ok   2.9.9: boxen får planering
+  ok   2.9.9: längre än två veckor bort: ingen knapp utan förklaring
+  ok   2.9.9: vuxenläget får ingen världscup
+  ok   2.9.9: automatisk inspelning på
+  ok   2.9.9: och av
+  ok   2.9.9: webbadminen har fliken Världscupen
+Version 2.10.0: Lovisa, låst profil, prioritet
+  ok   2.10: inbjudan finns med åttasiffrig kod
+  ok   2.10: Lovisas profil finns utan vuxenläge
+  ok   2.10: ägaren har högsta prioritet
+  ok   2.10: sidan för nedladdning visar adress och steg
+  ok   2.10: fel inbjudningskod nekas
+  ok   2.10: inbjudan ger en enhet
+  ok   2.10: en användning förbrukad
+  ok   2.10: låst enhet ser bara sin profil
+  ok   2.10: servern svarar som Lovisa trots begäran om ägarens profil
+  ok   2.10: inget vuxenläge
+  ok   2.10: enheten visas som låst och får fjärråtkomst
+  ok   2.10: Lovisa kan titta när ingen annan gör det
+  ok   2.10: ägaren tar över direkt, utan fråga
+  ok   2.10: Lovisas ström stoppas med förklaring
+  ok   2.10: ägarens ström startar
+  ok   2.10: Lovisa kan inte ta över
+  ok   2.10: inte ens med tvång
+  ok   2.10: när ägaren slutat kan Lovisa titta igen
+  ok   2.10: vilken box som helst kan låsas till en profil
+  ok   2.10: låset kan tas bort
+  ok   2.10: koden gäller bara tre gånger
+  ok   2.10: tom inbjudan visas som ogiltig tills en ny skapas
+  ok   2.10: ny kod kan skapas
+  ok   2.10: webbadminen har inbjudan och lås
+Version 2.12.0: Världscupen, Sport, kanalexport
+  ok   2.12: världscupen har stort kort och statusrad
+  ok   2.12: varningar bara när en kanal saknas helt
+  ok   2.12: en sport ger kanaler och bibliotek
+  ok   2.12: kanalexporten har kanaler och kategorier
+  ok   2.12: kanalexporten saknar lösenord och adresser
+  ok   webbadmin serveras
+  ok   admin-API nås inte via box-porten
+  ok   borttagen box nekas
+
+ALLT OK

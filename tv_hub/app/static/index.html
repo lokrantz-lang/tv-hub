@@ -376,6 +376,15 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
         <div id="wc-legs"></div>
       </div>
     </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Tablå från TV4.se</h2><button class="btn" id="wc-tabla">Hämta tablån nu</button></div>
+      <div class="bd"><p class="small muted" style="margin-top:0">Saknar Toucan programguide för TV4, Sjuan eller Sportkanalen läser TV Hub TV4:s egen öppna tablå (tv4.se/tabla) och lägger in den under dina kanaler. Då hittas, spelas in och aviseras sändningarna som vanligt. Hämtas vid varje skanning (var fjärde timme) och med knappen.</p>
+        <div id="wc-tabla-body" class="small"></div></div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="hd"><h2>Exportera kanallista</h2><button class="btn" id="ch-export">Exportera kanallista</button></div>
+      <div class="bd"><p class="small muted" style="margin:0">Sparar en fil med alla kanaler (namn, kategori, arkiv och hur mycket programguide som finns) och film- och seriekategorierna. Ingen serveradress, inga inloggningsuppgifter och inga länkar. Skicka filen till Claude så anpassas Sport och Världscupen efter just din lista.</p></div>
+    </div>
     <div class="grid2" style="margin-top:16px">
       <div class="panel">
         <div class="hd"><h2>Finns det i Toucan?</h2></div>
@@ -967,6 +976,13 @@ loaders.worldcup = async () => {
     await api("worldcup/result", { method: "POST", body: { leg: id, winner: $("wcw-" + id).value, horse: $("wch-" + id).value } });
     toast("Resultatet sparat."); loaders.worldcup();
   }, b)));
+  const tb = wc.tabla;
+  $("wc-tabla-body").innerHTML = !tb ? '<span class="pill warn">Ännu inte hämtad</span> Tryck på knappen, eller vänta på nästa skanning.' :
+    `<div>Senast: ${new Date(tb.at * 1000).toLocaleString("sv-SE")} · ${tb.days_ok} dagar lästes${tb.days_empty ? `, ${tb.days_empty} tomma` : ""}${tb.inserted != null ? ` · ${tb.inserted} program lades in` : ""}</div>` +
+    Object.entries(tb.channels || {}).map(([k, v]) => `<div><span class="pill ${v.programs ? "ok" : "warn"}">${esc(k)}</span> ${esc(v.channel)}: ${v.programs} program${v.source === "toucan" ? " (Toucans egen guide används)" : ""}</div>`).join("") +
+    ((tb.errors || []).length ? `<div class="muted">Fel: ${tb.errors.map(esc).join(" · ")}</div>` : "") +
+    (tb.page_channels && tb.page_channels.length ? `<div class="muted">Kanaler på sidan: ${tb.page_channels.map(esc).join(", ")}</div>` : "") +
+    (tb.days_ok === 0 && tb.days_empty ? '<div class="pill warn">Sidan lästes men inga program hittades. TV4 kan ha ändrat sidan.</div>' : "");
   const c = wc.check;
   $("wc-check").innerHTML = c.notes.map((n) => `<p class="small"><span class="pill ${WC_LEVEL[n.level] ?? ""}">${n.level === "ok" ? "OK" : "OBS"}</span> ${esc(n.text)}</p>`).join("") +
     c.items.map((i) => `<div class="small" style="padding:6px 0;border-top:1px solid var(--line)"><span class="pill ${WC_LEVEL[i.level] ?? ""}">${esc(i.label)}${i.required ? " *" : ""}</span> ${esc(i.text)}
@@ -980,6 +996,9 @@ loaders.worldcup = async () => {
 $("wc-auto").addEventListener("change", (e) => guarded(async () => {
   await api("worldcup/auto-record", { method: "PUT", body: { device_id: e.target.value || null } });
   toast("Sparat."); loaders.worldcup();
+}, e.target));
+$("wc-tabla").addEventListener("click", (e) => guarded(async () => {
+  await api("worldcup/tabla", { method: "POST", body: {} }); toast("Hämtar tablån. Tryck Ladda om om en halv minut.");
 }, e.target));
 $("wc-scan").addEventListener("click", (e) => guarded(async () => {
   await api("worldcup/scan", { method: "POST", body: {} }); toast("Programguiden läses om, ta en kaffe och tryck Ladda om.");
@@ -2418,6 +2437,14 @@ $("al-form").addEventListener("submit", (e) => { e.preventDefault(); guarded(asy
 $("al-test").addEventListener("click", (e) => guarded(async () => {
   await api("alerts/settings", { method: "PUT", body: alertBody() });
   await api("alerts/test", { method: "POST" }); toast("Testnotis skickad"); }, e.target));
+$("ch-export").addEventListener("click", (e) => guarded(async () => {
+  const data = await api("channels/export");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
+  a.download = "tvhub-kanallista-" + new Date().toISOString().slice(0, 10) + ".json";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast(data.counts.live + " kanaler exporterade");
+}, e.target));
 $("bk-export").addEventListener("click", (e) => guarded(async () => {
   const data = await api("backup");
   const a = document.createElement("a");

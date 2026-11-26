@@ -60,6 +60,8 @@ Lägg till egna lag med *Lägg till sport eller lag*.
 
 - **Just nu** (OK: titta), **Kommande** (OK: påminn mig eller spela in) och **I efterhand** (OK: spela ur arkivet).
   Grupperna överst visar en sport eller ett lag i taget. Samma sändning på flera kanaler visas en gång ("även på …").
+- **Golf och Ridsport** har två extra rader när du väljer sporten: *Alla kanaler* (varje golf- eller hästkanal, med vad som
+  sänds nu) och en rad per **turnering** ur film- och seriebiblioteket (repriser, till exempel ur N1 Sports Events Replays), nyast först.
 - **Sökorden** jämförs med programguidens titel (och beskrivning, om inte *Bara i titeln* är ikryssat). En rad per
   alternativ, `tigrarna + basket` betyder att båda orden måste finnas, och *Inte*-orden stoppar en träff (t.ex. ett
   lag med samma namn i en annan sport). *Ändra och se sändningar* visar direkt vad som hittas.
@@ -413,6 +415,7 @@ fastställd" när arrangören inte publicerat den), TV-kanal, vinnare om du lagt
 - **Spela in** (boxen) planerar en inspelning av en kommande sändning. **Ladda ner** hämtar en redan sänd ur kanalens arkiv. Båda hamnar under Inspelningar.
 - **Finns det i Toucan?** (webbadminen) listar kanalerna som kan bära sändningarna och om de har arkiv och programguide. Saknas Sjuan eller TV4 står det.
 - **Automatik:** välj en box som spelar in alla världscupssändningar. Notis när en börjar styrs av intresset *Världscupen i hoppning* under Sport.
+- **Tablå från TV4.se:** saknar Toucan guide för TV4/Sjuan läser TV Hub TV4:s öppna tablå och lägger in den under dina kanaler (rutan *Tablå från TV4.se* visar vad som lästes, knappen *Hämta tablån nu*). Då fungerar Titta, Spela in, notiser och Automatik på riktigt.
 - **Enligt tablå:** saknas sändningen i din programguide visas en rad märkt *ej bekräftad* med tid och kanal från den offentliga tablån (ändras tiden stämmer den inte).
 - Programguiden minns en vecka. Det den visat sparas, så äldre etapper visar fortfarande kanal och tid.
 
@@ -421,3 +424,9 @@ fastställd" när arrangören inte publicerat den), TV-kanal, vinnare om du lagt
 Under *Sport* hittar du *Golf och ridsport: hitta kanalerna*. Listan bygger på vilka kanaler och tjänster som har rättigheterna i Sverige.
 Det som matchar din kanallista visas, du väljer, och *Skapa grupp* skapar gruppen, utökar sökorden och sätter bevakningar på nya filmer och serier.
 Träffarna på filmer och serier bygger på titlar och är därför inte fullständiga.
+
+## Exportera kanallista
+
+Webbadminen, fliken **Världscupen** → *Exportera kanallista*. Filen innehåller alla kanaler (namn, kategori, EPG-id,
+arkivdagar, antal program i guiden) och film- och seriekategorierna med antal. Ingen serveradress, inga
+inloggningsuppgifter och inga länkar. Vuxenkanaler räknas men namnges inte.

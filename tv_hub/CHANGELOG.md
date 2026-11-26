@@ -1,5 +1,41 @@
 # Ändringar
 
+## 2.12.0
+
+- **Världscupen, ny sida (ny app):** överst ett stort kort med det som sänds nu eller nästa sändning, nedräkning och knapparna Titta och
+  Spela in. Under det säsongens etapper i en rad (flagga, datum, vinnare, Pågår/Nästa/Final). Välj en etapp så visas den under raden.
+  Statusen för programguiden står längst ner i stället för som varningar överst.
+- **Rättat:** Longines Global Champions Tour (Wien, Verona Playoffs, GCL Super Cup) räknades som världscupen eftersom sponsorn är densamma.
+  Därför stod det "Sänds nu" vid Madrid. GCT hamnar nu bara under Sport → Ridsport.
+- **Rättat:** Titta-knappen var vit med vit text, och vanliga knappar fick vit text på vit bakgrund med fokus.
+- **Rättat:** varningen "kanalen skannas inte än" var fel. Den säger nu den riktiga orsaken (Toucan saknar guide för kanalen, och om tablån
+  från TV4.se är hämtad).
+- **Sport → Golf / Ridsport (ny app):** raden *Alla kanaler* med varje golf- respektive hästkanal och vad som sänds nu, och en rad per
+  turnering ur film- och seriebiblioteket (till exempel Presidents Cup och The RSM Classic ur N1 Sports Events Replays), nyast först.
+- Sportkanalerna läses alltid först i programguiden, så att de inte faller bort när listan är lång.
+- **Exportera kanallista (webbadminen, fliken Världscupen):** en fil med alla kanaler, kategorier, arkiv och hur mycket programguide som
+  finns, plus film- och seriekategorierna. Utan serveradress, inloggningsuppgifter och länkar.
+
+## 2.11.0
+
+- **Tablå från TV4.se (backend och webbadmin, ingen ny app krävs):** Toucans programguide saknar TV4, Sjuan och Sportkanalen, så världscupen och annan
+  hoppning kunde aldrig hittas. TV Hub läser nu **TV4:s egen öppna tablå** (tv4.se/tabla, 15 dagar framåt, en sida per dag, med paus mellan) och
+  lägger in programmen under *dina* kanaler (kanalen ur din Toucan-lista, med arkiv om den har). Därefter fungerar allt som förut och på riktigt:
+  **Titta, Spela in, Ladda ner, notiser och Automatik** (spela in alla världscupssändningar på en box). Sändningar som finns i tablån
+  visas som vanliga sändningar och inte längre som "Enligt tablå, ej bekräftad".
+- Toucans egen guide skrivs aldrig över: tablån används bara för kanaler där Toucans guide saknas eller är kortare än tre dagar.
+- **Kontroll i webbadminen:** fliken Världscupen har rutan *Tablå från TV4.se* med senaste hämtning, antal program per kanal, fel och
+  vilka kanaler sidan hade, samt knappen *Hämta tablån nu*. Står det 0 program har TV4 ändrat sidan eller blockerat hämtningen; då syns det där.
+- Tolkningen av TV4:s sida är skriven efter hur sidan beskrivs, inte provad mot den riktiga sidan (den når inte tillägget härifrån). Första
+  hämtningen hos dig visar om den stämmer.
+- TV4 Sportkanalen finns inte i tablån (A Coruña ligger kvar som "enligt tablå" tills vidare). Ridsport räknas nu som hoppning vid träff på världscupen.
+- Innehåll från 2.10.2 ingår.
+## 2.10.2
+
+- **Världscupen, kräver ny app:** överst finns knapparna **Titta TV4**, **Titta Sjuan** och **Titta TV4 Sportkanalen** (dina egna kanaler ur listan) som
+  startar kanalen direkt, så att du kan se det som sänds just nu även när Toucans guide saknar programmet (till exempel sammanfattningar).
+  Kommande sändningar har **Öppna kanalen** för att testa att kanalen visar bild, och en rad som förklarar att Titta-knappen kommer när det börjar.
+- Innehåll från 2.10.1 ingår.
 ## 2.10.1
 
 - **Världscupen fungerar även när Toucans programguide saknar TV4, Sjuan och Sportkanalen** (som den gör hos dig just nu). Etapper med tid i

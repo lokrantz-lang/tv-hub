@@ -56,6 +56,10 @@ check("hoppning utan världscup eller ort matchar inte", not m(legs["madrid"], "
 check("fotbollens världscup matchar inte", not m(legs["madrid"], "Världscupen i längdskidåkning", ""))
 check("dressyr matchar inte", not m(legs["madrid"], "Världscupen i dressyr", "Kür"))
 check("trav matchar inte", not m(legs["madrid"], "Travet: Världscupen", ""))
+check("Longines Global Champions Tour i Verona är inte världscupen",
+      not m(legs["verona"], "Longines Global Champions Tour – Verona Playoffs - GCL Super Cup Final", "")
+      and not m(legs["madrid"], "Longines Global Champions Tour - Vienna  Jumping - Grand Prix", ""))
+check("Longines FEI Jumping World Cup matchar fortfarande", m(legs["madrid"], "Longines FEI Jumping World Cup - Madrid", ""))
 check("SIHS matchar", m(legs["sihs"], "Sweden International Horse Show", "Grand Prix"))
 check("final kräver final eller Göteborg", m(legs["final"], "Världscupfinalen i hoppning", "") and m(legs["final"], "Världscupen i hoppning", "Göteborg") and not m(legs["final"], "Världscupen i hoppning", ""))
 
@@ -115,6 +119,14 @@ check("efteråt utan arkiv på kanalen: ingen påhittad rad", st["events"] == []
 v = worldcup.overview(now=ts("2026-11-28", "09:00"))
 mm = {leg["id"]: leg for leg in v["legs"]}["madrid"]
 check("finns sändningen i guiden dubbleras den inte av tablån", not any(e.get("unconfirmed") for e in mm["events"]), mm["events"])
+
+# snabbknappar för kanalerna och "Öppna kanalen" på kommande
+ch = {c["label"]: c for c in v["channels"]}
+check("snabbknappar för TV4 och Sjuan med live-kommando", ch["TV4"]["command"]["type"] == "live" and ch["Sjuan"]["channel"] == "SE: Sjuan HD", v["channels"])
+check("CCTV4 och TV4 Film blir aldrig TV4-knappen", ch["TV4"]["channel"] == "SE: TV4 HD", ch["TV4"])
+up = worldcup.overview(now=ts("2026-11-28", "09:00"))
+mu = {leg["id"]: leg for leg in up["legs"]}["madrid"]["events"][0]
+check("kommande har Öppna kanalen", mu["open_command"]["type"] == "live" and mu["open_command"]["id"] == mu["channel_id"], mu)
 
 # efter Madrid med arkiv: ladda ner
 v = worldcup.overview(now=ts("2026-11-29", "21:00"))
