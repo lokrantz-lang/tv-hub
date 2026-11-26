@@ -168,7 +168,7 @@ def update_device(device_id, data):
         db.x("UPDATE devices SET default_profile_id = ? WHERE id = ?", (pid, device_id))
     if "revert_hours" in data:
         hours = int(data["revert_hours"] or 0)
-        if not 0 <= hours <= 48:
+        if not -1 <= hours <= 48:  # -1: varje gång boxen slås på (vaknar ur standby)
             raise ValueError("Ange 0–48 timmar.")
         db.x("UPDATE devices SET revert_hours = ? WHERE id = ?", (hours, device_id))
     if "locked_profile_id" in data:

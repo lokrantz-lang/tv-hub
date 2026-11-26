@@ -2543,6 +2543,14 @@ def version_2130(ta, tb, pa, pb):
     check("2.13: boxen ser inspelningen", any(r["title"] == "Webbtest" for r in lst), [r["title"] for r in lst][:5])
     s, wl = call("GET", f"{D}/device/web-recordings", token=tw)
     check("2.13: laptopen ser inspelningar på alla boxar", any(r["title"] == "Webbtest" for r in wl), s)
+    wid = [r for r in wl if r["title"] == "Webbtest"][0]["id"]
+    s, r = call("DELETE", f"{D}/device/recordings/{wid}", token=tw)
+    s2, lst2 = call("GET", f"{D}/device/recordings", token=ta)
+    check("2.16.1: planerad inspelning på en annan box kan avbokas", s == 200 and not any(x["id"] == wid for x in lst2), (s, r))
+    s, r = call("DELETE", f"{D}/device/recordings/{wid}", token=tw)
+    check("2.16.1: avbokning av något som inte finns ger fel", s == 404, s)
+    s, rec = call("POST", f"{D}/device/recordings", {"stream_id": cid, "title": "Webbtest", "start": now + 3600, "end": now + 7200,
+                                                   "box_id": pa["device_id"]}, token=tw)
     s, bad = call("POST", f"{D}/device/recordings", {"stream_id": cid, "title": "x", "start": now + 3600, "end": now + 7200,
                                                    "box_id": pw["device_id"]}, token=tw)
     check("2.13: inspelning på laptopen själv nekas", s == 404, s)
@@ -2560,6 +2568,18 @@ def version_2140(ta, tb, pa, pb):
     s, sp = call("GET", f"{A}/api/sports")
     check("2.14: webbadminen visar guidefilens status", s == 200 and "xmltv" in sp, list(sp))
     s, ss = call("GET", f"{A}/api/sports/status")
+    s, r = call("POST", f"{A}/api/worldcup/result", {"leg": "madrid", "podium": [{"rider": "Ettan (SWE)", "horse": "A"}, {"rider": "Tvåan (GER)", "horse": "B"}, {"rider": "Trean (FRA)", "horse": "C"}]})
+    check("2.16: pallen sparas", s == 200 and [p["place"] for p in r["podium"]] == [1, 2, 3], (s, r))
+    s, wcd = call("GET", f"{D}/device/worldcup", token=ta)
+    legs = {l["id"]: l for l in wcd["legs"]}
+    check("2.16: appen får pallen och Oslos inlagda resultat", len(legs["madrid"]["podium"]) == 3 and len(legs["oslo"]["podium"]) == 3, legs["oslo"].get("podium"))
+    call("POST", f"{A}/api/worldcup/result", {"leg": "madrid", "podium": [{"rider": "", "horse": ""}] * 3})
+    s, devs = call("GET", f"{A}/api/devices")
+    devs = devs if isinstance(devs, list) else devs["devices"]
+    s, r = call("PUT", f"{A}/api/devices/{devs[0]['id']}", {"revert_hours": -1})
+    s, hm = call("GET", f"{D}/device/home", token=ta)
+    check("2.16: 'varje gång boxen slås på' sparas och når boxen", hm["box"]["revert_hours"] == -1, hm.get("box"))
+    call("PUT", f"{A}/api/devices/{devs[0]['id']}", {"revert_hours": 0})
     check("2.15.1: lätt statusanrop under genomsökningen", s == 200 and "running" in ss["status"] and "xmltv" in ss, ss)
     page = call("GET", f"{A}/", raw=True)[1].decode()
     check("2.15.1: Sport-fliken laddar inte om listan under genomsökningen", "spPoll()" in page and "setTimeout(() => current === \"sports\" && loaders.sports(), 4000)" not in page)

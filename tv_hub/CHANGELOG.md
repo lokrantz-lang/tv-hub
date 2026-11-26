@@ -1,5 +1,26 @@
 # Ändringar
 
+## 2.16.1
+
+- **Världscupen i appen:** rubriken ligger kvar överst när du rullar. Etapperna följer på varandra (den aktuella, sedan alla kommande,
+  sist de avgjorda), så du kan rulla genom säsongen; rutorna i raden hoppar till etappen. Knapparna klipps inte längre av när de
+  markeras. *Spela in* laddar inte om sidan, knappen byts direkt till *Inspelning planerad*. Tryck på *Inspelning planerad* för att
+  avboka (fungerar också för inspelningar som Automatik eller webbappen lagt på en annan box, så länge de inte har startat).
+- **Rätt etapp:** en sändning som nämner en annan etapps stad (vanligt för repriser på Horse & Country) hamnar under den etappen.
+  En allmän världscupsändning utan stad som sänds före etappens världscupklass märks som repris.
+- **Spelaren, filmer och serier:** efter Ljud/Undertext fastnade markeringen på knapparna, så vänster/höger bytte knapp i stället för
+  att spola. Nu kan knapparna bara markeras efter ett tryck ner; upp eller ner lämnar dem och pilarna spolar igen.
+
+## 2.16.0
+
+- **Världscupen, direkt eller repris:** varje sändning märks *Direkt* (sänds medan världscupklassen rids), *Första sändning*,
+  *Repris* eller *Sammandrag*. Står det repris eller sammandrag i titeln eller beskrivningen gäller det, annars avgör tiden.
+  Direkt och första sändning visas överst; repriser och sammandrag ligger på en rad som fälls ut (app, webbapp och webbadmin).
+- **Resultat med pallen:** ettan, tvåan och trean med ryttare och häst visas för avgjorda etapper (Oslo, Lyon, Verona och Stuttgart
+  är inlagda). I webbadminen (Världscupen → vald etapp) finns tre rader att fylla i eller rätta.
+- **Startprofil varje gång boxen slås på (ny app):** Boxar → *Tillbaka till startprofilen* → *Varje gång boxen slås på*. Boxen byter
+  till startprofilen (till exempel Tillsammans) när den vaknar ur standby.
+
 ## 2.15.1
 
 - **Webbadminen, Sport:** under genomsökningen av programguiden laddades hela fliken om var fjärde sekund, så sidan hoppade och

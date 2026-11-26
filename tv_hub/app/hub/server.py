@@ -1391,8 +1391,14 @@ def dev_recording_status(h, rid):
 @route(DEVICE, "DELETE", r"/device/recordings/(\d+)")
 def dev_recording_delete(h, rid):
     dev = h.device()
-    recordings.remove_by_device(dev, int(rid))
-    return 200, {"ok": True}
+    if recordings.remove_by_device(dev, int(rid)):
+        return 200, {"ok": True}
+    # Planerad på en annan box (t.ex. Automatik eller från webbappen): avbokas om den inte har startat.
+    rec = recordings.get(int(rid))
+    if rec and rec.get("status") == "scheduled" and not rec.get("adult"):
+        recordings.remove(int(rid))
+        return 200, {"ok": True}
+    raise HttpError(404, "Inspelningen finns inte, eller har redan startat.")
 
 
 @route(DEVICE, "GET", r"/device/app-update")
@@ -1904,7 +1910,7 @@ def admin_worldcup_tabla(h):
 @route(ADMIN, "POST", r"/api/worldcup/result")
 def admin_worldcup_result(h):
     data = h.read_json()
-    return 200, worldcup.set_result(str(data.get("leg") or ""), data.get("winner"), data.get("horse"))
+    return 200, worldcup.set_result(str(data.get("leg") or ""), data.get("winner"), data.get("horse"), data.get("podium"))
 
 
 @route(ADMIN, "PUT", r"/api/worldcup/auto-record")

@@ -958,7 +958,8 @@ const WC_LEVEL = { ok: "ok", warn: "warn", bad: "bad", muted: "" };
 function wcEvent(e) {
   const rec = e.recording ? ` <span class="pill ok">${esc({ scheduled: "Inspelning planerad", recording: "Spelas in", done: "Inspelad", failed: "Misslyckades" }[e.recording.status] || e.recording.status)}</span>` : "";
   const st = { now: '<span class="pill live">Sänds nu</span>', upcoming: '<span class="pill accent">Kommande</span>', past: '<span class="pill">I arkivet</span>' }[e.state] || "";
-  return `<div class="small" style="padding:4px 0;border-top:1px solid var(--line)">${st} <b>${esc(e.title)}</b>${e.main ? ' <span class="pill accent">världscupklassen</span>' : ""}
+  const kd = { live: '<span class="pill live">Direkt</span>', first: '<span class="pill accent">Första sändning</span>', replay: '<span class="pill">Repris</span>', highlights: '<span class="pill">Sammandrag</span>' }[e.kind] || "";
+  return `<div class="small" style="padding:4px 0;border-top:1px solid var(--line)">${kd} ${st} <b>${esc(e.title)}</b>${e.main ? ' <span class="pill accent">världscupklassen</span>' : ""}
     <div class="muted">${esc(e.when)} · ${esc(e.channel)}${rec}</div>${e.unconfirmed ? '<div class="muted">Enligt offentlig tablå, ej bekräftad i din programguide.</div>' : ""}</div>`;
 }
 const WC_FLAG = { ESP: "🇪🇸", ITA: "🇮🇹", GER: "🇩🇪", FRA: "🇫🇷", NOR: "🇳🇴", SWE: "🇸🇪", SUI: "🇨🇭", GBR: "🇬🇧", NED: "🇳🇱", BEL: "🇧🇪",
@@ -986,10 +987,12 @@ function wcLeg(l) {
     <div class="small" style="padding:6px 0">
       <div>${esc(l.dates)} · Världscupklassen: <b>${esc(l.wc_label)}</b>${l.tv ? " · TV: " + esc(l.tv) : ""}</div>
       ${l.note ? `<div class="muted">${esc(l.note)}</div>` : ""}
-      ${l.winner ? `<div style="margin:4px 0">🏆 ${esc(l.winner)}${l.horse ? " på " + esc(l.horse) : ""}</div>` : ""}
+      ${(l.podium || []).map((p, i) => `<div style="margin:2px 0">${["🥇", "🥈", "🥉"][i]} <b>${esc(p.rider)}</b>${p.horse ? " på " + esc(p.horse) : ""}</div>`).join("")}
       ${l.events.map(wcEvent).join("")}
       ${l.seen.length ? `<div class="muted" style="margin-top:6px">Sågs i guiden (finns inte kvar): ${l.seen.map((x) => esc(x.when + " · " + x.channel)).join(", ")}</div>` : ""}
-      <div class="row" style="margin-top:8px"><input id="wcw-${l.id}" placeholder="Vinnare (t.ex. Namn (NAT))" value="${esc(l.winner || "")}" style="flex:2"><input id="wch-${l.id}" placeholder="Häst" value="${esc(l.horse || "")}" style="flex:1"><button class="btn" data-wcres="${l.id}">Spara resultat</button></div>
+      <div style="margin-top:10px"><b>Resultat</b> <span class="muted">(ryttare med land, t.ex. Peder Fredricson (SWE), och häst)</span>
+      ${[0, 1, 2].map((i) => { const p = (l.podium || [])[i] || {}; return `<div class="row" style="margin-top:4px"><span style="width:28px">${["🥇", "🥈", "🥉"][i]}</span><input id="wcr${i}-${l.id}" placeholder="${i + 1}:a ryttare" value="${esc(p.rider || "")}" style="flex:2"><input id="wch${i}-${l.id}" placeholder="Häst" value="${esc(p.horse || "")}" style="flex:1"></div>`; }).join("")}
+      <div class="row" style="margin-top:6px"><button class="btn" data-wcres="${l.id}">Spara resultat</button><span class="small muted">Tomma fält tar bort resultatet.</span></div></div>
     </div></div>`;
 }
 function wcShow(id) {
@@ -999,7 +1002,8 @@ function wcShow(id) {
   $("wc-legs").innerHTML = l ? wcLeg(l) : "";
   $("wc-legs").querySelectorAll("[data-wcres]").forEach((b) => b.addEventListener("click", () => guarded(async () => {
     const lid = b.dataset.wcres;
-    await api("worldcup/result", { method: "POST", body: { leg: lid, winner: $("wcw-" + lid).value, horse: $("wch-" + lid).value } });
+    const podium = [0, 1, 2].map((i) => ({ rider: $(`wcr${i}-${lid}`).value, horse: $(`wch${i}-${lid}`).value }));
+    await api("worldcup/result", { method: "POST", body: { leg: lid, podium } });
     toast("Resultatet sparat."); loaders.worldcup();
   }, b)));
 }
@@ -2577,11 +2581,11 @@ loaders.devices = async () => {
         <option value="noadult" ${value === "noadult" ? "selected" : ""}>Utan vuxenläge</option>
         ${groupList.map((g) => `<option value="g${g.id}" ${value === `g${g.id}` ? "selected" : ""}>Bara gruppen ${esc(g.name)}</option>`).join("")}
       </select></label>` : "";
-    const hours = [0, 1, 2, 3, 4, 6, 8, 12, 24];
+    const hours = [0, -1, 1, 2, 3, 4, 6, 8, 12, 24];
     const opts = isBox ? `<div class="dev-opts">
         <label class="f">Startprofil<select data-act="default_profile">${profs.map((p) => `<option value="${p.id}" ${p.id === (d.default_profile_id || (profs.find((x) => x.allow_adult) || profs[0] || {}).id) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
         <label class="f">Låst till profil<select data-act="lock_profile"><option value="">Nej, kan byta profil</option>${profs.map((p) => `<option value="${p.id}" ${p.id === d.locked_profile_id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
-        <label class="f">Tillbaka till startprofilen<select data-act="revert">${hours.map((h) => `<option value="${h}" ${h === (d.revert_hours || 0) ? "selected" : ""}>${h ? `efter ${h} h utan användning` : "Aldrig"}</option>`).join("")}</select></label>
+        <label class="f">Tillbaka till startprofilen<select data-act="revert">${hours.map((h) => `<option value="${h}" ${h === (d.revert_hours || 0) ? "selected" : ""}>${h === -1 ? "Varje gång boxen slås på (ny app)" : h ? `efter ${h} h utan användning` : "Aldrig"}</option>`).join("")}</select></label>
         <label class="f">Vuxenläget stängs efter<select data-act="adult_idle">${[5, 15, 30, 60, 120, 180].map((m) => `<option value="${m}" ${m === (d.adult_idle_minutes || 15) ? "selected" : ""}>${m < 60 ? `${m} min` : `${m / 60} h`} utan knapptryck</option>`).join("")}</select></label>
         <label class="chk" style="min-height:38px" title="Bara telefonen behöver det här. TV-boxar ska inte få Home Assistant-nyckeln."><input type="checkbox" data-act="remote_allowed" ${d.remote_allowed ? "checked" : ""}> Får hämta fjärråtkomst (Nabu Casa), bara för telefonen</label>
         <label class="chk" style="min-height:38px"><input type="checkbox" data-act="pin_required" ${d.pin_required ? "checked" : ""}> Kräv kod för vuxenläget</label>
@@ -2605,7 +2609,7 @@ $("device-list").addEventListener("change", (e) => {
   const put = (body, msg) => guarded(async () => { await api(`devices/${did}`, { method: "PUT", body }); toast(msg); });
   if (el.dataset.act === "default_profile") return put({ default_profile_id: Number(el.value) }, "Sparat. Boxen startar med den profilen.");
   if (el.dataset.act === "lock_profile") return put({ locked_profile_id: el.value ? Number(el.value) : null }, el.value ? "Sparat. Enheten kan bara använda den profilen." : "Sparat. Enheten kan byta profil igen.");
-  if (el.dataset.act === "revert") return put({ revert_hours: Number(el.value) }, Number(el.value) ? `Sparat. Boxen går tillbaka till startprofilen efter ${el.value} h utan användning.` : "Sparat. Boxen stannar på vald profil.");
+  if (el.dataset.act === "revert") return put({ revert_hours: Number(el.value) }, Number(el.value) === -1 ? "Sparat. Boxen går tillbaka till startprofilen varje gång den slås på." : Number(el.value) ? `Sparat. Boxen går tillbaka till startprofilen efter ${el.value} h utan användning.` : "Sparat. Boxen stannar på vald profil.");
   if (el.dataset.act === "adult_idle") return put({ adult_idle_minutes: Number(el.value) }, `Sparat. Vuxenläget på den här boxen stängs efter ${el.value} min utan knapptryck (och senast efter 3 h).`);
   if (el.dataset.act === "remote_allowed") return put({ remote_allowed: el.checked }, el.checked ? "Sparat. Den här enheten får hämta nyckeln för fjärråtkomst. Slå bara på det för telefonen." : "Sparat. Enheten får ingen fjärråtkomstnyckel och tappar den vid nästa kontroll.");
   if (el.dataset.act === "pin_required") return put({ pin_required: el.checked }, el.checked ? "Sparat. Boxen frågar efter koden för vuxenläget (om en kod är satt)." : "Sparat. Boxen frågar inte efter koden.");

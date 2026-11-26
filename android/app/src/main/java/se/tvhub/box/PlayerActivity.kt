@@ -343,6 +343,9 @@ class PlayerActivity : Activity() {
         btnSubs = findViewById(R.id.btn_subs)
         btnAudio?.setOnClickListener { showTrackDialog(C.TRACK_TYPE_AUDIO) }
         btnSubs?.setOnClickListener { showTrackDialog(C.TRACK_TYPE_TEXT) }
+        // Ljud/Undertext kan bara markeras efter ett tryck ner. Annars lägger Android tillbaka markeringen på dem,
+        // och vänster/höger byter knapp i stället för att spola.
+        setTrackButtonsFocusable(false)
         timePos = findViewById(R.id.time_pos)
         timeEnd = findViewById(R.id.time_end)
         endsAt = findViewById(R.id.ends_at)
@@ -1393,6 +1396,13 @@ class PlayerActivity : Activity() {
 
     // ---------------------------------------------------------------- fjärrkontroll
 
+    private fun setTrackButtonsFocusable(on: Boolean) {
+        for (b in listOf(btnAudio, btnSubs)) {
+            b?.isFocusable = on
+            b?.isFocusableInTouchMode = false
+        }
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
@@ -1434,6 +1444,7 @@ class PlayerActivity : Activity() {
                         return true
                     }
                     KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        setTrackButtonsFocusable(false)
                         focusedButton.clearFocus()
                         showOverlay(5_000)
                         return true
@@ -1468,6 +1479,7 @@ class PlayerActivity : Activity() {
                         // Ett tryck ner: tidslinjen visas och fokus hamnar direkt på Ljud (höger/vänster byter till Undertext).
                         if (code == KeyEvent.KEYCODE_DPAD_DOWN && trackRow?.visibility == View.VISIBLE) {
                             showOverlay(8_000)
+                            setTrackButtonsFocusable(true)
                             btnAudio?.requestFocus()
                         } else {
                             showOverlay(5_000)

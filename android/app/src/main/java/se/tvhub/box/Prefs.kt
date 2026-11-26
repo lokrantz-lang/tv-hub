@@ -123,6 +123,19 @@ class Prefs(context: Context) {
 
     private val adultIdleMs: Long get() = boxAdultIdleMinutes * 60_000L
 
+    /** När skärmen senast släcktes (boxen gick i standby), och när det senast hanterades. */
+    var screenOffAt: Long
+        get() = sp.getLong("screen_off_at", 0L)
+        set(value) {
+            sp.edit().putLong("screen_off_at", value).apply()
+        }
+
+    var wakeHandledAt: Long
+        get() = sp.getLong("wake_handled_at", 0L)
+        set(value) {
+            sp.edit().putLong("wake_handled_at", value).apply()
+        }
+
     var boxRevertHours: Int
         get() = sp.getInt("box_revert_hours", 0)
         set(value) {

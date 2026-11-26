@@ -451,13 +451,26 @@ async function pageWorldcup(args) {
     if (!l) return;
     $("leg").innerHTML = `<div class="ev" style="padding:20px 22px"><h2 style="margin:0">${flag(l.country)} ${esc(l.name)}${l.kind === "final" ? " · FINAL" : ""}</h2>
       <div class="muted">${esc(l.dates)} · Världscupklassen ${esc(l.wc_label)}${l.tv ? " · TV: " + esc(l.tv) : ""}</div>
-      ${l.winner ? `<div style="color:var(--star);font-weight:700;font-size:17px;margin-top:6px">🏆 ${esc(l.winner)}${l.horse ? " på " + esc(l.horse) : ""}</div>` : ""}
+      ${(l.podium || []).length ? `<div class="podium">${l.podium.map((p, i) => `<div class="pod p${i + 1}"><span class="m">${["🥇", "🥈", "🥉"][i]}</span><div><b>${esc(p.rider)}</b>${p.horse ? `<div class="small muted">${esc(p.horse)}</div>` : ""}</div></div>`).join("")}</div>` : ""}
       ${l.events.length ? "" : `<div class="muted" style="margin-top:6px">${esc(l.headline)}</div>`}<div class="grid wide" id="leg-ev" style="margin-top:10px"></div>
+      <div id="leg-more"></div>
       ${(l.seen || []).length ? `<div class="small muted" style="margin-top:8px">Sändes, finns inte längre i arkivet: ${l.seen.map((s) => esc(s.when + " · " + s.channel)).join(", ")}</div>` : ""}</div>`;
-    const box = $("leg-ev");
-    box.innerHTML = l.events.map((e, i) => `<div class="ev" style="background:var(--s2)">${e.state === "now" ? '<span class="badge live">● NU</span>' : e.state === "upcoming" ? '<span class="badge up">KOMMANDE</span>' : '<span class="badge">ARKIV</span>'}
-      <div class="t">${esc(e.title)}${e.main ? " ★" : ""}</div><div class="small muted">${esc(e.when)} · ${esc(e.channel)}${e.unconfirmed ? " · enligt TV4:s tablå" : ""}</div><div class="acts" data-e="${i}"></div></div>`).join("");
-    box.querySelectorAll("[data-e]").forEach((a) => eventActions(a, l.events[+a.dataset.e]));
+    const card = (e, i) => {
+      const badge = e.kind === "live" ? `<span class="badge live">${e.state === "now" ? "● " : ""}DIREKT</span>`
+        : e.kind === "replay" ? '<span class="badge">REPRIS</span>' : e.kind === "highlights" ? '<span class="badge">SAMMANDRAG</span>'
+        : '<span class="badge up">FÖRSTA SÄNDNING</span>';
+      const st = e.state === "now" ? "Sänds nu · " : e.state === "past" ? "I arkivet · " : "";
+      return `<div class="ev" style="background:var(--s2)">${badge}<div class="t">${esc(e.title)}${e.main ? " ★" : ""}</div>
+        <div class="small muted">${st}${esc(e.when)} · ${esc(e.channel)}${e.unconfirmed ? " · enligt TV4:s tablå" : ""}</div><div class="acts" data-e="${i}"></div></div>`;
+    };
+    const prim = [], sec = [];
+    l.events.forEach((e, i) => ((e.kind === "replay" || e.kind === "highlights") ? sec : prim).push(i));
+    $("leg-ev").innerHTML = prim.map((i) => card(l.events[i], i)).join("");
+    if (sec.length) {
+      $("leg-more").innerHTML = `<details style="margin-top:12px"><summary class="btn small" style="display:inline-block">Repriser och sammandrag (${sec.length})</summary>
+        <div class="grid wide" style="margin-top:10px">${sec.map((i) => card(l.events[i], i)).join("")}</div></details>`;
+    }
+    $("leg").querySelectorAll("[data-e]").forEach((a) => eventActions(a, l.events[+a.dataset.e]));
   };
   tiles.querySelectorAll(".tile").forEach((t) => t.onclick = () => show(t.dataset.l));
   show(sel);

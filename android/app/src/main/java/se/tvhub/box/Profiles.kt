@@ -100,13 +100,39 @@ object Profiles {
         val prefs = Prefs(context)
         val hours = prefs.boxRevertHours
         val id = prefs.profileId
-        if (hours <= 0 || id <= 0 || id == prefs.boxDefaultProfile) return false
-        if (System.currentTimeMillis() - prefs.profileActiveAt < hours * 3_600_000L) return false
+        if (hours == -1) {
+            // "Varje gång boxen slås på": skärmen har släckts efter att profilen valdes, och det är inte hanterat än.
+            val off = prefs.screenOffAt
+            if (off <= prefs.wakeHandledAt) return false
+            prefs.wakeHandledAt = System.currentTimeMillis()
+            if (id <= 0 || id == prefs.boxDefaultProfile || off < prefs.profileActiveAt) return false
+        } else {
+            if (hours <= 0 || id <= 0 || id == prefs.boxDefaultProfile) return false
+            if (System.currentTimeMillis() - prefs.profileActiveAt < hours * 3_600_000L) return false
+        }
         prefs.profileId = 0
         MyPrograms.clear()
         all.firstOrNull { it.id == prefs.boxDefaultProfile }?.let { prefs.shownProfile = it.json.toString() }
         if (prefs.adultMode) prefs.adultMode = false
         return true
+    }
+
+    /** Lyssnar på att skärmen släcks (standby). Registreras i appens bakgrundstjänst och på Hem. */
+    val screenOff = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: android.content.Intent) {
+            if (intent.action == android.content.Intent.ACTION_SCREEN_OFF) Prefs(context).screenOffAt = System.currentTimeMillis()
+        }
+    }
+
+    private var standbyRegistered = false
+
+    fun listenForStandby(context: Context) {
+        if (standbyRegistered) return
+        standbyRegistered = true
+        try {
+            context.applicationContext.registerReceiver(screenOff, android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF))
+        } catch (_: Exception) {
+        }
     }
 
     // ---------------------------------------------------------------- byta profil

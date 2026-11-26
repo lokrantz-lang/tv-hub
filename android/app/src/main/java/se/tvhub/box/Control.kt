@@ -218,6 +218,7 @@ class ControlService : Service() {
     override fun onCreate() {
         super.onCreate()
         Api.init(Prefs(this))
+        Profiles.listenForStandby(this)  // "Tillbaka till startprofilen varje gång boxen slås på"
         if (Build.VERSION.SDK_INT >= 26) {
             val channel = NotificationChannel(CHANNEL, "Röststyrning och fjärrstart", NotificationManager.IMPORTANCE_MIN)
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)

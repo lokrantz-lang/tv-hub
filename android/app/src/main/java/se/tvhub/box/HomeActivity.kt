@@ -133,7 +133,8 @@ class HomeActivity : Activity(), CardListener {
         scrimBottom = findViewById(R.id.hero_scrim_bottom)
         status = findViewById(R.id.status)
         railDim = findViewById(R.id.rail_dim)
-        // Stått oanvänd länge (t.ex. över natten): tillbaka till boxens startprofil innan något visas.
+        // Stått oanvänd länge (t.ex. över natten) eller varit i standby: tillbaka till boxens startprofil innan något visas.
+        Profiles.listenForStandby(this)
         Profiles.checkRevert(this)
         buildRail()
         rail.viewTreeObserver.addOnGlobalFocusChangeListener { _, newFocus ->

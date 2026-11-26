@@ -35,14 +35,18 @@ MAX_AHEAD_S = 14 * 86400 - 3600
 LEGS = [
     {"id": "oslo", "name": "Oslo", "country": "NOR", "start": "2026-10-07", "end": "2026-10-11",
      "wc": ("2026-10-11", "15:30"), "shift": 0, "kind": "league",
-     "winner": "Max Kühner (AUT)", "horse": "EIC Up Too Jacco Blue", "tv": "TV4"},
+     "podium": [("Max Kühner (AUT)", "EIC Up Too Jacco Blue"), ("Harrie Smolders (NED)", "Monaco"),
+                ("Martin Fuchs (SUI)", "Fortjump du Beaumenil")], "tv": "TV4"},
     {"id": "lyon", "name": "Lyon", "country": "FRA", "start": "2026-10-27", "end": "2026-11-01",
      "wc": ("2026-11-01", "15:30"), "shift": 0, "kind": "league",
-     "winner": "Julien Epaillard (FRA)", "horse": "Le Coultre de Muze", "tv": "TV4"},
+     "podium": [("Julien Epaillard (FRA)", "Le Coultre de Muze"), ("Richard Vogel (GER)", "Cloudio"),
+                ("Edouard Schmitz (SUI)", "Gamin van't Naastveldhof")], "tv": "TV4"},
     {"id": "verona", "name": "Verona", "country": "ITA", "start": "2026-11-05", "end": "2026-11-08",
-     "wc": ("2026-11-08", "14:30"), "shift": 0, "kind": "league", "tv": "Sjuan (14:15–17:45)", "slot": ("Sjuan", "14:15", "17:45")},
+     "wc": ("2026-11-08", "14:30"), "shift": 0, "podium": [("Richard Vogel (GER)", "Gangster Montdesir"), ("Tom Schewe (GER)", "Congress Blue PS"), ("Simon Delestre (FRA)", "Gatsby du Tillard")],
+     "kind": "league", "tv": "Sjuan (14:15–17:45)", "slot": ("Sjuan", "14:15", "17:45")},
     {"id": "stuttgart", "name": "Stuttgart", "country": "GER", "start": "2026-11-11", "end": "2026-11-15",
-     "wc": ("2026-11-15", "15:10"), "shift": 0, "kind": "league", "tv": "Sjuan (14:45–17:40)", "slot": ("Sjuan", "14:45", "17:40")},
+     "wc": ("2026-11-15", "15:10"), "shift": 0, "podium": [("Julien Epaillard (FRA)", "Le Coultre de Muze"), ("Eduardo Menezes (BRA)", "H5 Londontime"), ("Peder Fredricson (SWE)", "Alcapone des Carmille")],
+     "kind": "league", "tv": "Sjuan (14:45–17:40)", "slot": ("Sjuan", "14:45", "17:40")},
     {"id": "madrid", "name": "Madrid", "country": "ESP", "start": "2026-11-26", "end": "2026-11-29",
      "wc": ("2026-11-29", "15:00"), "shift": 0, "kind": "league", "tv": "Sjuan (14:55–17:40) och TV4 Play Plus Sport", "slot": ("Sjuan", "14:55", "17:40")},
     {"id": "acoruna", "name": "A Coruña", "country": "ESP", "start": "2026-12-03", "end": "2026-12-06",
@@ -79,8 +83,27 @@ EXCLUDE = ("trav", "galopp", "dressyr", "dressage", "horse racing", "ponny")
 
 
 def _n(text):
-    """Normaliserad text utan diakriter, så att "världscupen" och "varldscupen" blir lika."""
-    return " " + sports.norm(re.sub(r"[åä]", "a", re.sub(r"ö", "o", str(text or "").casefold()))) + " "
+    """Normaliserad text utan diakriter, så att "världscupen" och "varldscupen" (och "Coruña" och "Coruna") blir lika."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(text or "").casefold())
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return " " + sports.norm(t) + " "
+
+
+def _city(leg):
+    return _n(leg.get("city") or leg["name"]).strip()
+
+
+def _other_city(leg, text):
+    """Nämner sändningen en annan etapps stad? Då hör den till den etappen (ofta en repris på Horse & Country)."""
+    mine = _city(leg)
+    for other in LEGS:
+        if other["id"] == leg["id"] or other["kind"] == "other":
+            continue
+        c = _city(other)
+        if c and c != mine and f" {c} " in text:
+            return True
+    return False
 
 
 def _has(text, phrases):
@@ -114,7 +137,9 @@ def _leg_match(leg, title, description):
     wc = _has(text, [_n(x).strip() for x in WORLD_CUP])
     if not wc and _has(text, [_n(x).strip() for x in NOT_WC]):
         return False
-    city = _n(leg.get("city") or leg["name"]).strip()
+    city = _city(leg)
+    if f" {city} " not in text and _other_city(leg, text):
+        return False
     if leg["kind"] == "final":
         return hopp and wc and (f" {city} " in text or _has(text, ["final", "finalen", "varldscupfinalen", "varldscupfinal"]))
     return hopp and (wc or f" {city} " in text)
@@ -226,11 +251,66 @@ def _slot_event(leg, now):
     return event
 
 
+# ---------------------------------------------------------------- direkt, första sändning, repris, sammandrag
+
+KIND_LABEL = {"live": "Direkt", "first": "Första sändning", "replay": "Repris", "highlights": "Sammandrag"}
+_HIGHLIGHTS = re.compile(r"\b(sammandrag|hojdpunkter|höjdpunkter|highlights?|magasin|studio)\b", re.I)
+_REPLAY = re.compile(r"(\brepris\b|\breplay\b|\(r\)|\brerun\b|\bigen\b)", re.I)
+
+
+def classify(events, wc, leg=None):
+    """Varje sändning: direkt (pågår när världscupklassen rids), första sändning, repris eller sammandrag.
+    Står det repris eller sammandrag i titel eller beskrivning gäller det. Annars avgör tiden: samma titel
+    som redan sänts tidigare (eller direkt) är en repris."""
+    kinds = {}
+    first_seen = {}
+    for e in sorted(events, key=lambda x: x["start"]):
+        text = f"{e.get('title') or ''} {e.get('description') or ''}"
+        key = sports.norm(e.get("title") or "")
+        if _HIGHLIGHTS.search(text):
+            kinds[e["id"]] = "highlights"
+            continue
+        if _REPLAY.search(text):
+            kinds[e["id"]] = "replay"
+            continue
+        # Allmän världscupsändning (utan etappens stad) som slutar före världscupklassen: en tidigare etapp i repris.
+        if leg is not None and wc and e["end"] <= wc and f" {_city(leg)} " not in _n(text):
+            kinds[e["id"]] = "replay"
+            continue
+        if wc and e["start"] <= wc + 15 * 60 and e["end"] >= wc + 30 * 60:
+            kinds[e["id"]] = "live"
+            first_seen.setdefault(key, e["start"])
+            continue
+        if key in first_seen or (wc and e["start"] > wc and any(k == "live" for k in kinds.values())):
+            kinds[e["id"]] = "replay"
+        else:
+            kinds[e["id"]] = "first"
+            first_seen[key] = e["start"]
+    return kinds
+
+
+# ---------------------------------------------------------------- resultat (pallen)
+
+def podium_for(leg):
+    """Ettan, tvåan och trean: det som skrivits in i webbadminen, annars det som finns inlagt i kalendern."""
+    manual = (db.get_setting(RESULTS_KEY) or {}).get(leg["id"]) or {}
+    if manual.get("podium"):
+        rows = manual["podium"]
+    elif manual.get("winner") or manual.get("horse"):
+        rows = [{"rider": manual.get("winner") or "", "horse": manual.get("horse") or ""}]
+    else:
+        rows = [{"rider": r, "horse": h} for r, h in (leg.get("podium") or [])]
+    out = []
+    for i, r in enumerate(rows[:3]):
+        if (r.get("rider") or "").strip():
+            out.append({"place": i + 1, "rider": r["rider"].strip(), "horse": (r.get("horse") or "").strip()})
+    return out
+
+
 def leg_view(leg, scope, now, recs=None):
-    results = db.get_setting(RESULTS_KEY) or {}
-    manual = results.get(leg["id"]) or {}
-    winner = manual.get("winner") or leg.get("winner")
-    horse = manual.get("horse") or leg.get("horse")
+    podium = podium_for(leg)
+    winner = podium[0]["rider"] if podium else None
+    horse = podium[0]["horse"] if podium else None
     wc = wc_time(leg)
     lo, hi = _bounds(leg)
     start_ts, end_ts = _ts(leg["start"], "00:00"), _ts(leg["end"], "23:59")
@@ -246,10 +326,15 @@ def leg_view(leg, scope, now, recs=None):
         state = "done"
     elif now >= start_ts:
         state = "ongoing"
-    main = next((e for e in events if e.get("unconfirmed")), None) or _main_event(events)
+    kinds = classify(events, wc, leg)
+    main = next((e for e in events if kinds.get(e["id"]) == "live"), None) or \
+        next((e for e in events if kinds.get(e["id"]) == "first"), None) or \
+        next((e for e in events if e.get("unconfirmed")), None) or _main_event(events)
     out_events = []
     for e in events:
         item = dict(e)
+        item["kind"] = kinds.get(e["id"], "first")
+        item["kind_label"] = KIND_LABEL[item["kind"]]
         item["main"] = bool(main and e["id"] == main["id"])
         item.pop("ids", None)
         item["open_command"] = {"action": "play", "type": "live", "id": str(e["channel_id"]), "name": e["channel"], "icon": e.get("icon")}
@@ -279,7 +364,7 @@ def leg_view(leg, scope, now, recs=None):
         "wc_time": wc, "wc_when": sports.when_label(wc) if wc else "Tid ej fastställd",
         "wc_label": (f"{sports.when_label(wc)}" if wc else "Tid ej fastställd"),
         "preliminary": bool(leg.get("preliminary")), "note": leg.get("note"),
-        "tv": leg.get("tv"), "winner": winner, "horse": horse,
+        "tv": leg.get("tv"), "winner": winner, "horse": horse, "podium": podium,
         "events": out_events, "seen": seen_view, "headline": headline, "level": level,
     }
 
@@ -466,18 +551,25 @@ def check(now=None):
 
 # ---------------------------------------------------------------- inställningar
 
-def set_result(leg_id, winner, horse):
+def set_result(leg_id, winner=None, horse=None, podium=None):
+    """Sparar pallen (lista med upp till tre {rider, horse}). Äldre anrop med bara vinnare och häst fungerar också.
+    Tomt överallt tar bort det manuella resultatet (då visas det som finns inlagt i kalendern)."""
     if leg_id not in LEG_BY_ID:
         raise LookupError("Okänd etapp.")
     results = db.get_setting(RESULTS_KEY) or {}
-    winner = str(winner or "").strip()[:80]
-    horse = str(horse or "").strip()[:80]
-    if winner or horse:
-        results[leg_id] = {"winner": winner, "horse": horse}
+    if podium is None:
+        podium = [{"rider": winner, "horse": horse}]
+    rows = []
+    for r in list(podium)[:3]:
+        r = r if isinstance(r, dict) else {}
+        rows.append({"rider": str(r.get("rider") or "").strip()[:80], "horse": str(r.get("horse") or "").strip()[:80]})
+    if any(r["rider"] or r["horse"] for r in rows):
+        results[leg_id] = {"podium": rows}
     else:
         results.pop(leg_id, None)
     db.set_setting(RESULTS_KEY, results)
-    return results.get(leg_id) or {}
+    pod = podium_for(LEG_BY_ID[leg_id])
+    return {"podium": pod, "winner": pod[0]["rider"] if pod else None, "horse": pod[0]["horse"] if pod else None}
 
 
 def interest():

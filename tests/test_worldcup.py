@@ -45,7 +45,7 @@ check("13 etapper, final och SIHS", len([l for l in worldcup.LEGS if l["kind"] =
 check("Madrid söndag 29 nov 15:00", worldcup.wc_time(legs["madrid"]) == ts("2026-11-29", "15:00"))
 check("London 14:35 lokal tid är 15:35 svensk tid", worldcup.wc_time(legs["london"]) == ts("2026-12-20", "15:35"))
 check("tid som inte är fastställd ger None", worldcup.wc_time(legs["leipzig"]) is None)
-check("Oslo och Lyon har vinnare inlagda", legs["oslo"]["winner"].startswith("Max K") and legs["lyon"]["winner"].startswith("Julien"))
+check("Oslo, Lyon, Verona och Stuttgart har pallen inlagd", all(len(legs[x]["podium"]) == 3 for x in ("oslo", "lyon", "verona", "stuttgart")))
 
 # matchning
 m = worldcup._leg_match
@@ -181,6 +181,41 @@ _db.set_setting(worldcup.SEEN_KEY, {"madrid": [
 seen = worldcup._seen()
 check("gamla Global Champions Tour-rader rensas ur historiken", [r["channel"] for r in seen["madrid"]] == ["Sjuan"], seen)
 check("rensningen sparas", [r["channel"] for r in _db.get_setting(worldcup.SEEN_KEY)["madrid"]] == ["Sjuan"])
+
+
+# 2.16: pallen
+pod = worldcup.podium_for(legs["oslo"])
+check("Oslo: Kühner, Smolders, Fuchs", [p["rider"].split(" (")[0] for p in pod] == ["Max Kühner", "Harrie Smolders", "Martin Fuchs"], pod)
+r = worldcup.set_result("madrid", podium=[{"rider": "Ettan (SWE)", "horse": "A"}, {"rider": "Tvåan (GER)", "horse": "B"}, {"rider": "", "horse": ""}])
+check("pallen sparas (tomma platser hoppas över)", [p["place"] for p in r["podium"]] == [1, 2] and r["winner"] == "Ettan (SWE)", r)
+r = worldcup.set_result("madrid", podium=[{"rider": "", "horse": ""}] * 3)
+check("tom pall tar bort det manuella resultatet", r["podium"] == [], r)
+
+# 2.16: direkt, första sändning, repris, sammandrag
+wc = ts("2026-11-29", "15:00")
+evs = [
+    {"id": "a", "title": "Världscupen i hoppning: Madrid", "description": "", "start": ts("2026-11-29", "14:55"), "end": ts("2026-11-29", "17:40")},
+    {"id": "b", "title": "Världscupen i hoppning: Madrid", "description": "", "start": ts("2026-11-29", "23:10"), "end": ts("2026-11-30", "01:30")},
+    {"id": "c", "title": "Ridsport: Sammandrag", "description": "Höjdpunkter från Madrid", "start": ts("2026-11-30", "18:00"), "end": ts("2026-11-30", "18:30")},
+    {"id": "d", "title": "Hoppning: Madrid", "description": "Repris från lördagen", "start": ts("2026-11-29", "09:00"), "end": ts("2026-11-29", "11:00")},
+    {"id": "e", "title": "Hoppning: Madrid", "description": "Kvalet", "start": ts("2026-11-28", "20:00"), "end": ts("2026-11-28", "22:00")},
+]
+k = worldcup.classify(evs, wc)
+check("direkt när klassen rids", k["a"] == "live", k)
+check("samma klass senare samma kväll är repris", k["b"] == "replay", k)
+check("sammandrag känns igen", k["c"] == "highlights", k)
+check("'repris' i beskrivningen gäller", k["d"] == "replay", k)
+check("annan klass dagen innan är första sändning", k["e"] == "first", k)
+
+
+# 2.16.1: annan etapps stad, och allmän världscupsändning före klassen
+check("sändning om Stuttgart hör inte till Madrid", not m(legs["madrid"], "FEI World Cup Jumping", "Highlights from Stuttgart"))
+check("sändning om Stuttgart hör till Stuttgart", m(legs["stuttgart"], "FEI World Cup Jumping", "Highlights from Stuttgart"))
+check("Coruña och Coruna är samma stad", m(legs["acoruna"], "Hoppning: A Coruna", "") and m(legs["acoruna"], "Hoppning: A Coruña", ""))
+hc = [{"id": "h", "title": "FEI World Cup Jumping", "description": "", "start": ts("2026-11-26", "19:30"), "end": ts("2026-11-26", "21:00")},
+      {"id": "s", "title": "Världscupen i hoppning: Madrid", "description": "", "start": ts("2026-11-29", "14:55"), "end": ts("2026-11-29", "17:40")}]
+k2 = worldcup.classify(hc, ts("2026-11-29", "15:00"), legs["madrid"])
+check("Horse & Country utan stad före klassen är repris", k2["h"] == "replay" and k2["s"] == "live", k2)
 
 print("ALLT OK" if not fails else f"{fails} FEL")
 sys.exit(1 if fails else 0)
