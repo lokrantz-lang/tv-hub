@@ -275,7 +275,8 @@ textarea { border: 1px solid var(--line); background: var(--panel-2); color: var
         <p style="margin:0 0 6px">Hennes kod: <b class="mono" style="font-size:22px;letter-spacing:2px" id="invite-code">…</b>
           <span class="small muted" id="invite-info"></span></p>
         <p class="small muted" style="margin:0">Skicka henne en länk: <span class="mono">http://&lt;Home Assistants IP&gt;:8099/hej</span> (ladda ner appen) och koden.
-          Hon ser då bara sin egen profil, och du går före när bara en ström är ledig. Koden skapas om automatiskt när den gått ut.</p>
+          Hon ser då bara sin egen profil, och du går före när bara en ström är ledig. Koden gäller ett dygn och för <b>en</b> enhet.
+          Tryck <b>Ny kod</b> varje gång hon ska logga in på något nytt (telefon, dator). Du får en notis när en ny enhet loggar in.</p>
       </div>
     </div>
     <div class="grid2" style="margin-top:16px">
@@ -1014,7 +1015,7 @@ async function loadInvite() {
   try {
     const v = await api("invite");
     $("invite-code").textContent = v.code ? v.code.replace(/(\d{4})(\d{4})/, "$1 $2") : "(ny kod behövs)";
-    $("invite-info").textContent = v.valid ? ` · ${v.uses_left} användningar kvar, till ${new Date(v.expires * 1000).toLocaleDateString("sv-SE")}` : "";
+    $("invite-info").textContent = v.valid ? ` · gäller till ${new Date(v.expires * 1000).toLocaleString("sv-SE", { weekday: "short", hour: "2-digit", minute: "2-digit" })}, en enhet` : " · förbrukad eller utgången: tryck Ny kod";
   } catch (_) { $("invite-card").hidden = true; }
 }
 $("invite-new").addEventListener("click", (e) => guarded(async () => { await api("invite/new", { method: "POST", body: {} }); toast("Ny kod skapad."); loadInvite(); }, e.target));

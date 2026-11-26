@@ -1013,6 +1013,10 @@ def dev_pair(h):
     if result is None:
         time.sleep(1)  # bromsar gissning av koder
         raise HttpError(403, "Fel eller utgången kod. Skapa en ny kod i webbadminen.")
+    # Notis till ägaren om varje ny enhet, så att en okänd inloggning syns direkt.
+    how = "med Lovisas inbjudan" if result.get("invite") else "med parningskod"
+    msg = f"Ny enhet inloggad i TV Hub: {result.get('name')} ({str(data.get('model') or '')[:40]}) {how}."
+    threading.Thread(target=alerts._send, args=("TV Hub: ny enhet", msg), daemon=True).start()
     return 200, result
 
 

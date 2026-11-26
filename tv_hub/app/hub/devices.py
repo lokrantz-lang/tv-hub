@@ -39,7 +39,7 @@ def new_pair_code():
 
 
 # Gissning av parningskoder: högst 30 felaktiga försök på 10 minuter totalt (koden gäller 10 minuter).
-_pair_limit = limits.AttemptLimiter(30, 600)
+_pair_limit = limits.AttemptLimiter(10, 900)  # tio fel, sedan stängt i 15 minuter
 
 
 class TooManyAttempts(Exception):
@@ -53,6 +53,10 @@ def pair(code, name, model, app_version, ip):
     code = str(code or "").strip()
     token = secrets.token_urlsafe(32)
     name = (str(name or "").strip() or "TV-box")[:40]
+    # Spärren kontrolleras FÖRE koden: under spärren prövas ingen kod alls, inte ens en rätt.
+    wait = _pair_limit.blocked("pair")
+    if wait is not None:
+        raise TooManyAttempts(wait)
     with db.tx():
         invite = family.take_invite(code)
         if invite is not None:
@@ -66,7 +70,8 @@ def pair(code, name, model, app_version, ip):
                  _hash(token), db.iso(), db.iso(), ip, invite["profile_id"], invite["profile_id"]),
             ).lastrowid
             db.log_event("paired", {"name": name, "model": model, "invite": who}, device_id=device_id)
-            return {"token": token, "device_id": device_id, "name": name}
+            _pair_limit.success("pair")
+            return {"token": token, "device_id": device_id, "name": name, "invite": True}
         used = db.x("DELETE FROM pair_codes WHERE code = ? AND expires >= ?", (code, db.iso())).rowcount
         if used != 1:
             wait = _pair_limit.reserve("pair")
@@ -79,6 +84,7 @@ def pair(code, name, model, app_version, ip):
             (name, str(model or "")[:60], str(app_version or "")[:20], _hash(token), db.iso(), db.iso(), ip),
         ).lastrowid
     db.log_event("paired", {"name": name, "model": model}, device_id=device_id)
+    _pair_limit.success("pair")  # en lyckad parning (rätt kod från webbadminen) nollställer räknaren
     return {"token": token, "device_id": device_id, "name": name}
 
 

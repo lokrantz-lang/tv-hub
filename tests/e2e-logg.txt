@@ -70,7 +70,7 @@ Diagnostik
   ok   sammanfattning för Home Assistant
 Version 1.2: metadata, sortering och filter
 ----------------------------------------
-Exception occurred during processing of request from ('127.0.0.1', 39404)
+Exception occurred during processing of request from ('127.0.0.1', 55280)
 Traceback (most recent call last):
   File "/usr/local/lib/python3.13/socketserver.py", line 697, in process_request_thread
     self.finish_request(request, client_address)
@@ -661,7 +661,7 @@ Version 2.10.0: Lovisa, låst profil, prioritet
   ok   2.10: sidan för nedladdning visar adress och steg
   ok   2.10: fel inbjudningskod nekas
   ok   2.10: inbjudan ger en enhet
-  ok   2.10: en användning förbrukad
+  ok   2.14: inbjudan gäller en enhet och är sedan förbrukad
   ok   2.10: låst enhet ser bara sin profil
   ok   2.10: servern svarar som Lovisa trots begäran om ägarens profil
   ok   2.10: inget vuxenläge
@@ -675,7 +675,7 @@ Version 2.10.0: Lovisa, låst profil, prioritet
   ok   2.10: när ägaren slutat kan Lovisa titta igen
   ok   2.10: vilken box som helst kan låsas till en profil
   ok   2.10: låset kan tas bort
-  ok   2.10: koden gäller bara tre gånger
+  ok   2.14: koden gäller bara en gång
   ok   2.10: tom inbjudan visas som ogiltig tills en ny skapas
   ok   2.10: ny kod kan skapas
   ok   2.10: webbadminen har inbjudan och lås
@@ -707,6 +707,11 @@ Version 2.14.0: bilder och guidefil
   ok   2.14: webbadminen visar guidefilens status
   ok   2.14: guidefilen kan hämtas med knappen
   ok   2.14: guidefilen ger en status (fel eller ok)
+Version 2.14.1: spärr mot gissning av koder
+  ok   2.14.1: gissning spärras efter högst tio fel
+  ok   2.14.1: under spärren prövas ingen kod, inte ens en rätt
+  ok   2.14.1: inte heller Lovisas inbjudan
+  ok   2.14.1: inbjudan förbrukas inte av spärrade försök
   ok   webbadmin serveras
   ok   admin-API nås inte via box-porten
   ok   borttagen box nekas

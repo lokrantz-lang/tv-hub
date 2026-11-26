@@ -39,6 +39,15 @@ class AttemptLimiter:
                     del self._state[k]
             return None
 
+    def blocked(self, key, now=None):
+        """Sekunder kvar om nyckeln är spärrad, annars None. Räknar inte upp (kontrolleras före försöket)."""
+        now = time.time() if now is None else now
+        with self._lock:
+            count, first = self._state.get(key, (0, now))
+            if now - first > self.window_s or count < self.max_attempts:
+                return None
+            return max(1, int(self.window_s - (now - first)))
+
     def success(self, key):
         with self._lock:
             self._state.pop(key, None)

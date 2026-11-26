@@ -1,5 +1,11 @@
 # Ändringar
 
+## 2.14.1
+
+- **Säkerhet (viktigt med Funnel):** spärren mot gissning av koder kontrollerades först efter att koden prövats, så den stoppade
+  inte en dator som gissar snabbt. Nu kontrolleras den före: efter tio fel stängs inloggningen i 15 minuter och ingen kod prövas,
+  inte ens en rätt. Lovisas inbjudan gäller ett dygn och en enhet (tryck *Ny kod* för nästa). Du får en notis när en ny enhet loggar in.
+
 ## 2.14.0
 
 - **Toucans guidefil (XMLTV):** många kanaler (bland annat V Sport Golf och Golf Channel US) saknar programguide när Toucan

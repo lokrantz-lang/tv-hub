@@ -16,8 +16,8 @@ from . import db, profiles
 
 PERSON = "Lovisa"
 INVITE_KEY = "family_invite"
-INVITE_DAYS = 14
-INVITE_USES = 3
+INVITE_HOURS = 24   # en kod gäller ett dygn
+INVITE_USES = 1     # och för en enhet; därefter skapas en ny
 
 
 def _invite():
@@ -44,7 +44,7 @@ def new_invite(profile_id=None):
     if pid is None:
         return ensure() and _invite()
     inv = {"code": f"{secrets.randbelow(100_000_000):08d}", "profile_id": pid, "name": PERSON,
-           "expires": int(time.time()) + INVITE_DAYS * 86400, "uses_left": INVITE_USES}
+           "expires": int(time.time()) + INVITE_HOURS * 3600, "uses_left": INVITE_USES}
     db.set_setting(INVITE_KEY, inv)
     return inv
 

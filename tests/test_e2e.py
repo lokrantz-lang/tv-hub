@@ -293,6 +293,7 @@ def main():
         version_2120(ta, tb, pa, pb)
         version_2130(ta, tb, pa, pb)
         version_2140(ta, tb, pa, pb)
+        version_2141()
 
         s, res = call("GET", f"{A}/", raw=True)
         check("webbadmin serveras", s == 200, s)
@@ -1703,7 +1704,7 @@ def version_27(ta, tb, pa, pb):
 
     # F07: parningskod och PIN vid parallella anrop
     s, code = call("POST", f"{A}/api/devices/pair-code")
-    res = _threads(12, lambda i: call("POST", f"{D}/device/pair", {"code": code["code"], "name": f"Par{i}"})[0])
+    res = _threads(6, lambda i: call("POST", f"{D}/device/pair", {"code": code["code"], "name": f"Par{i}"})[0])
     check("F07: samma kod ger exakt en enhet vid parallella försök", res.count(200) == 1, res)
     s, devs = call("GET", f"{A}/api/devices")
     for d in devs:
@@ -2392,7 +2393,7 @@ def version_2910(ta, tb, pa, pb):
 
     stop_all()
     s, inv = call("GET", f"{A}/api/invite")
-    check("2.10: inbjudan finns med åttasiffrig kod", s == 200 and inv["valid"] and len(inv["code"]) == 8 and inv["uses_left"] == 3, inv)
+    check("2.10: inbjudan finns med åttasiffrig kod", s == 200 and inv["valid"] and len(inv["code"]) == 8 and inv["uses_left"] == 1, inv)
     s, profs = call("GET", f"{A}/api/profiles")
     lov = [p for p in profs["profiles"] if p["name"] == "Lovisa"][0]
     check("2.10: Lovisas profil finns utan vuxenläge", lov["allow_adult"] is False and lov["priority"] == 0, lov)
@@ -2407,7 +2408,7 @@ def version_2910(ta, tb, pa, pb):
     tl = pl["token"]
     tokens[pl["device_id"]] = tl
     s, v = call("GET", f"{A}/api/invite")
-    check("2.10: en användning förbrukad", v["uses_left"] == 2 and v["code"] == inv["code"], v)
+    check("2.14: inbjudan gäller en enhet och är sedan förbrukad", v["uses_left"] == 0 and v["valid"] is False and v["code"] is None, v)
     s, lst = call("GET", f"{D}/device/profiles", token=tl)
     check("2.10: låst enhet ser bara sin profil", s == 200 and [p["name"] for p in lst["profiles"]] == ["Lovisa"] and lst.get("locked") is True, lst)
     owner = [p for p in profs["profiles"] if p["name"] == "Själv"][0]["id"]
@@ -2452,14 +2453,12 @@ def version_2910(ta, tb, pa, pb):
     check("2.10: låset kan tas bort", len(lst["profiles"]) >= 5 and not lst.get("locked"), lst)
 
     # inbjudan tar slut och skapas om
-    for _ in range(2):
-        call("POST", f"{D}/device/pair", {"code": inv["code"], "name": "extra"})
-    s, none = call("POST", f"{D}/device/pair", {"code": inv["code"], "name": "fyra"})
-    check("2.10: koden gäller bara tre gånger", s == 403, (s, none))
+    s, none = call("POST", f"{D}/device/pair", {"code": inv["code"], "name": "andra"})
+    check("2.14: koden gäller bara en gång", s == 403, (s, none))
     s, v = call("GET", f"{A}/api/invite")
     check("2.10: tom inbjudan visas som ogiltig tills en ny skapas", v["valid"] is False and v["code"] is None, v)
     s, v = call("POST", f"{A}/api/invite/new", {})
-    check("2.10: ny kod kan skapas", v["valid"] and v["code"] != inv["code"] and v["uses_left"] == 3, v)
+    check("2.10: ny kod kan skapas", v["valid"] and v["code"] != inv["code"] and v["uses_left"] == 1, v)
     s, page = call("GET", f"{A}/", raw=True)
     check("2.10: webbadminen har inbjudan och lås", all(x in page.decode() for x in ("invite-code", "lock_profile")), None)
 
@@ -2566,6 +2565,27 @@ def version_2140(ta, tb, pa, pb):
         s, x = call("GET", f"{A}/api/sports/xmltv")
         return x.get("status") and x["status"].get("at")
     check("2.14: guidefilen ger en status (fel eller ok)", wait_for(done, 30), None)
+
+
+def version_2141():
+    """2.14.1: spärren för koder kontrolleras före koden (måste köras sist: spärren gäller 15 minuter)."""
+    print("Version 2.14.1: spärr mot gissning av koder")
+    statuses = []
+    for i in range(12):
+        s, _ = call("POST", f"{D}/device/pair", {"code": f"{90000000 + i}", "name": "gissning"})
+        statuses.append(s)
+        if s == 429:
+            break
+    check("2.14.1: gissning spärras efter högst tio fel", 429 in statuses and statuses.count(403) <= 10, statuses)
+    s, code = call("POST", f"{A}/api/devices/pair-code")
+    s, r = call("POST", f"{D}/device/pair", {"code": code["code"], "name": "Rätt kod under spärren"})
+    check("2.14.1: under spärren prövas ingen kod, inte ens en rätt", s == 429, (s, r))
+    s, inv = call("GET", f"{A}/api/invite")
+    if inv.get("code"):
+        s, r = call("POST", f"{D}/device/pair", {"code": inv["code"], "name": "Inbjudan under spärren"})
+        check("2.14.1: inte heller Lovisas inbjudan", s == 429, (s, r))
+    s, inv2 = call("GET", f"{A}/api/invite")
+    check("2.14.1: inbjudan förbrukas inte av spärrade försök", inv2.get("uses_left") == inv.get("uses_left"), (inv, inv2))
 
 if __name__ == "__main__":
     main()

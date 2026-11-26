@@ -392,8 +392,11 @@ Hemfixen ligger i `/data/hotfix`. Efter en vanlig uppdatering av tillägget till
 
 ## Lovisa och prioritet
 
-Profilen **Lovisa** skapas automatiskt. På **Översikt** finns kortet *Bjud in Lovisa* med en åttasiffrig kod som gäller i 14 dagar och
-tre användningar (en ny skapas automatiskt, eller med *Ny kod*).
+Profilen **Lovisa** skapas automatiskt. På **Översikt** finns kortet *Bjud in Lovisa* med en åttasiffrig kod som gäller ett dygn och
+för en enhet. Tryck *Ny kod* varje gång hon ska logga in på något nytt.
+
+**Skydd mot gissning:** efter tio felaktiga koder stängs inloggningen i 15 minuter, och under den tiden prövas ingen kod alls.
+Du får en notis (notify-tjänsten under *Boxar → Påminnelser till telefonen*) varje gång en ny enhet loggar in.
 
 1. Skicka henne länken `http://<Home Assistants IP>:8099/hej` och koden. Sidan har en stor knapp *Ladda ner TV Hub*, och visar serveradressen.
 2. Hon installerar appen, anger adressen och koden (hemma på wifi första gången).
